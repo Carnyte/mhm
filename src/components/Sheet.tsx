@@ -1,7 +1,7 @@
 // Global action sheet + option picker + toast, rendered once at the root.
 
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStore, useStore } from '../state/store';
@@ -49,10 +49,31 @@ export function SheetHost() {
   const insets = useSafeAreaInsets();
   const sheet = useStore(sheetStore);
   const close = () => sheetStore.set(null);
+  const shown = useRef(false);
+
+  // Safety net: if iOS refuses to present the sheet (another modal is already up), reset it so
+  // later menus can still open instead of every sheet staying stuck.
+  useEffect(() => {
+    if (!sheet) {
+      shown.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      if (!shown.current) sheetStore.set(null);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [sheet]);
 
   return (
     <>
-      <Modal visible={!!sheet} transparent animationType="fade" onRequestClose={close} supportedOrientations={['portrait', 'landscape']}>
+      <Modal
+        visible={!!sheet}
+        transparent
+        animationType="fade"
+        onRequestClose={close}
+        onShow={() => (shown.current = true)}
+        supportedOrientations={['portrait', 'landscape']}
+      >
         <Pressable style={[styles.backdrop, { backgroundColor: c.overlay }]} onPress={close} accessibilityLabel="Close" />
         {sheet && (
           <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 8 }]}>
