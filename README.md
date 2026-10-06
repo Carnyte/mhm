@@ -1,96 +1,101 @@
-![Made with Python](https://forthebadge.com/images/badges/made-with-python.svg)
-![Built by Developers](http://ForTheBadge.com/images/badges/built-by-developers.svg)
-![Uses Git](http://ForTheBadge.com/images/badges/uses-git.svg)
-![Build with Love](http://ForTheBadge.com/images/badges/built-with-love.svg)
+# FicShelf: a modern FanFiction.net app
 
-```ascii
-███╗   ███╗███████╗    ███████╗ █████╗ ██████╗ ███╗   ███╗███████╗██████╗
-████╗ ████║██╔════╝    ██╔════╝██╔══██╗██╔══██╗████╗ ████║██╔════╝██╔══██╗
-██╔████╔██║███████╗    █████╗  ███████║██████╔╝██╔████╔██║█████╗  ██████╔╝
-██║╚██╔╝██║╚════██║    ██╔══╝  ██╔══██║██╔══██╗██║╚██╔╝██║██╔══╝  ██╔══██╗
-██║ ╚═╝ ██║███████║    ██║     ██║  ██║██║  ██║██║ ╚═╝ ██║███████╗██║  ██║
-╚═╝     ╚═╝╚══════╝    ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝
-       by Charles Bel (@charlesbel)          version 3.0
+A from-scratch rebuild of the FanFiction.Net iPhone app, which hasn't been updated in about
+two years. It's built with Expo (React Native, TypeScript) and runs on iOS, iPadOS and Android.
+It reads the **live** www.fanfiction.net site, and you can **log in with your real account**.
+
+- Feature plan and the full feature checklist: [`PLAN.md`](PLAN.md)
+- Unofficial app, not affiliated with FanFiction.Net or FictionPress. Rename it in `app.json`.
+
+## How it talks to FanFiction.net
+
+FanFiction.net has no public API, and plain HTTP requests are blocked by Cloudflare
+(`403 cf-mitigated: challenge`). The app runs a hidden WebView on `www.fanfiction.net`. That's a
+real browser engine, so Cloudflare's check passes like it does in Safari. Every request is a
+same-origin `fetch()` from inside that page, and the HTML comes back to typed TypeScript parsers.
+If Cloudflare ever wants a human, the same WebView slides up so you can tick
+"Verify you are human" once.
+
+Logging in uses the site's own steps (`/login.php` state token →
+`/api/ajax_captcha_preverify.php` → form post). When a captcha is needed, or you want
+Google / Facebook / X / Amazon / Microsoft / FictionPress sign-in, the real login page opens in an
+in-app browser that shares the same cookie store. Follow / favourite and reviews use the site's
+own AJAX endpoints (`/api/ajax_subs.php`, `/api/ajax_review.php`).
+
+## Run it on your iPhone
+
+The app uses native modules (WebView, SQLite, notifications, background tasks), so it needs a
+**development build**. Expo Go won't work.
+
+```bash
+npm install
+npm test                 # unit tests
+npm run typecheck
+
+# Option A: build in the cloud (no Mac needed), then install from the link EAS gives you
+npx eas-cli@latest login
+npx eas-cli@latest build -p ios --profile development   # or --profile preview for a standalone build
+npx expo start --dev-client
+
+# Option B: on a Mac with Xcode
+npx expo run:ios --device
 ```
 
-![Maintained](https://img.shields.io/badge/Maintained%3F-yes-green.svg?style=for-the-badge)
-![MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)
+To publish to the App Store: `npx eas-cli@latest build -p ios --profile production`, then
+`npx eas-cli@latest submit -p ios`. Set your own `ios.bundleIdentifier` in `app.json` first.
 
-## :wave: Welcome to the future of automation
+## Project layout
 
-### A simple bot that uses selenium to farm Microsoft Rewards written in Python
-
-```diff
-- Use it at your own risk, Microsoft may ban your account (and I would not be responsible for it)
+```
+src/app/            screens (Expo Router): tabs, story, reader, search, library, account…
+src/net/            WebView bridge (BridgeHost.tsx), challenge handling, image loading
+src/ffn/            URL builders, constants, HTML parsers, form replay, typed API client
+src/state/          library / progress / settings / session stores (persisted to SQLite)
+src/features/       downloads, update checks + notifications, shared story actions
+src/reader/         reader HTML/CSS/JS template (themes, paging, TTS highlight, find)
+src/components/     UI kit, story card, filter sheet, profile view, reader settings
+tests/              Jest tests and synthetic HTML fixtures that mirror the real markup
+scripts/            live-check.ts (parsers vs the live site) and dev-proxy.ts (web dev harness)
 ```
 
-## Installation
+## Verification
 
-1. Install requirements with the following command :
+Checks run while building this (October 2026):
 
-   `pip install -r requirements.txt`
+| Check | Result |
+|---|---|
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry logic | 39 / 39 pass |
+| `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
+| `npx tsc --noEmit` | clean |
+| `npx eslint .` | clean |
+| `npx expo export --platform ios` | bundles (3.8 MB Hermes bytecode) |
+| `npx expo-doctor` | 21 / 21 checks pass |
+| Web harness screenshots with live data | Browse, fandom directory, story list, story details and reader render correctly |
 
-2. Make sure you have Chrome installed
+Not verified here, because this was built on Linux with no iPhone and no account:
 
-3. ~~Install ChromeDriver:~~
+- **Running on a real device or simulator.** The JavaScript bundle compiles for iOS, but the
+  native build has to happen on EAS or a Mac.
+- **Logging in with a real account.** The login form, the captcha pre-check endpoint and the
+  login fields were checked against the live site, but a full login wasn't possible without
+  credentials.
+- **Pages behind a login** (Story/Author Alerts, Favorites, private messages). Their markup
+  couldn't be inspected, so those parsers are adaptive and every one of those screens has an
+  "Open on FanFiction.net" fallback that shows the real page with your session.
+- After many automated requests, Cloudflare began challenging the headless test browser in the
+  build sandbox. On a phone this is where the "Quick security check" sheet appears.
 
-   You no longer need to do this step since selenium >=4.10.0 include a webdriver manager
+### Re-run the live check yourself
 
-   To update your selenium version, run this command : `pip install selenium --upgrade`
+```bash
+CHROMIUM_PATH=/path/to/chrome npm run live-check    # on headless Linux: xvfb-run -a npm run live-check
+```
 
-4. (Windows Only) Make sure Visual C++ redistributable DLLs are installed
+## Known limitations
 
-   If they're not, install the current "vc_redist.exe" from this link and reboot your computer : https://learn.microsoft.com/en-GB/cpp/windows/latest-supported-vc-redist?view=msvc-170
-
-5. Edit the `accounts.json.sample` with your accounts credentials and rename it by removing `.sample` at the end. The "proxy" field is not mandatory, you can ommit it if you don't want to use proxy (don't keep it as an empty string, remove it completely).
-
-   - If you want to add more than one account, the syntax is the following:
-
-   ```json
-   [
-     {
-       "username": "Your Email 1",
-       "password": "Your Password 1",
-       "proxy": "http://user:pass@host1:port"
-     },
-     {
-       "username": "Your Email 2",
-       "password": "Your Password 2",
-       "proxy": "http://user:pass@host2:port"
-     }
-   ]
-   ```
-
-6. Run the script:
-
-   `python main.py`
-
-   Or if you want to keep it updated (it will check on each run if a new version is available, if so, will download and run it), use :
-
-   `python autoupdate_main.py`
-
-## Launch arguments
-
-- -v/--visible to disable headless
-- -l/--lang to force a language (ex: en)
-- -g/--geo to force a geolocation (ex: US)
-- -p/--proxy to add a proxy to the whole program, supports http/https/socks4/socks5 (overrides per-account proxy in accounts.json) (ex: http://user:pass@host:port)
-- -t/--telegram to add a telegram notification, requires Telegram Bot Token and Chat ID (ex: 123456789:ABCdefGhIjKlmNoPQRsTUVwxyZ 123456789)
-- -d/--discord to add a discord notification, requires Discord Webhook URL (ex: https://discord.com/api/webhooks/123456789/ABCdefGhIjKlmNoPQRsTUVwxyZ)
-
-## Features
-
-- Bing searches (Desktop, Mobile and Edge) with User-Agents
-- Complete automatically the daily set
-- Complete automatically punch cards
-- Complete automatically the others promotions
-- Headless Mode
-- Multi-Account Management
-- Session storing (3.0)
-- 2FA Support (3.0)
-- Notifications (discord, telegram) (3.0)
-- Proxy Support (3.0)
-
-## Future Features
-
-- GUI
+- Full-chapter AI translation and the official app's AI writing tools used FictionPress's private
+  service. Selected text can be translated and looked up through the iOS system menu.
+- New-chapter checks run when the app opens and in iOS background windows while the app is
+  suspended. There's no server push, because that needs FictionPress's push servers.
+- Posting in forums, publishing stories and account settings use FanFiction.net's own pages in
+  the in-app browser.

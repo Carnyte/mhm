@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "FicShelf",
+    "slug": "ficshelf",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "scheme": "ficshelf",
+    "userInterfaceStyle": "automatic",
+    "description": "Unofficial reader for FanFiction.net: browse, search, read, follow, favorite, review and read offline.",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ficshelf.reader",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "processing",
+          "audio"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.ficshelf.reader",
+      "adaptiveIcon": {
+        "backgroundColor": "#1F3A5F",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-background-task",
+      [
+        "expo-notifications",
+        {
+          "color": "#1F3A5F"
+        }
+      ],
+      "expo-sharing",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "backgroundColor": "#1F3A5F"
+        }
+      ]
+    ]
+  }
+}
