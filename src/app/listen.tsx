@@ -7,7 +7,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { pickSleepTimer, pickSpeed, pickVoice, speedLabel, VOICE_TIP } from '../audio/pickers';
+import { PAUSE_OPTIONS, pickPauses, pickSleepTimer, pickSpeed, pickVoice, speedLabel, VOICE_TIP } from '../audio/pickers';
 import * as player from '../audio/player';
 import { usePlayer } from '../audio/player';
 import { voiceFor, type VoiceInfo } from '../audio/voices';
@@ -212,6 +212,15 @@ export default function ListenScreen() {
         <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border }]}>
           <ToggleRow label="Continue to the next chapter" value={reader.ttsContinue} onChange={(v) => updateReader({ ttsContinue: v })} c={c} />
           <ToggleRow label="Announce chapter titles" value={reader.ttsReadTitles} onChange={(v) => updateReader({ ttsReadTitles: v })} c={c} />
+          <Pressable style={styles.row} onPress={pickPauses} accessibilityRole="button">
+            <T size={15} style={{ flex: 1 }}>
+              Pauses
+            </T>
+            <T size={14} muted>
+              {PAUSE_OPTIONS.find((o) => o.value === (reader.ttsPauses ?? 'natural'))?.label}
+            </T>
+            <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+          </Pressable>
           <ToggleRow
             label="Play over music and other audio"
             value={reader.ttsMixWithOthers}

@@ -95,5 +95,15 @@ export async function pickVoice(lang?: string) {
   );
 }
 
+export const PAUSE_OPTIONS = [
+  { value: 'natural' as const, label: 'Natural', sub: 'A beat between paragraphs, longer at scene breaks' },
+  { value: 'long' as const, label: 'Long', sub: 'Slower, more audiobook-like pacing' },
+  { value: 'off' as const, label: 'Off', sub: 'Read straight through' },
+];
+
+export function pickPauses() {
+  pickOption('Pauses', PAUSE_OPTIONS, settingsStore.get().reader.ttsPauses ?? 'natural', (v) => updateReader({ ttsPauses: v }));
+}
+
 export const VOICE_TIP =
   'For a more natural, audiobook-like voice, download an Enhanced or Premium voice: iOS Settings → Accessibility → Read & Speak (Spoken Content) → Voices → your language. It appears here automatically.';

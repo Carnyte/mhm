@@ -99,7 +99,7 @@ beforeEach(() => {
   for (const k of Object.keys(saved)) delete saved[k];
   saved['7:1'] = '<p>One.</p><p>Two.</p><p>Three.</p>';
   saved['7:2'] = '<p>Four.</p>';
-  updateReader({ ttsContinue: true, ttsReadTitles: false, ttsRate: 1, ttsVoices: {}, ttsVoice: undefined });
+  updateReader({ ttsContinue: true, ttsReadTitles: false, ttsRate: 1, ttsVoices: {}, ttsVoice: undefined, ttsPauses: 'off' });
 });
 
 describe('audiobook player', () => {
@@ -336,6 +336,74 @@ describe('audiobook player: review fixes', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('audiobook player: natural pauses', () => {
+  beforeEach(() => {
+    player.stop();
+    spoken.length = 0;
+    saved['7:1'] = '<p>One. Uno.</p><p>Two.</p><p>* * *</p><p>Three.</p>';
+    updateReader({ ttsPauses: 'natural', ttsReadTitles: false });
+  });
+  afterAll(() => updateReader({ ttsPauses: 'off' }));
+
+  it('waits between paragraphs and longer at scene breaks', async () => {
+    jest.useFakeTimers();
+    try {
+      await player.start(STORY, { chapter: 1, index: 0 });
+      await flush();
+      // "One. Uno." is one segment; the next paragraph waits for it to finish.
+      expect(spoken.map((x) => x.text)).toEqual(['One. Uno.']);
+      lastOf('One. Uno.').opts.onStart!();
+      lastOf('One. Uno.').opts.onDone!();
+      jest.advanceTimersByTime(299);
+      expect(spoken.map((x) => x.text)).toEqual(['One. Uno.']);
+      jest.advanceTimersByTime(2);
+      expect(spoken.map((x) => x.text)).toEqual(['One. Uno.', 'Two.']);
+      lastOf('Two.').opts.onStart!();
+      lastOf('Two.').opts.onDone!();
+      jest.advanceTimersByTime(1000);
+      expect(spoken).toHaveLength(2); // scene break: 1.1 s
+      jest.advanceTimersByTime(150);
+      expect(spoken.map((x) => x.text)).toEqual(['One. Uno.', 'Two.', 'Three.']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not pause before the paragraph it starts or resumes on', async () => {
+    await player.start(STORY, { chapter: 1, index: 2 });
+    await flush();
+    expect(spoken[spoken.length - 1].text).toBe('Three.');
+  });
+
+  it('a pause during the gap cancels the next paragraph', async () => {
+    jest.useFakeTimers();
+    try {
+      await player.start(STORY, { chapter: 1, index: 0 });
+      await flush();
+      lastOf('One. Uno.').opts.onStart!();
+      lastOf('One. Uno.').opts.onDone!();
+      player.pause();
+      jest.advanceTimersByTime(2000);
+      expect(spoken.map((x) => x.text)).toEqual(['One. Uno.']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('computes pauses from segment breaks and titles', () => {
+    const segs = [
+      { text: 'Chapter 1.', block: -1, words: 2 },
+      { text: 'A', block: 0, words: 1, breakBefore: 'none' as const },
+      { text: 'B', block: 0, words: 1, breakBefore: 'none' as const },
+      { text: 'C', block: 1, words: 1, breakBefore: 'paragraph' as const },
+      { text: 'D', block: 2, words: 1, breakBefore: 'scene' as const },
+    ];
+    expect([0, 1, 2, 3, 4].map((k) => player.pauseBefore(segs, k, 'natural'))).toEqual([0, 800, 0, 300, 1100]);
+    expect(player.pauseBefore(segs, 4, 'off')).toBe(0);
+    expect(player.pauseBefore(segs, 3, 'long')).toBe(650);
   });
 });
 

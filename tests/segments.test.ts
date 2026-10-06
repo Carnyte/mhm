@@ -54,6 +54,18 @@ describe('segmentChapter', () => {
   });
 });
 
+describe('pauses and speech cleanup', () => {
+  it('marks paragraph and scene breaks', () => {
+    const r = segmentChapter('<p>A.</p><p>B.</p><p>* * *</p><p>C.</p><hr><p>D.</p>');
+    expect(r.segments.map((s) => `${s.text}:${s.breakBefore}`)).toEqual(['A.:none', 'B.:paragraph', 'C.:scene', 'D.:scene']);
+  });
+  it('cleans text for the voice without touching the reader HTML', () => {
+    const r = segmentChapter('<p>*sigh* Well... I don\'t know!!! He said--wait.She left.</p>');
+    expect(r.segments[0].text).toBe("sigh Well… I don't know! He said — wait. She left.");
+    expect(r.html).toContain('*sigh* Well... I don');
+  });
+});
+
 describe('splitText / isSpeakable', () => {
   it('never exceeds the limit, even without punctuation', () => {
     const parts = splitText('word '.repeat(400));
@@ -76,5 +88,20 @@ describe('splitText / isSpeakable', () => {
     expect(isSpeakable('"Zzz..."')).toBe(true);
     expect(isSpeakable('~o~o~o~')).toBe(false);
     expect(isSpeakable('「こんにちは」')).toBe(true);
+  });
+});
+
+describe('speechText', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { speechText } = require('../src/audio/speechText') as typeof import('../src/audio/speechText');
+  it('leaves normal prose alone', () => {
+    for (const s of ['Mr. Smith met Dr. Who in the U.S.A. at 5 p.m.', "It's 3.14, isn't it?", 'A well-known e-mail.']) {
+      expect(speechText(s)).toBe(s);
+    }
+  });
+  it('normalises fanfiction habits', () => {
+    expect(speechText('No. . . please?!?!')).toBe('No… please?!');
+    expect(speechText('**Really** _now_ ~softly~')).toBe('Really now softly');
+    expect(speechText('wait - what')).toBe('wait — what');
   });
 });

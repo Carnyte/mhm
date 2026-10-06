@@ -145,7 +145,28 @@ let sleepTimer: ReturnType<typeof setTimeout> | undefined;
 let lastRecorded = 0;
 let loadToken = 0;
 
-const LOOKAHEAD = 1; // utterances queued ahead, so there's no gap between paragraphs
+const LOOKAHEAD = 1; // utterances queued ahead, so there's no gap within a paragraph
+
+/** Milliseconds of silence before segment k: a beat between paragraphs, longer at scene breaks. */
+const PAUSES = {
+  off: { paragraph: 0, scene: 0, title: 0 },
+  natural: { paragraph: 300, scene: 1100, title: 800 },
+  long: { paragraph: 650, scene: 1800, title: 1200 },
+} as const;
+
+export function pauseBefore(segments: Segment[], k: number, mode: keyof typeof PAUSES = settingsStore.get().reader.ttsPauses ?? 'natural'): number {
+  if (k <= 0 || k >= segments.length) return 0;
+  const p = PAUSES[mode] ?? PAUSES.natural;
+  if (segments[k - 1].block === -1) return p.title;
+  const b = segments[k].breakBefore;
+  return b === 'scene' ? p.scene : b === 'paragraph' ? p.paragraph : 0;
+}
+
+/** Segment index allowed to start without its pause (where playback was started or resumed). */
+let released = -1;
+/** A segment waiting for the previous one to finish before its pause starts. */
+let held: { k: number; ms: number } | null = null;
+let pauseTimer: ReturnType<typeof setTimeout> | undefined;
 
 function recordProgress(force = false) {
   const s = playerStore.get();
@@ -195,6 +216,9 @@ async function speakFrom(index: number, opts: { defaultVoice?: boolean } = {}) {
   const voice = opts.defaultVoice ? undefined : await resolveVoice();
   if (g !== gen) return;
   queued = playerStore.get().index - 1;
+  released = playerStore.get().index; // no pause before the paragraph we start on
+  held = null;
+  clearTimeout(pauseTimer);
   enqueue(g, { rate: r.ttsRate, pitch: r.ttsPitch, voice });
   // expo-speech fails silently on iOS when a voice can't be loaded (no event at all), which
   // would leave the player "playing" in silence. Retry once with the default voice, then report.
@@ -214,6 +238,13 @@ async function speakFrom(index: number, opts: { defaultVoice?: boolean } = {}) {
 function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string }) {
   const s = playerStore.get();
   while (g === gen && queued < s.index + LOOKAHEAD && queued < s.segments.length - 1) {
+    const next = queued + 1;
+    const ms = next === released ? 0 : pauseBefore(s.segments, next);
+    if (ms > 0) {
+      // Speak it only after the previous segment has finished plus the pause (see onDone).
+      held = { k: next, ms };
+      break;
+    }
     const k = ++queued;
     const seg = s.segments[k];
     Speech.speak(seg.text, {
@@ -234,7 +265,21 @@ function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string 
       onDone: () => {
         if (g !== gen) return;
         const cur = playerStore.get();
-        if (k >= cur.segments.length - 1) chapterFinished(g);
+        if (k >= cur.segments.length - 1) {
+          chapterFinished(g);
+          return;
+        }
+        if (held && held.k === k + 1) {
+          const { k: next, ms } = held;
+          held = null;
+          clearTimeout(pauseTimer);
+          // The background-audio loop keeps the app running, so this timer fires when locked too.
+          pauseTimer = setTimeout(() => {
+            if (g !== gen) return;
+            released = next;
+            enqueue(g, opts);
+          }, ms);
+        }
       },
       onError: (e) => {
         if (g !== gen) return;
@@ -465,7 +510,9 @@ export function pause() {
   if (s.status !== 'playing' && s.status !== 'loading') return;
   gen++;
   queued = -1;
+  held = null;
   clearTimeout(watchdog);
+  clearTimeout(pauseTimer);
   Speech.stop().catch(() => {});
   loadToken++; // cancels a chapter load in flight
   set({ status: s.segments.length ? 'paused' : 'error', error: s.segments.length ? undefined : 'Stopped while loading.' });
@@ -554,6 +601,8 @@ export function stop() {
   loadToken++;
   clearTimeout(sleepTimer);
   clearTimeout(watchdog);
+  clearTimeout(pauseTimer);
+  held = null;
   Speech.stop().catch(() => {});
   playerStore.set(IDLE);
   audioSession.deactivate();

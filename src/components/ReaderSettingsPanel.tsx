@@ -6,7 +6,7 @@ import Slider from '@react-native-community/slider';
 import { useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { pickVoice, VOICE_TIP } from '../audio/pickers';
+import { PAUSE_OPTIONS, pickPauses, pickVoice, VOICE_TIP } from '../audio/pickers';
 import * as player from '../audio/player';
 import { TIER_LABEL, voiceFor, type VoiceInfo } from '../audio/voices';
 import { updateReader, useSettings } from '../state/settings';
@@ -146,6 +146,21 @@ export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; on
           {stepper('Pitch', s.ttsPitch.toFixed(1), () => (updateReader({ ttsPitch: clamp(s.ttsPitch - 0.1, 0.5, 2) }), player.applyVoiceSettings()), () => (updateReader({ ttsPitch: clamp(s.ttsPitch + 0.1, 0.5, 2) }), player.applyVoiceSettings()))}
           {toggle('Continue to next chapter', s.ttsContinue, (v) => updateReader({ ttsContinue: v }))}
           {toggle('Announce chapter titles', s.ttsReadTitles, (v) => updateReader({ ttsReadTitles: v }))}
+          <Pressable
+            style={styles.setRow}
+            accessibilityRole="button"
+            onPress={() => {
+              onClose();
+              setTimeout(pickPauses, 450);
+            }}
+          >
+            <T size={14} style={{ color: fg, flex: 1 }}>
+              Pauses
+            </T>
+            <T size={13} style={{ color: theme.muted }}>
+              {PAUSE_OPTIONS.find((o) => o.value === (s.ttsPauses ?? 'natural'))?.label}
+            </T>
+          </Pressable>
           <Pressable style={styles.setRow} onPress={() => {
               // The picker is a separate sheet; iOS can't show it over this panel's modal.
               onClose();

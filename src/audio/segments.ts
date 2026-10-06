@@ -5,12 +5,18 @@
 import { render } from 'dom-serializer';
 import { Element, isTag, isText, type AnyNode, type ParentNode } from 'domhandler';
 import { parseDocument } from 'htmlparser2';
+import { speechText } from './speechText';
+
+/** What separates a segment from the one before it, which decides the pause in between. */
+export type SegmentBreak = 'none' | 'paragraph' | 'scene';
 
 export interface Segment {
   text: string;
   /** Index of the tagged element in the chapter HTML (data-tts), or -1 for spoken extras. */
   block: number;
   words: number;
+  /** 'none' within a paragraph, 'paragraph' at a new one, 'scene' after a separator or <hr>. */
+  breakBefore?: SegmentBreak;
 }
 
 export interface SegmentedChapter {
@@ -134,12 +140,18 @@ export function segmentChapter(html: string): SegmentedChapter {
   const doc = parseDocument(html ?? '', { decodeEntities: true, lowerCaseAttributeNames: true });
   const segments: Segment[] = [];
   let block = 0;
+  /** A scene separator ("* * *", <hr>, …) was passed since the last spoken block. */
+  let sceneBreak = false;
 
   const addBlock = (text: string): number | null => {
-    const t = clean(text);
-    if (!t || !isSpeakable(t)) return null;
+    const raw = clean(text);
+    if (raw && !isSpeakable(raw)) sceneBreak = true;
+    const t = raw && isSpeakable(raw) ? speechText(raw) : '';
+    if (!t) return null;
     const b = block++;
-    for (const part of splitText(t)) segments.push({ text: part, block: b, words: countWordsIn(part) });
+    const breakBefore: SegmentBreak = !segments.length ? 'none' : sceneBreak ? 'scene' : 'paragraph';
+    sceneBreak = false;
+    splitText(t).forEach((part, i) => segments.push({ text: part, block: b, words: countWordsIn(part), breakBefore: i ? 'none' : breakBefore }));
     return b;
   };
 
@@ -187,6 +199,7 @@ export function segmentChapter(html: string): SegmentedChapter {
       if (isBlock(child)) {
         flushRun(parent, run, out);
         run = [];
+        if (child.name === 'hr') sceneBreak = true;
         if (!LEAF_BLOCK_TAGS.has(child.name) && hasBlockChild(child)) {
           walk(child);
         } else {

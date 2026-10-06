@@ -37,6 +37,8 @@ export interface ReaderSettings {
   ttsMixWithOthers: boolean;
   /** Announce "Chapter 3: Title" before each chapter when listening. */
   ttsReadTitles: boolean;
+  /** Pauses between paragraphs, after chapter titles and at scene breaks. */
+  ttsPauses: 'off' | 'natural' | 'long';
 }
 
 export interface AppSettings {
@@ -81,6 +83,7 @@ export const DEFAULT_READER: ReaderSettings = {
   ttsContinue: true,
   ttsMixWithOthers: false,
   ttsReadTitles: true,
+  ttsPauses: 'natural',
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
