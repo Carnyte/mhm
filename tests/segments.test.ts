@@ -67,6 +67,11 @@ describe('splitText / isSpeakable', () => {
     expect(isSpeakable('-x-x-x-')).toBe(false);
     expect(isSpeakable('oOoOoOo')).toBe(true); // letters only: could be a word, so read it
     expect(isSpeakable('Hi.')).toBe(true);
+    expect(isSpeakable('"I-I..."')).toBe(true);
+    expect(isSpeakable('“I…”')).toBe(true);
+    expect(isSpeakable('Mm.')).toBe(true);
+    expect(isSpeakable('"Zzz..."')).toBe(true);
+    expect(isSpeakable('~o~o~o~')).toBe(false);
     expect(isSpeakable('「こんにちは」')).toBe(true);
   });
 });

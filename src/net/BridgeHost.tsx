@@ -12,6 +12,11 @@ import { FFN_WEBVIEW_PROPS, isMobileSiteUrl } from './webviewConfig';
 
 const HOME = FFN_ORIGIN + '/';
 
+/** Home page URL with a cache-busting query, which skips any cached redirect (e.g. to m.). */
+function freshHome(): string {
+  return `${HOME}?app=${Date.now().toString(36)}`;
+}
+
 export function BridgeHost() {
   const ref = useRef<WebView>(null);
   const [visible, setVisible] = useState(false);
@@ -32,10 +37,9 @@ export function BridgeHost() {
         );
       },
       reload(bust?: boolean, target?: string) {
-        // A cache-busting query skips any cached redirect (e.g. to the mobile site).
-        const url = target ?? (bust ? `${HOME}?app=${Date.now().toString(36)}` : HOME);
+        const url = target ?? (bust ? freshHome() : HOME);
         if (ref.current) ref.current.injectJavaScript(`location.replace(${JSON.stringify(url)}); true;`);
-        else setKey((k) => k + 1);
+        else remount();
       },
       setVisible,
     }),
@@ -46,6 +50,12 @@ export function BridgeHost() {
     bridge.attach(transport);
     return () => bridge.detach(transport);
   }, [transport]);
+
+  // A new WebView starts from a blank page; the bridge must not send into it until it's ready.
+  const remount = () => {
+    bridge.onPageGone();
+    setKey((k) => k + 1);
+  };
 
   const onMessage = (e: WebViewMessageEvent) => {
     let msg: any;
@@ -111,8 +121,8 @@ export function BridgeHost() {
           return /^https:\/\/(www\.)?fanfiction\.net\//i.test(req.url) || /^about:/i.test(req.url) || /challenges\.cloudflare\.com/.test(req.url);
         }}
         onError={(e) => bridge.onPageError(e.nativeEvent.description || 'Network error')}
-        onContentProcessDidTerminate={() => setKey((k) => k + 1)}
-        onRenderProcessGone={() => setKey((k) => k + 1)}
+        onContentProcessDidTerminate={remount}
+        onRenderProcessGone={remount}
       />
     </View>
   );

@@ -15,6 +15,7 @@ describe('mobile site handling', () => {
     expect(describeFetchError('Load failed (redirected away from www.fanfiction.net)')).toMatch(/mobile site/);
     expect(describeFetchError('Load failed (bridge page is on m.fanfiction.net)')).toMatch(/mobile site/);
     expect(describeFetchError('Load failed')).toMatch(/internet connection.*\(Load failed\)/);
+    expect(describeFetchError('Load failed (bridge page not loaded)')).toMatch(/internet connection/);
     expect(describeFetchError('Something odd')).toBe('Something odd');
   });
 });

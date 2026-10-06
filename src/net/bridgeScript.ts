@@ -43,11 +43,16 @@ export const BRIDGE_SCRIPT = String.raw`
       }).catch(function (e) {
         var msg = String((e && e.message) || e);
         var done = function (m) { post({ type: 'response', id: id, error: m, href: location.href, cookies: document.cookie }); };
-        if (location.hostname !== 'www.fanfiction.net') return done(msg + ' (bridge page is on ' + location.hostname + ')');
+        if (location.hostname === 'm.fanfiction.net') return done(msg + ' (bridge page is on m.fanfiction.net)');
+        if (location.hostname !== 'www.fanfiction.net') return done(msg + ' (bridge page not loaded)');
         if (init.method !== 'GET') return done(msg);
-        // A redirect to another host (e.g. the mobile site) fails like a network error; check for it.
+        // A redirect to another host (e.g. the mobile site) fails like a network error. Check for a
+        // redirect, then whether following it stays on www (same-origin mode rejects otherwise).
         fetch(url, { method: 'GET', credentials: 'include', redirect: 'manual', cache: 'no-store' }).then(function (r) {
-          done(r.type === 'opaqueredirect' ? msg + ' (redirected away from www.fanfiction.net)' : msg);
+          if (r.type !== 'opaqueredirect') return done(msg);
+          fetch(url, { method: 'GET', credentials: 'include', redirect: 'follow', mode: 'same-origin', cache: 'no-store' }).then(function () {
+            done(msg);
+          }, function () { done(msg + ' (redirected away from www.fanfiction.net)'); });
         }, function () { done(msg); });
       });
     },

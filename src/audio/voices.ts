@@ -3,6 +3,7 @@
 // (com.apple.voice.premium.en-US.Zoe, com.apple.voice.enhanced.en-GB.Daniel, …).
 
 import * as Speech from 'expo-speech';
+import { AppState } from 'react-native';
 
 export type VoiceTier = 'premium' | 'enhanced' | 'standard' | 'novelty';
 
@@ -32,6 +33,16 @@ export const TIER_LABEL: Record<VoiceTier, string> = {
 };
 
 let cache: VoiceInfo[] | null = null;
+
+/** Forget the voice list (voices may have been added or deleted in iOS Settings). */
+export function invalidateVoices() {
+  cache = null;
+}
+
+// Coming back from iOS Settings is the usual way voices change.
+AppState.addEventListener?.('change', (st) => {
+  if (st === 'active') cache = null;
+});
 
 export async function listVoices(refresh = false): Promise<VoiceInfo[]> {
   if (cache && !refresh) return cache;
@@ -96,4 +107,29 @@ export async function voiceFor(
 export function voiceLabel(v: VoiceInfo): string {
   const tier = TIER_LABEL[v.tier];
   return `${v.name} · ${v.language}${tier ? ' · ' + tier : ''}`;
+}
+
+/**
+ * FanFiction.net language names (shown in each story's own language, as in the site's language
+ * filter: "Español", "Français", "日本語") plus their English names → ISO 639-1 codes.
+ */
+const LANGUAGE_CODES: Record<string, string> = {
+  afrikaans: 'af', 'bahasa indonesia': 'id', indonesian: 'id', 'bahasa melayu': 'ms', malay: 'ms',
+  català: 'ca', catalan: 'ca', dansk: 'da', danish: 'da', deutsch: 'de', german: 'de', eesti: 'et',
+  estonian: 'et', english: 'en', español: 'es', spanish: 'es', esperanto: 'eo', filipino: 'fil',
+  français: 'fr', french: 'fr', 'hrvatski jezik': 'hr', croatian: 'hr', italiano: 'it', italian: 'it',
+  'język polski': 'pl', polish: 'pl', latin: 'la', magyar: 'hu', hungarian: 'hu', nederlands: 'nl',
+  dutch: 'nl', norsk: 'nb', norwegian: 'nb', português: 'pt', portuguese: 'pt', română: 'ro',
+  romanian: 'ro', shqip: 'sq', albanian: 'sq', slovenčina: 'sk', slovak: 'sk', suomi: 'fi', finnish: 'fi',
+  svenska: 'sv', swedish: 'sv', 'tiếng việt': 'vi', vietnamese: 'vi', türkçe: 'tr', turkish: 'tr',
+  íslenska: 'is', icelandic: 'is', čeština: 'cs', czech: 'cs', ελληνικά: 'el', greek: 'el',
+  българия: 'bg', български: 'bg', bulgarian: 'bg', русский: 'ru', russian: 'ru', українська: 'uk',
+  ukrainian: 'uk', српски: 'sr', serbian: 'sr', עברית: 'he', hebrew: 'he', العربية: 'ar', arabic: 'ar',
+  فارسی: 'fa', persian: 'fa', farsi: 'fa', देवनागरी: 'hi', हिंदी: 'hi', hindi: 'hi', ภาษาไทย: 'th', thai: 'th',
+  中文: 'zh', chinese: 'zh', 日本語: 'ja', japanese: 'ja', 한국어: 'ko', korean: 'ko',
+};
+
+export function languageCode(language: string | undefined): string | undefined {
+  if (!language) return undefined;
+  return LANGUAGE_CODES[language.trim().toLowerCase()];
 }

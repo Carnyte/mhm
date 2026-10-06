@@ -70,7 +70,8 @@ describe('bridge', () => {
     expect(t.reloads).toBe(1); // reloads even though status was already "verifying"
     bridge.onPageReady({ challenge: false });
     const retry = sent.filter((s) => s.url.endsWith('/r/1/')).pop()!;
-    expect(retry.id).toBe(first.id);
+    expect(retry.id.split('#')[0]).toBe(first.id.split('#')[0]);
+    expect(retry.id).not.toBe(first.id); // a new attempt number
     bridge.onResponse(retry.id, OK('reviews'));
     await expect(p).resolves.toBe('reviews');
   });
@@ -197,5 +198,34 @@ describe('bridge', () => {
     expect(sent.slice(2).map((x) => x.url)).toEqual(['https://www.fanfiction.net/s/1/1/']);
     bridge.onResponse(sent[2].id, OK('ok'));
     await expect(page).resolves.toBe('ok');
+  });
+
+  it('ignores a cancelled fetch reported by the page that was navigated away', async () => {
+    const { bridge, sent } = setup();
+    bridge.onPageReady({ challenge: false });
+    const search = bridge.text('/search/?keywords=owl');
+    const probe = bridge.text('/');
+    bridge.onResponse(sent[1].id, CHALLENGE); // reloads; the search is re-queued
+    bridge.onResponse(sent[0].id, { status: 0, url: '', body: '', error: 'Load failed' }); // stale
+    bridge.onPageReady({ challenge: false });
+    const again = sent.filter((x) => x.url.includes('/search/'));
+    expect(again).toHaveLength(2);
+    bridge.onResponse(again[1].id, OK('results'));
+    await expect(search).resolves.toBe('results');
+    probe.catch(() => {});
+  });
+
+  it('waits for a recreated WebView before sending again', async () => {
+    const { bridge, sent } = setup();
+    bridge.onPageReady({ challenge: false });
+    const p = bridge.text('/s/5/1/');
+    bridge.onPageGone();
+    expect(bridge.status).toBe('starting');
+    bridge.text('/s/6/1/').catch(() => {});
+    expect(sent).toHaveLength(1); // nothing sent into the blank page
+    bridge.onPageReady({ challenge: false, href: 'https://www.fanfiction.net/' });
+    expect(sent.slice(1).map((x) => x.url)).toEqual(['https://www.fanfiction.net/s/5/1/', 'https://www.fanfiction.net/s/6/1/']);
+    bridge.onResponse(sent[1].id, OK('five'));
+    await expect(p).resolves.toBe('five');
   });
 });

@@ -62,7 +62,7 @@ const MOBILE_SITE_ERROR =
 
 /** Turns WebKit / Chromium fetch errors into something a reader can act on. */
 export function describeFetchError(raw: string): string {
-  if (/bridge page is on|redirected away/i.test(raw)) return MOBILE_SITE_ERROR;
+  if (/bridge page is on m\.|redirected away/i.test(raw)) return MOBILE_SITE_ERROR;
   if (/load failed|failed to fetch|network/i.test(raw)) {
     return `Couldn’t load the page from FanFiction.net. Check your internet connection and try again. (${raw})`;
   }
@@ -194,10 +194,16 @@ class Bridge {
     }
   }
 
-  onResponse(id: string, r: RawResponse) {
+  onResponse(tag: string, r: RawResponse) {
+    // Requests go out as "<id>#<attempt>"; an answer for an earlier attempt comes from a page that
+    // was navigated away (often a cancelled fetch: "Load failed") and the request is already queued
+    // or re-sent, so ignore it.
+    const [id, attempt] = String(tag).split('#');
     const p = this.pending.get(id);
     if (r.cookies != null) this.updateCookies(r.cookies);
     if (!p) return;
+    if (attempt != null && Number(attempt) !== p.attempts) return;
+    if (!p.sent && attempt != null) return;
     // A request re-queued by a reload can still answer from the old page; count it only once.
     if (p.sent) this.inFlight = Math.max(0, this.inFlight - 1);
     p.sent = false;
@@ -288,6 +294,23 @@ class Bridge {
    * again; posts fail instead, since they may already have gone through (a review twice).
    */
   private reloadPage(bust: boolean, url?: string) {
+    this.requeueInFlight();
+    this.transport?.reload(bust, url);
+  }
+
+  /**
+   * The bridge WebView was recreated (iOS ended its web content process) and is loading the home
+   * page from scratch: forget the old page and resend what was in flight once it's ready.
+   */
+  onPageGone() {
+    this.pageReady = false;
+    this.reloading = true;
+    this.lastReload = Date.now();
+    this.requeueInFlight();
+    this.setStatus('starting');
+  }
+
+  private requeueInFlight() {
     for (const p of [...this.pending.values()]) {
       if (!p.sent) continue;
       if (p.opts.method === 'POST') {
@@ -298,7 +321,6 @@ class Bridge {
       this.inFlight = Math.max(0, this.inFlight - 1);
       this.requeue(p);
     }
-    this.transport?.reload(bust, url);
   }
 
   /** Plain-text connection report for Settings → Connection (no cookie values). */
@@ -359,7 +381,7 @@ class Bridge {
       p.attempts++;
       p.sent = true;
       this.inFlight++;
-      this.transport.send(id, p.url, p.opts);
+      this.transport.send(`${id}#${p.attempts}`, p.url, p.opts);
     }
   }
 

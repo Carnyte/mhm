@@ -17,7 +17,7 @@ import { errorMessage } from '../utils/format';
 import * as audioSession from './session';
 import { segmentChapter, type Segment } from './segments';
 import { toast } from '../components/Sheet';
-import { voiceFor } from './voices';
+import { invalidateVoices, languageCode, voiceFor } from './voices';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
 
@@ -62,6 +62,7 @@ export const BASE_WPM = 175;
 
 // --- listening positions -------------------------------------------------------------------
 
+/** `index` counts body segments only, so toggling "Announce chapter titles" doesn't shift it. */
 type Positions = Record<string, { chapter: number; index: number; at: number }>;
 let positions: Positions = kv.getSync<Positions>('listenPositions') ?? {};
 let positionsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -77,7 +78,12 @@ function savePosition(storyId: number, chapter: number, index: number) {
   }, 1500);
 }
 
-export function listenPosition(storyId: number): { chapter: number; index: number } | undefined {
+/** 1 when the chapter starts with the spoken chapter title (block -1). */
+function titleOffset(segments: Segment[]): number {
+  return segments[0]?.block === -1 ? 1 : 0;
+}
+
+export function listenPosition(storyId: number): { chapter: number; index: number; at: number } | undefined {
   return positions[storyId];
 }
 
@@ -125,12 +131,13 @@ const warnedLanguages = new Set<string>();
 async function resolveVoice(): Promise<string | undefined> {
   const story = playerStore.get().story;
   const lang = playerLanguage(story);
+  const unknown = !!story?.language && !lang;
   const { voice, missing } = await voiceFor(lang ?? '', settingsStore.get().reader);
-  if (missing && story?.language && !warnedLanguages.has(story.language)) {
+  if ((missing || unknown) && story?.language && !warnedLanguages.has(story.language)) {
     warnedLanguages.add(story.language);
     toast(`No ${story.language} voice is installed, so the default voice is reading. Add one in iOS Settings → Accessibility → Read & Speak → Voices.`, 'info');
   }
-  return voice?.id;
+  return unknown ? undefined : voice?.id;
 }
 
 // --- chapter loading -----------------------------------------------------------------------
@@ -170,7 +177,7 @@ const LOOKAHEAD = 1; // utterances queued ahead, so there's no gap between parag
 function recordProgress(force = false) {
   const s = playerStore.get();
   if (!s.story || !s.segments.length) return;
-  savePosition(s.story.id, s.chapter, s.index);
+  savePosition(s.story.id, s.chapter, Math.max(0, s.index - titleOffset(s.segments)));
   if (!force && Date.now() - lastRecorded < 15_000) return;
   lastRecorded = Date.now();
   const done = s.segments.slice(0, s.index).reduce((n, x) => n + x.words, 0);
@@ -189,10 +196,16 @@ async function stopSpeech() {
   }
 }
 
-async function speakFrom(index: number) {
+/** Generation whose first utterance has started (for the start watchdog). */
+let startedGen = -1;
+let watchdog: ReturnType<typeof setTimeout> | undefined;
+const WATCHDOG_MS = 5000;
+
+async function speakFrom(index: number, opts: { defaultVoice?: boolean } = {}) {
   // Claim a generation before awaiting, so overlapping calls (quick taps) can't both speak.
   const g = ++gen;
   queued = -1;
+  clearTimeout(watchdog);
   try {
     await Speech.stop();
   } catch {
@@ -206,10 +219,23 @@ async function speakFrom(index: number) {
   audioSession.setPlaying(true);
   pushNowPlaying();
   const r = settingsStore.get().reader;
-  const voice = await resolveVoice();
+  const voice = opts.defaultVoice ? undefined : await resolveVoice();
   if (g !== gen) return;
   queued = playerStore.get().index - 1;
   enqueue(g, { rate: r.ttsRate, pitch: r.ttsPitch, voice });
+  // expo-speech fails silently on iOS when a voice can't be loaded (no event at all), which
+  // would leave the player "playing" in silence. Retry once with the default voice, then report.
+  watchdog = setTimeout(() => {
+    if (g !== gen || startedGen === g || playerStore.get().status !== 'playing') return;
+    invalidateVoices();
+    if (!opts.defaultVoice) {
+      speakFrom(playerStore.get().index, { defaultVoice: true });
+    } else {
+      gen++;
+      set({ status: 'error', error: 'The voice didn’t start. Try another voice in the player.' });
+      audioSession.setPlaying(false);
+    }
+  }, WATCHDOG_MS);
 }
 
 function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string }) {
@@ -223,6 +249,7 @@ function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string 
       voice: opts.voice,
       onStart: () => {
         if (g !== gen) return;
+        startedGen = g;
         if (sleepExpired()) {
           pause();
           return;
@@ -262,22 +289,49 @@ async function chapterFinished(g: number) {
     queued = -1;
     set({ status: more ? 'paused' : 'ended', sleep: { mode: 'off' } });
     audioSession.setPlaying(false);
-    if (more && s.sleep.mode === 'chapter') {
-      // Resume at the start of the next chapter next time.
-      await loadChapter(s.chapter + 1, 0, { autoplay: false });
-    }
+    // Next play starts the next chapter rather than repeating this one's last paragraph.
+    if (more) await loadChapter(s.chapter + 1, 0, { autoplay: false });
     return;
   }
   if (g !== gen) return;
   await loadChapter(s.chapter + 1, 0, { autoplay: true });
 }
 
-async function loadChapter(chapter: number, startIndex: number | { block: number }, opts: { autoplay: boolean }) {
+/**
+ * Where to start in a chapter: a segment index, the first segment of a reader block, a body
+ * segment (saved listening position), or a fraction of the chapter's words (reading progress).
+ */
+type StartPoint = number | { block: number } | { body: number } | { progress: number };
+
+/** The last requested start, so "Try again" after a failed load resumes at the same place. */
+let lastRequest: { storyId: number; chapter: number; start: StartPoint } | undefined;
+
+function resolveStart(segments: Segment[], start: StartPoint): number {
+  const off = titleOffset(segments);
+  if (typeof start === 'number') return start;
+  if ('block' in start) {
+    const found = segments.findIndex((x) => x.block >= start.block);
+    return found < 0 ? 0 : found;
+  }
+  if ('body' in start) return start.body + off;
+  if (start.progress <= 0) return 0;
+  const total = segments.reduce((n, x) => n + (x.block >= 0 ? x.words : 0), 0);
+  let done = 0;
+  for (let i = off; i < segments.length; i++) {
+    if (total && done / total >= start.progress) return i;
+    done += segments[i].words;
+  }
+  return segments.length - 1;
+}
+
+async function loadChapter(chapter: number, startIndex: StartPoint, opts: { autoplay: boolean }) {
   const s = playerStore.get();
   if (!s.story) return;
   const story = s.story;
   const token = ++loadToken;
+  lastRequest = { storyId: story.id, chapter, start: startIndex };
   await stopSpeech();
+  if (token !== loadToken) return; // paused or stopped meanwhile
   set({ status: 'loading', chapter, segments: [], index: 0, chapterWords: 0, error: undefined });
   pushNowPlaying();
   try {
@@ -290,20 +344,16 @@ async function loadChapter(chapter: number, startIndex: number | { block: number
       recordReading(lib ?? detail, chapter, lib?.chapterProgress?.[chapter] ?? 0);
     }
     const seg = segmentChapter(html);
+    if (!seg.segments.length) throw new Error('This chapter has no text to read.');
     const segments = [...seg.segments];
     if (settingsStore.get().reader.ttsReadTitles !== false && nextStory.chapters > 1) {
       segments.unshift({ text: chapterLabel(nextStory, chapter) + '.', block: -1, words: 3 });
     }
-    if (!segments.length) throw new Error('This chapter has no text to read.');
-    let index = 0;
-    if (typeof startIndex === 'number') index = startIndex;
-    else {
-      const found = segments.findIndex((x) => x.block >= startIndex.block);
-      index = found < 0 ? 0 : found;
-    }
-    index = Math.max(0, Math.min(segments.length - 1, index));
+    const index = Math.max(0, Math.min(segments.length - 1, resolveStart(segments, startIndex)));
+    // Don't write reading progress until listening has actually moved on from the start.
+    lastRecorded = Date.now();
     set({ story: nextStory, chapter, segments, index, chapterWords: seg.words, offline, status: opts.autoplay ? 'playing' : 'paused' });
-    savePosition(story.id, chapter, index);
+    savePosition(story.id, chapter, Math.max(0, index - titleOffset(segments)));
     if (chapter < nextStory.chapters) prefetch(story.id, chapter + 1);
     if (opts.autoplay) await speakFrom(index);
     else {
@@ -362,18 +412,6 @@ function pushNowPlaying() {
   }
 }
 
-/** FanFiction.net language names → ISO 639-1 codes for picking a voice. */
-function languageCode(language: string): string | undefined {
-  const map: Record<string, string> = {
-    English: 'en', Spanish: 'es', French: 'fr', German: 'de', Italian: 'it', Portuguese: 'pt', Dutch: 'nl',
-    Russian: 'ru', Polish: 'pl', Swedish: 'sv', Norwegian: 'nb', Danish: 'da', Finnish: 'fi', Czech: 'cs',
-    Hungarian: 'hu', Turkish: 'tr', Greek: 'el', Indonesian: 'id', Japanese: 'ja', Chinese: 'zh', Korean: 'ko',
-    Vietnamese: 'vi', Thai: 'th', Hebrew: 'he', Arabic: 'ar', Hindi: 'hi', Romanian: 'ro', Catalan: 'ca',
-    Croatian: 'hr', Slovak: 'sk', Ukrainian: 'uk', Bulgarian: 'bg', Malay: 'ms', Filipino: 'fil',
-  };
-  return map[language];
-}
-
 // --- public API -----------------------------------------------------------------------------
 
 export interface StartOptions {
@@ -408,7 +446,21 @@ export async function start(story: StoryDetail | LibraryStory | PlayerStory, opt
     return;
   }
   set({ ...IDLE, story: { ...ps, coverUrl: ps.coverUrl ?? cur.story?.coverUrl }, chapter, sleep: cur.sleep });
-  const startAt = opts.block != null ? { block: opts.block } : (opts.index ?? (saved && saved.chapter === chapter ? saved.index : 0));
+  // Resume where you last were in this chapter: the listening position, unless you've since
+  // read further in the reader (its progress is newer).
+  const listened = saved && saved.chapter === chapter ? saved : undefined;
+  const readP = lib?.chapterProgress?.[chapter];
+  const readNewer = readP != null && readP > 0.01 && readP < 0.97 && (!listened || (lib?.lastReadAt ?? 0) > listened.at + 90_000);
+  const startAt: StartPoint =
+    opts.block != null
+      ? { block: opts.block }
+      : opts.index != null
+        ? opts.index
+        : readNewer
+          ? { progress: readP! }
+          : listened
+            ? { body: listened.index }
+            : 0;
   await loadChapter(chapter, startAt, { autoplay: opts.autoplay !== false });
 }
 
@@ -424,7 +476,8 @@ export async function play() {
     return;
   }
   if (s.status === 'error' || !s.segments.length) {
-    await loadChapter(s.chapter, s.index, { autoplay: true });
+    const retry = lastRequest && lastRequest.storyId === s.story.id && lastRequest.chapter === s.chapter ? lastRequest.start : s.index;
+    await loadChapter(s.chapter, retry, { autoplay: true });
     return;
   }
   if (sleepExpired()) set({ sleep: { mode: 'off' } });
@@ -436,8 +489,9 @@ export function pause() {
   if (s.status !== 'playing' && s.status !== 'loading') return;
   gen++;
   queued = -1;
+  clearTimeout(watchdog);
   Speech.stop().catch(() => {});
-  if (s.status === 'loading') loadToken++;
+  loadToken++; // cancels a chapter load in flight
   set({ status: s.segments.length ? 'paused' : 'error', error: s.segments.length ? undefined : 'Stopped while loading.' });
   audioSession.setPlaying(false);
   recordProgress(true);
@@ -453,6 +507,7 @@ export function toggle() {
 export async function skip(delta: number) {
   const s = playerStore.get();
   if (!s.story || !s.segments.length) return;
+  if (s.status === 'ended') set({ status: 'paused' }); // moving back after the end: play resumes here
   const target = s.index + delta;
   const playing = s.status === 'playing';
   if (target >= s.segments.length) {
@@ -468,7 +523,7 @@ export async function skip(delta: number) {
   if (playing) await speakFrom(target);
   else {
     set({ index: target });
-    savePosition(s.story.id, s.chapter, target);
+    savePosition(s.story.id, s.chapter, Math.max(0, target - titleOffset(s.segments)));
   }
 }
 
@@ -476,7 +531,7 @@ export async function seek(index: number) {
   const s = playerStore.get();
   if (!s.segments.length) return;
   if (s.status === 'playing') await speakFrom(index);
-  else set({ index: Math.max(0, Math.min(s.segments.length - 1, index)) });
+  else set({ index: Math.max(0, Math.min(s.segments.length - 1, index)), ...(s.status === 'ended' ? { status: 'paused' as const } : {}) });
 }
 
 export async function goToChapter(chapter: number, opts: { autoplay?: boolean } = {}) {
@@ -522,6 +577,7 @@ export function stop() {
   queued = -1;
   loadToken++;
   clearTimeout(sleepTimer);
+  clearTimeout(watchdog);
   Speech.stop().catch(() => {});
   playerStore.set(IDLE);
   audioSession.deactivate();

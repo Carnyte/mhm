@@ -55,11 +55,13 @@ function clean(s: string): string {
 
 /** Separator lines like "* * *", "~~~~" or "-o-o-" aren't worth reading aloud. */
 export function isSpeakable(s: string): boolean {
-  const letters = s.match(/[A-Za-z0-9À-ɏͰ-῿぀-￯]/g)?.length ?? 0;
+  const letters = s.match(/[A-Za-z0-9\u00C0-\u024F\u0370-\u1FFF\u3040-\uFFEF]/g)?.length ?? 0;
   if (!letters) return false;
-  if (s.length <= 12 && /^([a-z])\1*$/i.test(s.replace(/[^A-Za-z]/g, '').toLowerCase()) && /[^A-Za-z\s]/.test(s)) {
-    // e.g. "-x-x-x-", "oOoOo" with punctuation between: decorative
-    return false;
+  // A single letter repeated with separators between ("-x-x-x-", "~o~o~") is decoration, but
+  // short dialogue like "I-I...", "Mm." or "Zzz…" has quotes or sentence punctuation.
+  if (s.length <= 24 && !/["“”'‘’.!?…]/.test(s) && /[^A-Za-z\s]/.test(s)) {
+    const only = s.replace(/[^A-Za-z]/g, '').toLowerCase();
+    if (/^([a-z])\1*$/.test(only)) return false;
   }
   return true;
 }
