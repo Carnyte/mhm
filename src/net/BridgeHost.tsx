@@ -8,6 +8,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { FFN_ORIGIN } from '../ffn/constants';
 import { bridge, type RequestOptions, type Transport } from './bridge';
 import { BRIDGE_SCRIPT } from './bridgeScript';
+import { FFN_WEBVIEW_PROPS, isMobileSiteUrl } from './webviewConfig';
 
 const HOME = FFN_ORIGIN + '/';
 
@@ -30,8 +31,10 @@ export function BridgeHost() {
           `${BRIDGE_SCRIPT}; window.__ffnBridge.fetch(${JSON.stringify(id)}, ${JSON.stringify(url)}, ${JSON.stringify(payload)}); true;`,
         );
       },
-      reload() {
-        if (ref.current) ref.current.injectJavaScript(`location.replace(${JSON.stringify(HOME)}); true;`);
+      reload(bust?: boolean, target?: string) {
+        // A cache-busting query skips any cached redirect (e.g. to the mobile site).
+        const url = target ?? (bust ? `${HOME}?app=${Date.now().toString(36)}` : HOME);
+        if (ref.current) ref.current.injectJavaScript(`location.replace(${JSON.stringify(url)}); true;`);
         else setKey((k) => k + 1);
       },
       setVisible,
@@ -51,7 +54,7 @@ export function BridgeHost() {
     } catch {
       return;
     }
-    if (msg.type === 'ready') bridge.onPageReady({ challenge: !!msg.challenge, cookies: msg.cookies });
+    if (msg.type === 'ready') bridge.onPageReady({ challenge: !!msg.challenge, cookies: msg.cookies, href: msg.href, ua: msg.ua });
     else if (msg.type === 'response') bridge.onResponse(msg.id, msg);
     else if (msg.type === 'cookies') bridge.updateCookies(msg.cookies ?? '');
   };
@@ -83,6 +86,7 @@ export function BridgeHost() {
       <WebView
         key={key}
         ref={ref}
+        {...FFN_WEBVIEW_PROPS}
         source={{ uri: HOME }}
         style={{ flex: 1, backgroundColor: '#fff' }}
         injectedJavaScript={BRIDGE_SCRIPT}
@@ -99,6 +103,11 @@ export function BridgeHost() {
         onShouldStartLoadWithRequest={(req) => {
           // Keep the bridge on fanfiction.net; Cloudflare's challenge iframe is a sub-frame.
           if ((req as { isTopFrame?: boolean }).isTopFrame === false) return true;
+          if (isMobileSiteUrl(req.url)) {
+            // The mobile site can't serve the app; go back to the desktop site (or report it).
+            setTimeout(() => bridge.onMobileRedirect(req.url), 0);
+            return false;
+          }
           return /^https:\/\/(www\.)?fanfiction\.net\//i.test(req.url) || /^about:/i.test(req.url) || /challenges\.cloudflare\.com/.test(req.url);
         }}
         onError={(e) => bridge.onPageError(e.nativeEvent.description || 'Network error')}

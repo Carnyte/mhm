@@ -10,12 +10,14 @@ import { FFN_ORIGIN } from '../ffn/constants';
 import { absolute, parseLink } from '../ffn/urls';
 import { bridge } from '../net/bridge';
 import { loginPrefillScript } from '../net/bridgeScript';
+import { FFN_WEBVIEW_PROPS, isMobileSiteUrl, toDesktopUrl } from '../net/webviewConfig';
 import { useTheme } from '../theme';
 
 export default function WebScreen() {
   const c = useTheme();
   const { path, title, email, login } = useLocalSearchParams<{ path: string; title?: string; email?: string; login?: string }>();
   const ref = useRef<WebView>(null);
+  const redirected = useRef(new Set<string>());
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useState({ canGoBack: false, canGoForward: false, url: absolute(path || '/'), title: title ?? '' });
 
@@ -52,6 +54,7 @@ export default function WebScreen() {
       />
       <WebView
         ref={ref}
+        {...FFN_WEBVIEW_PROPS}
         source={{ uri: absolute(path || '/') }}
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
@@ -78,6 +81,16 @@ export default function WebScreen() {
           const url = req.url;
           const top = (req as { isTopFrame?: boolean }).isTopFrame !== false;
           if (!top) return true;
+          // The mobile site has no login page (it's a 404); open the desktop page instead, once.
+          if (isMobileSiteUrl(url)) {
+            const desktop = toDesktopUrl(url);
+            if (!redirected.current.has(desktop)) {
+              redirected.current.add(desktop);
+              setTimeout(() => ref.current?.injectJavaScript(`location.replace(${JSON.stringify(desktop)}); true;`), 0);
+              return false;
+            }
+            return true;
+          }
           // Open stories and profiles natively.
           if (url.startsWith(FFN_ORIGIN) && req.navigationType === 'click') {
             const t = parseLink(url);

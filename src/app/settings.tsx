@@ -1,5 +1,6 @@
 // Settings: appearance, content defaults, notifications, storage, backup, connection, about.
 
+import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
@@ -172,6 +173,18 @@ export default function SettingsScreen() {
         <Row title="Account" value={session.loggedIn ? session.username : 'Not logged in'} onPress={session.loggedIn ? undefined : () => router.push('/login')} />
         <Row icon="shield-checkmark-outline" title="Run security check now" onPress={() => bridge.showVerification()} />
         <Row icon="reload-outline" title="Reconnect" onPress={() => bridge.reload()} />
+        <Row
+          icon="pulse-outline"
+          title="Connection details"
+          subtitle="Copy these if something isn’t loading"
+          onPress={() => {
+            const report = `FicShelf ${Constants.expoConfig?.version ?? ''} · ${Platform.OS} ${Platform.Version}\n${bridge.diagnostics()}`;
+            Alert.alert('Connection details', report, [
+              { text: 'Copy', onPress: () => Clipboard.setStringAsync(report).then(() => toast('Copied')) },
+              { text: 'Close', style: 'cancel' },
+            ]);
+          }}
+        />
       </Section>
 
       <ReaderSettingsPanel visible={readerPanel} onClose={() => setReaderPanel(false)} />

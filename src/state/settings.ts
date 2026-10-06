@@ -28,8 +28,15 @@ export interface ReaderSettings {
   brightness: number | null; // null = system
   ttsRate: number;
   ttsPitch: number;
+  /** Legacy single voice (still honoured for its own language). */
   ttsVoice?: string;
+  /** Chosen voice per language code ("en", "es", …); missing = best installed voice. */
+  ttsVoices?: Record<string, string>;
   ttsContinue: boolean;
+  /** Lower other apps' audio instead of stopping it (no lock screen controls then). */
+  ttsMixWithOthers: boolean;
+  /** Announce "Chapter 3: Title" before each chapter when listening. */
+  ttsReadTitles: boolean;
 }
 
 export interface AppSettings {
@@ -72,6 +79,8 @@ export const DEFAULT_READER: ReaderSettings = {
   ttsRate: 1,
   ttsPitch: 1,
   ttsContinue: true,
+  ttsMixWithOthers: false,
+  ttsReadTitles: true,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {

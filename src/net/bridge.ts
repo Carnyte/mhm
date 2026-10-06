@@ -4,6 +4,7 @@
 
 import { absolute } from '../ffn/urls';
 import { isChallengeResponse, usernameFromCookies, type RawResponse } from './challenge';
+import { isMobileSiteUrl } from './webviewConfig';
 
 export type BridgeStatus = 'starting' | 'ready' | 'verifying' | 'needs-user' | 'offline' | 'error';
 
@@ -21,8 +22,11 @@ export interface RequestOptions {
 
 export interface Transport {
   send(id: string, url: string, opts: RequestOptions): void;
-  /** Reload the bridge page (to let Cloudflare re-run its challenge). */
-  reload(): void;
+  /**
+   * Reload the bridge page (to let Cloudflare re-run its challenge). `bust` skips any cached
+   * redirect; `url` loads that page instead of the home page (a challenge can be page-specific).
+   */
+  reload(bust?: boolean, url?: string): void;
   /** Show / hide the bridge page full screen so the user can solve a challenge. */
   setVisible(visible: boolean): void;
 }
@@ -53,6 +57,17 @@ type Listener = () => void;
 
 const MAX_IN_FLIGHT = 4;
 const PASSIVE_WAIT_MS = 9000;
+const MOBILE_SITE_ERROR =
+  'FanFiction.net sent the app to its mobile site (m.fanfiction.net), which the app can’t use. Tap Reconnect in Settings → Connection; if it keeps happening, send the details shown there.';
+
+/** Turns WebKit / Chromium fetch errors into something a reader can act on. */
+export function describeFetchError(raw: string): string {
+  if (/bridge page is on|redirected away/i.test(raw)) return MOBILE_SITE_ERROR;
+  if (/load failed|failed to fetch|network/i.test(raw)) {
+    return `Couldn’t load the page from FanFiction.net. Check your internet connection and try again. (${raw})`;
+  }
+  return raw;
+}
 
 class Bridge {
   private transport: Transport | null = null;
@@ -70,6 +85,10 @@ class Bridge {
   cookies = '';
   lastError?: string;
   pageReady = false;
+  /** Diagnostics: where the bridge page is and how it identifies itself. */
+  pageUrl?: string;
+  userAgent?: string;
+  private mobileRedirects: number[] = [];
 
   // --- wiring --------------------------------------------------------------
 
@@ -104,7 +123,17 @@ class Bridge {
   // --- transport callbacks ------------------------------------------------------
 
   /** The bridge page finished loading (challenge page or the real site). */
-  onPageReady(info: { challenge: boolean; cookies?: string }) {
+  onPageReady(info: { challenge: boolean; cookies?: string; href?: string; ua?: string }) {
+    if (info.ua) this.userAgent = info.ua;
+    if (info.href) {
+      this.pageUrl = info.href;
+      if (isMobileSiteUrl(info.href)) {
+        this.onMobileRedirect(info.href);
+        return;
+      }
+      // Ignore stray pages (about:blank, provider pages) — only www.fanfiction.net can run requests.
+      if (!/^https:\/\/www\.fanfiction\.net\//i.test(info.href)) return;
+    }
     this.pageReady = true;
     this.reloading = false;
     if (info.cookies != null) this.updateCookies(info.cookies);
@@ -130,12 +159,32 @@ class Bridge {
     this.armPassiveTimer();
   }
 
-  onPageError(message: string) {
+  onPageError(message: string, status: BridgeStatus = 'offline') {
     this.pageReady = false;
+    this.reloading = false;
     this.lastError = message;
-    this.setStatus('offline');
+    this.setStatus(status);
     // Fail queued requests so screens can show an error + retry.
     for (const id of [...this.queue]) this.fail(id, new BridgeError(message, 'network'));
+  }
+
+  /**
+   * The bridge page was sent to m.fanfiction.net. Requests from there to www are cross-origin and
+   * fail, so reload the desktop site once (skipping cached redirects) and report it if it repeats.
+   */
+  onMobileRedirect(url: string) {
+    this.pageUrl = url;
+    const now = Date.now();
+    this.mobileRedirects = this.mobileRedirects.filter((t) => now - t < 60_000);
+    this.mobileRedirects.push(now);
+    if (this.mobileRedirects.length <= 1) {
+      this.pageReady = false;
+      this.reloading = true;
+      this.lastReload = now;
+      this.reloadPage(true);
+      return;
+    }
+    this.onPageError(MOBILE_SITE_ERROR, 'error');
   }
 
   updateCookies(c: string) {
@@ -149,13 +198,15 @@ class Bridge {
     const p = this.pending.get(id);
     if (r.cookies != null) this.updateCookies(r.cookies);
     if (!p) return;
-    this.inFlight = Math.max(0, this.inFlight - 1);
+    // A request re-queued by a reload can still answer from the old page; count it only once.
+    if (p.sent) this.inFlight = Math.max(0, this.inFlight - 1);
     p.sent = false;
     if (r.error) {
+      this.lastError = r.error;
       if (p.attempts < 2) {
         this.requeue(p);
       } else {
-        this.fail(id, new BridgeError(r.error, 'network'));
+        this.fail(id, new BridgeError(describeFetchError(r.error), 'network'));
       }
       this.flush();
       return;
@@ -165,7 +216,9 @@ class Bridge {
         this.fail(id, new BridgeError('FanFiction.net is asking for a security check.', 'challenge', r.status));
       } else {
         this.requeue(p);
-        this.startChallenge(p.opts.quiet);
+        // Cloudflare can challenge a single page (e.g. /login.php) while the home page is clear,
+        // so solve it on the page that was challenged when that's a normal page load.
+        this.startChallenge(p.opts.quiet, p.opts.method !== 'POST' && !p.opts.base64 ? p.url : undefined);
       }
       return;
     }
@@ -178,7 +231,7 @@ class Bridge {
 
   // --- challenge handling --------------------------------------------------------
 
-  private startChallenge(quiet?: boolean) {
+  private startChallenge(quiet?: boolean, url?: string) {
     if (this.status === 'needs-user') return; // waiting for the user; onPageReady will flush
     this.setStatus('verifying');
     if (!this.reloading && Date.now() - this.lastReload > 4000) {
@@ -186,7 +239,7 @@ class Bridge {
       this.reloading = true;
       this.lastReload = Date.now();
       this.pageReady = false;
-      this.transport?.reload();
+      this.reloadPage(false, url);
     } else if (!this.reloading) {
       // Reloaded very recently: retry shortly instead of reloading again.
       setTimeout(() => this.flush(), 3000);
@@ -224,8 +277,44 @@ class Bridge {
     this.pageReady = false;
     this.reloading = true;
     this.lastReload = Date.now();
+    this.mobileRedirects = [];
+    this.lastError = undefined;
     this.setStatus('starting');
-    this.transport?.reload();
+    this.reloadPage(true);
+  }
+
+  /**
+   * Navigates the bridge page. Requests in flight die with the old page: page loads are queued
+   * again; posts fail instead, since they may already have gone through (a review twice).
+   */
+  private reloadPage(bust: boolean, url?: string) {
+    for (const p of [...this.pending.values()]) {
+      if (!p.sent) continue;
+      if (p.opts.method === 'POST') {
+        this.fail(p.id, new BridgeError('The connection to FanFiction.net was reset while sending. Check whether it went through before trying again.', 'network'));
+        continue;
+      }
+      p.sent = false;
+      this.inFlight = Math.max(0, this.inFlight - 1);
+      this.requeue(p);
+    }
+    this.transport?.reload(bust, url);
+  }
+
+  /** Plain-text connection report for Settings → Connection (no cookie values). */
+  diagnostics(): string {
+    const names = this.cookies
+      .split(';')
+      .map((c) => c.split('=')[0]?.trim())
+      .filter(Boolean);
+    return [
+      `Status: ${this.status}${this.pageReady ? '' : ' (page not ready)'}`,
+      `Page: ${this.pageUrl ?? 'not loaded yet'}`,
+      `User agent: ${this.userAgent ?? 'unknown'}`,
+      `Last error: ${this.lastError ?? 'none'}`,
+      `Cookies: ${names.length ? names.join(', ') : 'none'}`,
+      `Queued requests: ${this.pending.size}`,
+    ].join('\n');
   }
 
   // --- requests ------------------------------------------------------------------

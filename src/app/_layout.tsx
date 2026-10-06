@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BridgeBanner } from '../components/BridgeBanner';
+import { MiniPlayer } from '../components/MiniPlayer';
 import { SheetHost } from '../components/Sheet';
 import { checkForUpdates, configureBackgroundChecks } from '../features/updates';
 import { bridge } from '../net/bridge';
@@ -91,8 +92,10 @@ export default function RootLayout() {
             <Stack.Screen name="review/[id]" options={{ presentation: 'modal', title: 'Write a review' }} />
             <Stack.Screen name="messages/compose" options={{ presentation: 'modal', title: 'New message' }} />
             <Stack.Screen name="open" options={{ presentation: 'modal', title: 'Open link' }} />
+            <Stack.Screen name="listen" options={{ title: 'Now listening' }} />
           </Stack>
           <BridgeHost />
+          <MiniPlayer />
           <BridgeBanner />
           <SheetHost />
         </View>

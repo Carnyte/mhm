@@ -49,6 +49,14 @@
       "expo-sharing",
       "expo-font",
       [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": true
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
@@ -63,7 +71,8 @@
             "enableSceneSupport": true
           }
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }

@@ -36,14 +36,21 @@ What I found while researching (October 2026):
        injected JS: same-origin fetch(url, {credentials:'include'})
                               │  HTML / JSON text via postMessage
                               ▼
-                     parsers/*.ts (node-html-parser)  ──► typed models
+                     parsers/*.ts (htmlparser2)  ──► typed models
 ```
 
 * A hidden WebView stays on `www.fanfiction.net`. Requests run as same-origin
   `fetch()` inside it, so they carry the browser's Cloudflare clearance cookie
   (`cf_clearance`), user agent, TLS fingerprint and login cookies.
+* **Desktop site:** every WebView that loads fanfiction.net identifies as desktop Safari
+  (WebKit's desktop content mode, as iPads do). With the iPhone WebView's default user agent the
+  site 302-redirects pages like `/login.php` to `m.fanfiction.net`. That turns the bridge's
+  same-origin fetch into a cross-origin one that WebKit rejects ("Load failed"), and the mobile
+  login page is a 404. If the bridge still lands on the mobile site, it reloads once and then
+  reports it; Settings → Connection details shows the page, user agent and last error.
 * **Challenge handling:** if a response comes back as a Cloudflare challenge, the
-  bridge reloads the page and waits for a passive clear. If that doesn't happen,
+  bridge reloads (the challenged page itself for normal page loads, since a challenge can be
+  page-specific) and waits for a passive clear. If that doesn't happen,
   the same WebView slides up full screen ("Quick check by FanFiction.net") so you
   can tick the box once. The waiting requests then retry automatically.
 * **Images** (covers and avatars at `/image/...`) also go through the bridge as
@@ -167,7 +174,19 @@ your session · ⏳ not built (reason given).
 - ✅ Previous / next chapter, chapter list drawer, jump to chapter
 - ✅ Bookmarks (chapter + position + optional note), bookmark list
 - ✅ Find in chapter
-- ✅ Text-to-speech (the official app's "audiobook" feature): play, pause, skip paragraph, speed, pitch, voice picker (enhanced / premium iOS voices show up when installed), current paragraph highlighted, carries on into the next chapter
+- ✅ Audiobook / text-to-speech (the official app's "Text to Speech – listen to stories like audio books"), built as one app-wide player (`src/audio/`):
+  - ✅ Start from the reader (headphones button in the top and bottom bars, starts at the first paragraph on screen), from the story page (**Listen**) or from any story's ⋯ menu
+  - ✅ While listening, tap a paragraph in the reader to read from there (as in the original); the paragraph being read is highlighted and followed, in scroll and page mode
+  - ✅ Keeps playing with the screen locked and with the silent switch on; lock screen / Control Center card with title, chapter, author and cover; play / pause from the lock screen, Control Center and headphones (AirPods); the lock screen's ±10 s buttons skip a paragraph
+  - ✅ Pauses for phone calls and when headphones are unplugged, and resumes after a call when iOS allows
+  - ✅ Carries on into the next chapter without the reader open (works offline for downloaded stories; the next chapter is prefetched)
+  - ✅ Mini player across the app, plus a full player screen: cover, current passage, position slider, previous / next paragraph and chapter, chapter picker, time left in chapter
+  - ✅ Speed (0.5×–2×), pitch, voice per story language (Premium / Enhanced voices labelled and preferred automatically; a "no voice for this language" notice), voice preview
+  - ✅ Sleep timer (5 min – 2 h, or end of chapter)
+  - ✅ Announce chapter titles (toggle), skips decorative separators like "* * *"
+  - ✅ Remembers the listening position per story, and updates reading progress as you listen
+  - ✅ Optional "play over music and other audio" (lowers other apps instead of stopping them; no lock screen controls in that mode)
+  - ⏳ The official app's server "HD" voices (Lauren / Larry) ran on FictionPress's GPUs; the closest equivalent is Apple's free Premium voices (Settings → Accessibility → Read & Speak → Voices)
 - ✅ Dictionary and translation of selected text through the iOS system menu (Look Up / Translate), which replaces the official app's AI dictionary
 - ✅ Write a review at the end of a chapter
 - ✅ Follow / favourite from the reader
@@ -259,7 +278,8 @@ src/ffn/api.ts         typed client (calls bridge + parsers)
 src/db/                SQLite (library, chapters, history, bookmarks, collections, drafts)
 src/state/             settings store, auth/session store
 src/reader/            reader HTML template + in-reader JS
-src/features/          updates checker, downloads, TTS, backup
+src/features/          updates checker, downloads, shared story actions
+src/audio/             audiobook player: segmentation, TTS engine, background audio / lock screen, voices
 src/components/        UI kit
 tests/                 Jest tests + synthetic HTML fixtures (no real story text)
 scripts/live-check.ts  runs the bridge JS + parsers against the live site (Playwright)

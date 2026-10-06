@@ -11,6 +11,7 @@ import { libraryStore, setAuthorFlag, setInLibrary, toggleInCollection, upsertSt
 import { getSession } from '../state/session';
 import { settingsStore, updateSettings } from '../state/settings';
 import { errorMessage } from '../utils/format';
+import * as player from '../audio/player';
 import { downloadStory, removeDownload } from './downloads';
 
 type AnyStory = StorySummary | StoryDetail | LibraryStory;
@@ -92,6 +93,14 @@ export function storyMenu(story: AnyStory) {
   const lib = libraryStore.get().stories[story.id];
   const actions: SheetAction[] = [
     { label: 'Read', icon: 'book-outline', onPress: () => openReader(story.id, lib?.lastChapter) },
+    {
+      label: 'Listen (audiobook)',
+      icon: 'headset-outline',
+      onPress: () => {
+        player.start(lib ?? (story as StoryDetail), { chapter: lib?.lastChapter });
+        router.push('/listen');
+      },
+    },
     {
       label: lib?.inLibrary ? 'Remove from library' : 'Add to library',
       icon: lib?.inLibrary ? 'bookmark' : 'bookmark-outline',

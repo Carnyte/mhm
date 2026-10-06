@@ -24,11 +24,13 @@ export const BRIDGE_SCRIPT = String.raw`
   }
   window.__ffnBridge = {
     announce: function () {
-      post({ type: 'ready', href: location.href, title: document.title, challenge: isChallengeDoc(), cookies: document.cookie });
+      post({ type: 'ready', href: location.href, title: document.title, challenge: isChallengeDoc(), cookies: document.cookie, ua: navigator.userAgent });
     },
     fetch: function (id, url, opts) {
       opts = opts || {};
-      var init = { method: opts.method || 'GET', credentials: 'include', redirect: 'follow', headers: opts.headers || {} };
+      // no-store: never reuse a cached redirect (e.g. one to the mobile site from before the app
+      // asked for the desktop site); the app keeps its own cache.
+      var init = { method: opts.method || 'GET', credentials: 'include', redirect: 'follow', headers: opts.headers || {}, cache: opts.base64 ? 'default' : 'no-store' };
       if (opts.body != null) init.body = opts.body;
       var started = Date.now();
       fetch(url, init).then(function (res) {
@@ -39,7 +41,14 @@ export const BRIDGE_SCRIPT = String.raw`
         r.type = 'response'; r.id = id; r.ms = Date.now() - started; r.cookies = document.cookie;
         post(r);
       }).catch(function (e) {
-        post({ type: 'response', id: id, error: String((e && e.message) || e), cookies: document.cookie });
+        var msg = String((e && e.message) || e);
+        var done = function (m) { post({ type: 'response', id: id, error: m, href: location.href, cookies: document.cookie }); };
+        if (location.hostname !== 'www.fanfiction.net') return done(msg + ' (bridge page is on ' + location.hostname + ')');
+        if (init.method !== 'GET') return done(msg);
+        // A redirect to another host (e.g. the mobile site) fails like a network error; check for it.
+        fetch(url, { method: 'GET', credentials: 'include', redirect: 'manual', cache: 'no-store' }).then(function (r) {
+          done(r.type === 'opaqueredirect' ? msg + ' (redirected away from www.fanfiction.net)' : msg);
+        }, function () { done(msg); });
       });
     },
     cookies: function (id) { post({ type: 'cookies', id: id, cookies: document.cookie }); }

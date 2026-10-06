@@ -5,11 +5,15 @@ import Slider from '@react-native-community/slider';
 import * as Brightness from 'expo-brightness';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { speedLabel } from '../../audio/pickers';
+import * as player from '../../audio/player';
+import { usePlayer } from '../../audio/player';
+import { segmentChapter } from '../../audio/segments';
+import { DESKTOP_USER_AGENT } from '../../net/webviewConfig';
 import { ReaderWebView, type ReaderMessageEvent, type ReaderWebViewRef } from '../../components/ReaderWebView';
 import { showActions, toast } from '../../components/Sheet';
 import { ErrorView, Loading } from '../../components/states';
@@ -85,15 +89,20 @@ export default function ReaderScreen() {
   const [pageInfo, setPageInfo] = useState<{ page: number; pages: number } | null>(null);
   const [panel, setPanel] = useState<null | 'settings' | 'chapters' | 'find'>(null);
   const [autoScroll, setAutoScroll] = useState(false);
-  const [tts, setTts] = useState<{ playing: boolean; index: number; items: string[] }>({ playing: false, index: 0, items: [] });
   const [findQuery, setFindQuery] = useState('');
   const [findInfo, setFindInfo] = useState({ count: 0, index: 0 });
   const progressRef = useRef(0);
-  const ttsRef = useRef(tts);
-  useLayoutEffect(() => {
-    ttsRef.current = tts;
-  });
-  const ttsContinueRef = useRef(false);
+  // Audiobook player state for this story (it can keep playing after the reader closes).
+  const listen = usePlayer((p) => ({
+    here: p.story?.id === id && p.status !== 'idle',
+    chapter: p.chapter,
+    status: p.status,
+    block: p.segments[p.index]?.block ?? -1,
+    index: p.index,
+    total: p.segments.length,
+  }));
+  const listeningHere = listen.here && listen.chapter === chapter;
+  const playerChapterRef = useRef(listen.chapter);
 
   // Initial progress for this chapter (resume where you left off).
   const startProgress = useMemo(() => {
@@ -177,20 +186,31 @@ export default function ReaderScreen() {
     web.current?.injectJavaScript(`window.__autoScroll && window.__autoScroll(${autoScroll ? settings.autoScrollSpeed : 0}); true;`);
   }, [autoScroll, settings.autoScrollSpeed]);
 
-  // Stop speech when leaving the reader.
-  useEffect(
-    () => () => {
-      Speech.stop();
-    },
-    [],
-  );
+  // Follow the audiobook into the next chapter while it's playing this story.
+  useEffect(() => {
+    const prev = playerChapterRef.current;
+    playerChapterRef.current = listen.chapter;
+    if (listen.here && (listen.status === 'playing' || listen.status === 'loading') && listen.chapter !== chapter && prev === chapter) {
+      setAutoScroll(false);
+      setChapter(listen.chapter);
+    }
+  }, [listen.here, listen.chapter, listen.status, chapter]);
+
+  // Highlight the paragraph being read.
+  useEffect(() => {
+    web.current?.injectJavaScript(
+      `window.__listening = ${listeningHere}; window.__ttsMark && window.__ttsMark(${listeningHere ? listen.block : -1}); true;`,
+    );
+  }, [listeningHere, listen.block]);
+
+  const segmentedHtml = useMemo(() => (data ? segmentChapter(data.html).html : ''), [data]);
 
   const html = useMemo(() => {
     if (!data) return '';
     const ch = data.story.chapterList.find((c) => c.number === chapter);
     return buildReaderHtml(
       {
-        html: data.html,
+        html: segmentedHtml,
         title: data.story.title,
         chapterTitle: data.story.chapters > 1 ? `${chapter}. ${ch?.title ?? `Chapter ${chapter}`}` : data.story.title,
         chapter,
@@ -205,7 +225,7 @@ export default function ReaderScreen() {
     );
     // Settings changes are applied live via __apply; only rebuild for new content.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, chapter]);
+  }, [data, chapter, segmentedHtml]);
 
   const goChapter = (n: number) => {
     if (!data || n < 1 || n > data.story.chapters) return;
@@ -214,43 +234,10 @@ export default function ReaderScreen() {
     setChapter(n);
   };
 
-  // --- Text-to-speech ---------------------------------------------------------------------
-  const speakFrom = (items: string[], index: number) => {
-    if (index >= items.length) {
-      setTts({ playing: false, index: 0, items: [] });
-      web.current?.injectJavaScript('window.__ttsMark(-1); true;');
-      if (settings.ttsContinue && data && chapter < data.story.chapters) {
-        ttsContinueRef.current = true;
-        goChapter(chapter + 1);
-      }
-      return;
-    }
-    setTts({ playing: true, index, items });
-    web.current?.injectJavaScript(`window.__ttsMark(${index}); true;`);
-    Speech.speak(items[index], {
-      rate: settings.ttsRate,
-      pitch: settings.ttsPitch,
-      voice: settings.ttsVoice,
-      onDone: () => {
-        if (ttsRef.current.playing && ttsRef.current.index === index) speakFrom(items, index + 1);
-      },
-      onError: () => setTts((t) => ({ ...t, playing: false })),
-    });
-  };
-
-  const toggleTts = () => {
-    if (tts.playing) {
-      Speech.stop();
-      setTts((t) => ({ ...t, playing: false }));
-    } else {
-      web.current?.injectJavaScript('window.__paragraphs(); true;');
-    }
-  };
-
-  const skipTts = (delta: number) => {
-    if (!tts.items.length) return;
-    Speech.stop();
-    speakFrom(tts.items, Math.max(0, Math.min(tts.items.length - 1, tts.index + delta)));
+  // --- Read aloud (audiobook player) -------------------------------------------------------
+  const toggleListen = () => {
+    if (listeningHere) player.toggle();
+    else web.current?.injectJavaScript('window.__firstBlock && window.__firstBlock(); true;');
   };
 
   // --- Messages from the page --------------------------------------------------------------
@@ -273,10 +260,10 @@ export default function ReaderScreen() {
         else if (chrome && settings.immersive) setChrome(false);
         break;
       case 'ready':
-        if (ttsContinueRef.current) {
-          ttsContinueRef.current = false;
-          web.current?.injectJavaScript('window.__paragraphs(); true;');
-        }
+        if (listeningHere) web.current?.injectJavaScript(`window.__listening = true; window.__ttsMark(${listen.block}); true;`);
+        break;
+      case 'ttsJump':
+        if (data && listeningHere) player.start(data.story, { chapter, block: Number(m.block) || 0 });
         break;
       case 'next':
         goChapter(chapter + 1);
@@ -287,8 +274,8 @@ export default function ReaderScreen() {
       case 'bookmark':
         bookmark(m.p);
         break;
-      case 'paragraphs':
-        if (m.items?.length) speakFrom(m.items, m.start ?? 0);
+      case 'startBlock':
+        if (data) player.start(data.story, { chapter, block: Number(m.block) || 0 });
         break;
       case 'find':
         setFindInfo({ count: m.count, index: m.index });
@@ -334,6 +321,7 @@ export default function ReaderScreen() {
         <ReaderWebView
           key={`${id}:${chapter}`}
           ref={web}
+          userAgent={DESKTOP_USER_AGENT}
           originWhitelist={['*']}
           source={{ html, baseUrl: 'https://www.fanfiction.net/' }}
           onMessage={onMessage}
@@ -361,6 +349,7 @@ export default function ReaderScreen() {
               {data?.offline ? '⬇︎ ' : ''}Chapter {chapter} of {story.chapters}
             </T>
           </Pressable>
+          <IconButton icon="headset-outline" label="Listen (read aloud)" onPress={toggleListen} color={fg} active={listeningHere && listen.status === 'playing'} />
           <IconButton icon="list" label="Chapters" onPress={() => setPanel('chapters')} color={fg} />
           <IconButton icon="search" label="Find in chapter" onPress={() => setPanel('find')} color={fg} />
           <IconButton
@@ -385,26 +374,25 @@ export default function ReaderScreen() {
         </View>
       )}
 
-      {/* TTS mini-player (stays visible while speaking) */}
-      {(tts.playing || tts.items.length > 0) && (
+      {/* Read-aloud controls (the audiobook player, for this chapter) */}
+      {listeningHere && (
         <View style={[styles.tts, { bottom: (chrome ? 112 : 16) + insets.bottom, backgroundColor: chromeColor, borderColor: theme.muted + '44' }]}>
-          <IconButton icon="play-skip-back" label="Previous paragraph" onPress={() => skipTts(-1)} color={fg} size={20} />
-          <IconButton icon={tts.playing ? 'pause' : 'play'} label={tts.playing ? 'Pause' : 'Resume'} onPress={() => (tts.playing ? toggleTts() : speakFrom(tts.items, tts.index))} color={fg} size={24} />
-          <IconButton icon="play-skip-forward" label="Next paragraph" onPress={() => skipTts(1)} color={fg} size={20} />
-          <T size={12} style={{ color: theme.muted, flex: 1 }} numberOfLines={1}>
-            Paragraph {tts.index + 1} / {tts.items.length} · {settings.ttsRate.toFixed(1)}×
-          </T>
+          <IconButton icon="play-back" label="Previous paragraph" onPress={() => player.skip(-1)} color={fg} size={20} />
           <IconButton
-            icon="close"
-            label="Stop reading aloud"
+            icon={listen.status === 'playing' || listen.status === 'loading' ? 'pause' : 'play'}
+            label={listen.status === 'playing' ? 'Pause' : 'Play'}
+            onPress={() => player.toggle()}
             color={fg}
-            size={20}
-            onPress={() => {
-              Speech.stop();
-              setTts({ playing: false, index: 0, items: [] });
-              web.current?.injectJavaScript('window.__ttsMark(-1); true;');
-            }}
+            size={24}
           />
+          <IconButton icon="play-forward" label="Next paragraph" onPress={() => player.skip(1)} color={fg} size={20} />
+          <Pressable style={{ flex: 1 }} onPress={() => router.push('/listen')} accessibilityRole="button" accessibilityLabel="Open audiobook player">
+            <T size={12} style={{ color: theme.muted }} numberOfLines={1}>
+              {listen.status === 'loading' ? 'Loading…' : `Part ${listen.index + 1} / ${listen.total} · ${speedLabel(settings.ttsRate)}`}
+            </T>
+          </Pressable>
+          <IconButton icon="headset-outline" label="Open audiobook player" color={fg} size={20} onPress={() => router.push('/listen')} />
+          <IconButton icon="close" label="Stop reading aloud" color={fg} size={20} onPress={() => player.stop()} />
         </View>
       )}
 
@@ -434,7 +422,13 @@ export default function ReaderScreen() {
           />
           <View style={styles.controls}>
             <IconButton icon="chevron-back-circle-outline" label="Previous chapter" disabled={chapter <= 1} onPress={() => goChapter(chapter - 1)} color={fg} size={28} />
-            <IconButton icon={tts.playing ? 'volume-high' : 'volume-medium-outline'} label="Read aloud" onPress={toggleTts} color={fg} active={tts.playing} />
+            <IconButton
+              icon={listeningHere && listen.status === 'playing' ? 'volume-high' : 'headset-outline'}
+              label="Listen (read aloud)"
+              onPress={toggleListen}
+              color={fg}
+              active={listeningHere && listen.status === 'playing'}
+            />
             <IconButton icon={autoScroll ? 'pause-circle-outline' : 'arrow-down-circle-outline'} label="Auto-scroll" disabled={settings.paged} onPress={() => setAutoScroll((v) => !v)} color={fg} />
             <IconButton icon="bookmark-outline" label="Bookmark" onPress={() => bookmark()} color={fg} />
             <IconButton icon="text" label="Reading settings" onPress={() => setPanel('settings')} color={fg} />

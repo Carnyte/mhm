@@ -3,23 +3,29 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
-import * as Speech from 'expo-speech';
 import { useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { pickVoice, VOICE_TIP } from '../audio/pickers';
+import * as player from '../audio/player';
+import { TIER_LABEL, voiceFor, type VoiceInfo } from '../audio/voices';
 import { updateReader, useSettings } from '../state/settings';
 import { READER_FONTS, READER_THEMES, useReaderTheme } from '../theme';
-import { showActions } from './Sheet';
 import { IconButton, Segmented, T } from './ui';
 
 export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const s = useSettings((x) => x.reader);
   const theme = useReaderTheme();
   const insets = useSafeAreaInsets();
-  const [voices, setVoices] = useState<Speech.Voice[]>([]);
+  const [voice, setVoice] = useState<VoiceInfo | undefined>();
   useEffect(() => {
-    if (visible && !voices.length) Speech.getAvailableVoicesAsync().then((v) => setVoices(v.filter((x) => /^en|^es|^fr|^de|^it|^pt/.test(x.language)))).catch(() => {});
-  }, [visible, voices.length]);
+    if (!visible) return;
+    let alive = true;
+    voiceFor(player.playerLanguage() ?? '', s).then((r) => alive && setVoice(r.voice));
+    return () => {
+      alive = false;
+    };
+  }, [visible, s]);
   const fg = theme.text;
   const stepper = (label: string, value: string, dec: () => void, inc: () => void) => (
     <View style={styles.setRow}>
@@ -136,32 +142,21 @@ export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; on
           <T size={12} weight="700" style={{ color: theme.muted, marginTop: 10 }}>
             READ ALOUD
           </T>
-          {stepper('Speed', `${s.ttsRate.toFixed(1)}×`, () => updateReader({ ttsRate: clamp(s.ttsRate - 0.1, 0.5, 2) }), () => updateReader({ ttsRate: clamp(s.ttsRate + 0.1, 0.5, 2) }))}
-          {stepper('Pitch', s.ttsPitch.toFixed(1), () => updateReader({ ttsPitch: clamp(s.ttsPitch - 0.1, 0.5, 2) }), () => updateReader({ ttsPitch: clamp(s.ttsPitch + 0.1, 0.5, 2) }))}
+          {stepper('Speed', `${s.ttsRate.toFixed(1)}×`, () => (updateReader({ ttsRate: clamp(s.ttsRate - 0.1, 0.5, 2) }), player.applyVoiceSettings()), () => (updateReader({ ttsRate: clamp(s.ttsRate + 0.1, 0.5, 2) }), player.applyVoiceSettings()))}
+          {stepper('Pitch', s.ttsPitch.toFixed(1), () => (updateReader({ ttsPitch: clamp(s.ttsPitch - 0.1, 0.5, 2) }), player.applyVoiceSettings()), () => (updateReader({ ttsPitch: clamp(s.ttsPitch + 0.1, 0.5, 2) }), player.applyVoiceSettings()))}
           {toggle('Continue to next chapter', s.ttsContinue, (v) => updateReader({ ttsContinue: v }))}
-          <Pressable
-            style={styles.setRow}
-            onPress={() =>
-              showActions(
-                [
-                  { label: 'System default', onPress: () => updateReader({ ttsVoice: undefined }) },
-                  ...voices
-                    .sort((a, b) => (b.quality === 'Enhanced' ? 1 : 0) - (a.quality === 'Enhanced' ? 1 : 0))
-                    .slice(0, 40)
-                    .map((v) => ({ label: `${v.name} · ${v.language}${v.quality === 'Enhanced' ? ' · Enhanced' : ''}`, onPress: () => updateReader({ ttsVoice: v.identifier }) })),
-                ],
-                'Voice',
-                'Download enhanced and premium voices in iOS Settings → Accessibility → Spoken Content → Voices.',
-              )
-            }
-          >
+          {toggle('Announce chapter titles', s.ttsReadTitles, (v) => updateReader({ ttsReadTitles: v }))}
+          <Pressable style={styles.setRow} onPress={() => pickVoice(player.playerLanguage())} accessibilityRole="button">
             <T size={14} style={{ color: fg, flex: 1 }}>
               Voice
             </T>
             <T size={13} style={{ color: theme.muted }} numberOfLines={1}>
-              {voices.find((v) => v.identifier === s.ttsVoice)?.name ?? 'System default'}
+              {voice ? `${voice.name}${TIER_LABEL[voice.tier] ? ` · ${TIER_LABEL[voice.tier]}` : ''}` : 'System default'}
             </T>
           </Pressable>
+          <T size={12} style={{ color: theme.muted, lineHeight: 17 }}>
+            {VOICE_TIP}
+          </T>
         </ScrollView>
       </View>
     </Modal>

@@ -59,7 +59,7 @@ a{color:var(--link);}
 .end{margin:2.5em 0 1em;text-align:center;font-family:-apple-system,system-ui,sans-serif;color:var(--muted);font-size:15px;}
 .end button{font:inherit;font-size:16px;font-weight:600;border:0;border-radius:12px;padding:13px 22px;margin:6px;background:var(--fg);color:var(--bg);}
 .end button.alt{background:transparent;color:var(--fg);border:1px solid var(--muted);}
-.tts{background:var(--hl);border-radius:4px;transition:background .2s;}
+.tts{background:var(--hl);border-radius:4px;transition:background .2s;-webkit-box-decoration-break:clone;box-decoration-break:clone;}
 mark.find{background:var(--hl);color:inherit;border-radius:2px;}
 mark.find.cur{outline:2px solid var(--link);}
 body.paged{height:100vh;overflow:hidden;}
@@ -80,7 +80,7 @@ ${p.hasNext ? '<button id="next">Next chapter →</button>' : '<div style="margi
 </body></html>`;
 }
 
-/** In-page reader logic. Messages: progress, tap, next, review, bookmark, paragraphs, find. */
+/** In-page reader logic. Messages: progress, tap, next, review, bookmark, startBlock, ttsJump, find. */
 const READER_JS = String.raw`
 (function(){
   var post=function(o){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(o));};
@@ -121,20 +121,25 @@ const READER_JS = String.raw`
       if(progress()<1)raf=requestAnimationFrame(step);else post({type:'autoscrollEnd'});}
     raf=requestAnimationFrame(step);
   };
-  // Paragraphs for text-to-speech.
-  var blocks=[];
-  function collect(){
-    blocks=[];var nodes=document.querySelectorAll('#text p, #text div, #text center, #text h1, #text h2, #text h3, #text h4, #text li, #text blockquote');
-    for(var i=0;i<nodes.length;i++){var n=nodes[i];if(n.querySelector('p,div,center,li'))continue;var t=(n.innerText||'').trim();if(t)blocks.push(n);}
-    if(!blocks.length){var t=document.getElementById('text');t.innerHTML.split(/<br\s*\/?>\s*<br\s*\/?>/i).forEach(function(){});blocks=[t];}
-    return blocks.map(function(n){return (n.innerText||'').trim();});
-  }
-  window.__paragraphs=function(){post({type:'paragraphs',items:collect(),start:firstVisible()});};
-  function firstVisible(){if(!blocks.length)collect();for(var i=0;i<blocks.length;i++){var r=blocks[i].getBoundingClientRect();if(paged?r.right>0:r.bottom>80)return i;}return 0;}
-  window.__ttsMark=function(i){
-    var prev=document.querySelector('.tts');if(prev)prev.classList.remove('tts');
-    if(i<0||!blocks[i])return;blocks[i].classList.add('tts');
-    blocks[i].scrollIntoView({block:paged?'nearest':'center',inline:'start',behavior:'smooth'});
+  // Read-aloud highlight. The app tags spoken elements with data-tts="<block>" (src/audio/segments.ts).
+  function ttsEls(){return document.querySelectorAll('[data-tts]');}
+  window.__firstBlock=function(){
+    var els=ttsEls();
+    for(var i=0;i<els.length;i++){var r=els[i].getBoundingClientRect();if(paged?r.right>0:r.bottom>80){post({type:'startBlock',block:Number(els[i].getAttribute('data-tts'))});return;}}
+    post({type:'startBlock',block:0});
+  };
+  window.__ttsMark=function(i,scroll){
+    var prev=document.querySelectorAll('.tts');for(var k=0;k<prev.length;k++)prev[k].classList.remove('tts');
+    if(i==null||i<0)return;var el=document.querySelector('[data-tts="'+i+'"]');if(!el)return;el.classList.add('tts');
+    if(scroll===false)return;
+    if(paged){
+      // Turn to the page where the paragraph starts.
+      var w=wrap.clientWidth||1,page=Math.floor((el.getBoundingClientRect().left+wrap.scrollLeft+1)/w);
+      if(Math.round(wrap.scrollLeft/w)!==page)wrap.scrollTo({left:page*w,behavior:'smooth'});
+    }else{
+      var r=el.getBoundingClientRect();
+      if(r.top<90||r.bottom>window.innerHeight-130)el.scrollIntoView({block:'center',behavior:'smooth'});
+    }
   };
   // Find in chapter.
   var marks=[],cur=-1;
@@ -167,7 +172,12 @@ const READER_JS = String.raw`
     var x=t.clientX/window.innerWidth;
     if(tapToTurn&&x<0.25){window.__page(-1);post({type:'tap',zone:'left'});}
     else if(tapToTurn&&x>0.75){window.__page(1);post({type:'tap',zone:'right'});}
-    else post({type:'tap',zone:'center'});
+    else{
+      // While listening, tapping a paragraph reads from there.
+      var b=window.__listening&&e.target.closest&&e.target.closest('[data-tts]');
+      if(b){post({type:'ttsJump',block:Number(b.getAttribute('data-tts'))});return;}
+      post({type:'tap',zone:'center'});
+    }
   },{passive:true});
   document.addEventListener('click',function(e){
     var id=e.target&&e.target.id;

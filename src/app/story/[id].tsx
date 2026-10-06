@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import * as player from '../../audio/player';
 import { Cover } from '../../components/Cover';
 import { showActions, toast } from '../../components/Sheet';
 import { ErrorView, Loading } from '../../components/states';
@@ -172,7 +173,16 @@ export default function StoryScreen() {
             onPress={() => openReader(id, started ? resumeChapter : 1)}
             style={{ flex: 1 }}
           />
-          <Button title="Follow/Fav" icon="heart-outline" kind="secondary" onPress={subscriptionMenu} />
+          <Button
+            title="Listen"
+            icon="headset-outline"
+            kind="secondary"
+            onPress={() => {
+              player.start(story, { chapter: started ? resumeChapter : 1 });
+              router.push('/listen');
+            }}
+          />
+          <IconButton icon="heart-outline" label="Follow or favorite" onPress={subscriptionMenu} />
         </View>
         {started && lib && (
           <View style={{ paddingHorizontal: 16, marginTop: 4 }}>
