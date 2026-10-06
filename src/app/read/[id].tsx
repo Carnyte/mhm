@@ -186,22 +186,25 @@ export default function ReaderScreen() {
     web.current?.injectJavaScript(`window.__autoScroll && window.__autoScroll(${autoScroll ? settings.autoScrollSpeed : 0}); true;`);
   }, [autoScroll, settings.autoScrollSpeed]);
 
-  // Follow the audiobook into the next chapter while it's playing this story.
+  // Follow the audiobook into the next chapter while it's playing this story. A chapter that's
+  // only being preloaded (stopped at a chapter end) passes through "loading" without playing.
   useEffect(() => {
+    if (listen.status === 'loading') return;
     const prev = playerChapterRef.current;
     playerChapterRef.current = listen.chapter;
-    if (listen.here && (listen.status === 'playing' || listen.status === 'loading') && listen.chapter !== chapter && prev === chapter) {
+    if (listen.here && listen.status === 'playing' && listen.chapter !== chapter && prev === chapter) {
       setAutoScroll(false);
       setChapter(listen.chapter);
     }
   }, [listen.here, listen.chapter, listen.status, chapter]);
 
-  // Highlight the paragraph being read.
+  // Highlight the paragraph being read; while it's playing, tapping another paragraph jumps there.
+  const playingHere = listeningHere && listen.status === 'playing';
   useEffect(() => {
     web.current?.injectJavaScript(
-      `window.__listening = ${listeningHere}; window.__ttsMark && window.__ttsMark(${listeningHere ? listen.block : -1}); true;`,
+      `window.__listening = ${playingHere}; window.__ttsMark && window.__ttsMark(${listeningHere ? listen.block : -1}); true;`,
     );
-  }, [listeningHere, listen.block]);
+  }, [listeningHere, playingHere, listen.block]);
 
   const segmentedHtml = useMemo(() => (data ? segmentChapter(data.html).html : ''), [data]);
 
@@ -260,10 +263,10 @@ export default function ReaderScreen() {
         else if (chrome && settings.immersive) setChrome(false);
         break;
       case 'ready':
-        if (listeningHere) web.current?.injectJavaScript(`window.__listening = true; window.__ttsMark(${listen.block}); true;`);
+        if (listeningHere) web.current?.injectJavaScript(`window.__listening = ${playingHere}; window.__ttsMark(${listen.block}); true;`);
         break;
       case 'ttsJump':
-        if (data && listeningHere) player.start(data.story, { chapter, block: Number(m.block) || 0 });
+        if (data && playingHere) player.start(data.story, { chapter, block: Number(m.block) || 0 });
         break;
       case 'next':
         goChapter(chapter + 1);
@@ -380,18 +383,18 @@ export default function ReaderScreen() {
           <IconButton icon="play-back" label="Previous paragraph" onPress={() => player.skip(-1)} color={fg} size={20} />
           <IconButton
             icon={listen.status === 'playing' || listen.status === 'loading' ? 'pause' : 'play'}
-            label={listen.status === 'playing' ? 'Pause' : 'Play'}
+            label={listen.status === 'playing' || listen.status === 'loading' ? 'Pause' : 'Play'}
             onPress={() => player.toggle()}
             color={fg}
             size={24}
           />
           <IconButton icon="play-forward" label="Next paragraph" onPress={() => player.skip(1)} color={fg} size={20} />
-          <Pressable style={{ flex: 1 }} onPress={() => router.push('/listen')} accessibilityRole="button" accessibilityLabel="Open audiobook player">
+          <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/listen', params: { from: String(id) } })} accessibilityRole="button" accessibilityLabel="Open audiobook player">
             <T size={12} style={{ color: theme.muted }} numberOfLines={1}>
               {listen.status === 'loading' ? 'Loading…' : `Part ${listen.index + 1} / ${listen.total} · ${speedLabel(settings.ttsRate)}`}
             </T>
           </Pressable>
-          <IconButton icon="headset-outline" label="Open audiobook player" color={fg} size={20} onPress={() => router.push('/listen')} />
+          <IconButton icon="headset-outline" label="Open audiobook player" color={fg} size={20} onPress={() => router.push({ pathname: '/listen', params: { from: String(id) } })} />
           <IconButton icon="close" label="Stop reading aloud" color={fg} size={20} onPress={() => player.stop()} />
         </View>
       )}

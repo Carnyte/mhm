@@ -71,7 +71,7 @@ Checks run while building this (October 2026):
 
 | Check | Result |
 |---|---|
-| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation and player engine | 67 / 67 pass |
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session | 86 / 86 pass |
 | `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |

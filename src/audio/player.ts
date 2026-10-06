@@ -12,48 +12,21 @@ import { loadImage } from '../net/images';
 import type { StoryDetail } from '../ffn/types';
 import { libraryStore, recordReading, type LibraryStory } from '../state/library';
 import { settingsStore } from '../state/settings';
-import { createStore, useStore } from '../state/store';
 import { errorMessage } from '../utils/format';
 import * as audioSession from './session';
 import { segmentChapter, type Segment } from './segments';
+import { IDLE, playerStore, type PlayerState, type PlayerStory } from './state';
 import { toast } from '../components/Sheet';
 import { invalidateVoices, languageCode, voiceFor } from './voices';
 
-export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
-
-export type SleepTimer = { mode: 'off' } | { mode: 'timer'; minutes: number; endsAt: number } | { mode: 'chapter' };
-
-export interface PlayerStory {
-  id: number;
-  title: string;
-  author?: string;
-  chapters: number;
-  chapterTitles: string[];
-  coverUrl?: string;
-  language?: string;
-}
-
-export interface PlayerState {
-  status: PlayerStatus;
-  story?: PlayerStory;
-  chapter: number;
-  segments: Segment[];
-  /** Segment being spoken (or where playback will resume). */
-  index: number;
-  chapterWords: number;
-  error?: string;
-  sleep: SleepTimer;
-  /** True while the chapter text comes from an offline download. */
-  offline: boolean;
-}
-
-const IDLE: PlayerState = { status: 'idle', chapter: 1, segments: [], index: 0, chapterWords: 0, sleep: { mode: 'off' }, offline: false };
-
-export const playerStore = createStore<PlayerState>(IDLE);
-
-export function usePlayer<S = PlayerState>(selector?: (s: PlayerState) => S): S {
-  return useStore(playerStore, selector);
-}
+export {
+  playerStore,
+  usePlayer,
+  type PlayerState,
+  type PlayerStatus,
+  type PlayerStory,
+  type SleepTimer,
+} from './state';
 
 const set = (patch: Partial<PlayerState>) => playerStore.set((s) => ({ ...s, ...patch }));
 
@@ -333,6 +306,9 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
   await stopSpeech();
   if (token !== loadToken) return; // paused or stopped meanwhile
   set({ status: 'loading', chapter, segments: [], index: 0, chapterWords: 0, error: undefined });
+  // Start the background-audio loop right away, so locking the phone while the chapter downloads
+  // doesn't suspend the app before speech begins.
+  if (opts.autoplay) audioSession.setPlaying(true);
   pushNowPlaying();
   try {
     const { html, detail, offline } = await loadChapterHtml(story.id, chapter);

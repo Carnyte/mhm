@@ -6,6 +6,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStore, useStore } from '../state/store';
 import { useTheme } from '../theme';
+import { MINI_PLAYER_HEIGHT, useMiniPlayerVisible } from './miniPlayerLayout';
 import { haptic, type IconName } from './ui';
 
 export interface SheetAction {
@@ -131,6 +132,7 @@ function ToastView() {
   const c = useTheme();
   const insets = useSafeAreaInsets();
   const visible = useStore(toastStore);
+  const lifted = useMiniPlayerVisible();
   useEffect(() => {
     if (!visible) return;
     const timer = setTimeout(() => toastStore.set(null), 2800);
@@ -139,7 +141,11 @@ function ToastView() {
   if (!visible) return null;
   const bg = visible.kind === 'error' ? c.danger : visible.kind === 'success' ? c.success : c.dark ? '#2A323D' : '#1F2A37';
   return (
-    <View pointerEvents="none" style={[styles.toast, { bottom: insets.bottom + 90, backgroundColor: bg }]} accessibilityLiveRegion="polite">
+    <View
+      pointerEvents="none"
+      style={[styles.toast, { bottom: insets.bottom + 90 + (lifted ? MINI_PLAYER_HEIGHT + 8 : 0), backgroundColor: bg }]}
+      accessibilityLiveRegion="polite"
+    >
       <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>{visible.message}</Text>
     </View>
   );
@@ -183,6 +189,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: 10,
+    zIndex: 1100,
   },
 });

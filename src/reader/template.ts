@@ -138,7 +138,9 @@ const READER_JS = String.raw`
       if(Math.round(wrap.scrollLeft/w)!==page)wrap.scrollTo({left:page*w,behavior:'smooth'});
     }else{
       var r=el.getBoundingClientRect();
-      if(r.top<90||r.bottom>window.innerHeight-130)el.scrollIntoView({block:'center',behavior:'smooth'});
+      // Tall paragraphs: show their start rather than centring them (which hides the first lines).
+      if(r.height>window.innerHeight-220){if(Math.abs(r.top-100)>40)window.scrollBy({top:r.top-100,behavior:'smooth'});}
+      else if(r.top<90||r.bottom>window.innerHeight-130)el.scrollIntoView({block:'center',behavior:'smooth'});
     }
   };
   // Find in chapter.
@@ -174,8 +176,9 @@ const READER_JS = String.raw`
     else if(tapToTurn&&x>0.75){window.__page(1);post({type:'tap',zone:'right'});}
     else{
       // While listening, tapping a paragraph reads from there.
+      // (Tapping the paragraph being read still shows / hides the controls.)
       var b=window.__listening&&e.target.closest&&e.target.closest('[data-tts]');
-      if(b){post({type:'ttsJump',block:Number(b.getAttribute('data-tts'))});return;}
+      if(b&&!b.classList.contains('tts')){post({type:'ttsJump',block:Number(b.getAttribute('data-tts'))});return;}
       post({type:'tap',zone:'center'});
     }
   },{passive:true});

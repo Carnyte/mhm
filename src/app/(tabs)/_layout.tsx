@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ColorValue } from 'react-native';
+import { useMiniPlayerInset } from '../../components/miniPlayerLayout';
 import { useLibrary, newChapterCount } from '../../state/library';
 import { useTheme } from '../../theme';
 
@@ -12,6 +13,7 @@ function TabIcon({ name, color, size, focused }: { name: IconName; color: ColorV
 
 export default function TabsLayout() {
   const c = useTheme();
+  const playerInset = useMiniPlayerInset();
   const updates = useLibrary((s) => Object.values(s.stories).filter((x) => newChapterCount(x) > 0).length);
   const icon = (name: IconName) => {
     const render = (p: { color: ColorValue; size: number; focused: boolean }) => <TabIcon name={name} {...p} />;
@@ -26,6 +28,8 @@ export default function TabsLayout() {
         headerStyle: { backgroundColor: c.surface },
         headerTitleStyle: { color: c.text },
         headerTintColor: c.accent,
+        // Leave room for the floating mini player above the tab bar.
+        sceneStyle: { paddingBottom: playerInset, backgroundColor: c.bg },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Browse', tabBarIcon: icon('compass') }} />

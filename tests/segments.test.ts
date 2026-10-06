@@ -44,10 +44,13 @@ describe('segmentChapter', () => {
     expect(r.segments[r.segments.length - 1]).toMatchObject({ block: 1, text: 'Next.' });
   });
 
-  it('ignores scripts and handles empty input', () => {
+  it('drops scripts and raw-text elements and handles empty input', () => {
     expect(segmentChapter('').segments).toEqual([]);
     const r = segmentChapter('<p>Hi</p><script>alert(1)</script>');
     expect(r.segments.map((s) => s.text)).toEqual(['Hi']);
+    expect(r.html).not.toContain('script');
+    const x = segmentChapter('<p>Ok <b><xmp>&lt;/xmp&gt;&lt;img src=x onerror=alert(1)&gt;</xmp></b></p>');
+    expect(x.html).not.toMatch(/<img|onerror|xmp/);
   });
 });
 

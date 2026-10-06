@@ -31,6 +31,11 @@ const BLOCK_TAGS = new Set([
 /** Treated as one unit even if they contain blocks (splitting tables / pre would break markup). */
 const LEAF_BLOCK_TAGS = new Set(['table', 'pre', 'hr', 'figure']);
 const SKIP_TAGS = new Set(['script', 'style', 'noscript', 'template']);
+/**
+ * Dropped from the reader HTML: their text is serialised unescaped, so re-serialising decoded
+ * entities inside them could create live markup (a defence on top of the parser's sanitiser).
+ */
+const DROP_TAGS = new Set(['script', 'style', 'noscript', 'template', 'xmp', 'noembed', 'noframes', 'plaintext', 'iframe', 'object', 'embed']);
 
 function isBlock(n: AnyNode): n is Element {
   return isTag(n) && BLOCK_TAGS.has(n.name);
@@ -119,6 +124,12 @@ function relink(parent: ParentNode) {
   }
 }
 
+function dropUnsafe(parent: ParentNode) {
+  parent.children = parent.children.filter((c) => !(isTag(c) && DROP_TAGS.has(c.name)));
+  relink(parent);
+  for (const c of parent.children) if (isTag(c)) dropUnsafe(c);
+}
+
 export function segmentChapter(html: string): SegmentedChapter {
   const doc = parseDocument(html ?? '', { decodeEntities: true, lowerCaseAttributeNames: true });
   const segments: Segment[] = [];
@@ -172,10 +183,7 @@ export function segmentChapter(html: string): SegmentedChapter {
     const out: AnyNode[] = [];
     let run: AnyNode[] = [];
     for (const child of [...parent.children]) {
-      if (isTag(child) && SKIP_TAGS.has(child.name)) {
-        out.push(child);
-        continue;
-      }
+      if (isTag(child) && DROP_TAGS.has(child.name)) continue;
       if (isBlock(child)) {
         flushRun(parent, run, out);
         run = [];
@@ -201,6 +209,7 @@ export function segmentChapter(html: string): SegmentedChapter {
     relink(parent);
   };
 
+  dropUnsafe(doc);
   walk(doc);
   return {
     segments,

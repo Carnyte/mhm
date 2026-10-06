@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { bridge } from '../net/bridge';
 import { useBridgeStatus } from '../state/session';
-import { MINI_PLAYER_HEIGHT, useMiniPlayerVisible } from './MiniPlayer';
+import { MINI_PLAYER_HEIGHT, useMiniPlayerVisible } from './miniPlayerLayout';
 
 export function BridgeBanner() {
   const status = useBridgeStatus();

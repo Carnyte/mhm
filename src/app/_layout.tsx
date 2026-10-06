@@ -6,6 +6,7 @@ import { AppState, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BridgeBanner } from '../components/BridgeBanner';
 import { MiniPlayer } from '../components/MiniPlayer';
+import { useMiniPlayerInset } from '../components/miniPlayerLayout';
 import { SheetHost } from '../components/Sheet';
 import { checkForUpdates, configureBackgroundChecks } from '../features/updates';
 import { bridge } from '../net/bridge';
@@ -57,6 +58,7 @@ function useAutoChecks() {
 
 export default function RootLayout() {
   const c = useTheme();
+  const playerInset = useMiniPlayerInset();
   useNotificationRouting();
   useAutoChecks();
 
@@ -82,11 +84,12 @@ export default function RootLayout() {
               headerTintColor: c.accent,
               headerTitleStyle: { color: c.text },
               headerStyle: { backgroundColor: c.surface },
-              contentStyle: { backgroundColor: c.bg },
+              // Leave room for the floating mini player (tab screens handle it in the tab layout).
+              contentStyle: { backgroundColor: c.bg, paddingBottom: playerInset },
               headerBackButtonDisplayMode: 'minimal',
             }}
           >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Home' }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Home', contentStyle: { backgroundColor: c.bg } }} />
             <Stack.Screen name="read/[id]" options={{ headerShown: false, gestureEnabled: true }} />
             <Stack.Screen name="login" options={{ presentation: 'modal', title: 'Log in' }} />
             <Stack.Screen name="review/[id]" options={{ presentation: 'modal', title: 'Write a review' }} />

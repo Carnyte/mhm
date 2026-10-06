@@ -146,7 +146,11 @@ export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; on
           {stepper('Pitch', s.ttsPitch.toFixed(1), () => (updateReader({ ttsPitch: clamp(s.ttsPitch - 0.1, 0.5, 2) }), player.applyVoiceSettings()), () => (updateReader({ ttsPitch: clamp(s.ttsPitch + 0.1, 0.5, 2) }), player.applyVoiceSettings()))}
           {toggle('Continue to next chapter', s.ttsContinue, (v) => updateReader({ ttsContinue: v }))}
           {toggle('Announce chapter titles', s.ttsReadTitles, (v) => updateReader({ ttsReadTitles: v }))}
-          <Pressable style={styles.setRow} onPress={() => pickVoice(player.playerLanguage())} accessibilityRole="button">
+          <Pressable style={styles.setRow} onPress={() => {
+              // The picker is a separate sheet; iOS can't show it over this panel's modal.
+              onClose();
+              setTimeout(() => pickVoice(player.playerLanguage()), 450);
+            }} accessibilityRole="button">
             <T size={14} style={{ color: fg, flex: 1 }}>
               Voice
             </T>

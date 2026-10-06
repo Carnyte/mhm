@@ -50,10 +50,12 @@ function emit(cmd: RemoteCommand) {
 function onStatus(st: AudioStatus) {
   const now = Date.now();
   // Playing state changed by something other than us: lock screen, headphones, a phone call.
-  if (st.playing !== wantPlaying && st.isLoaded) {
-    clearTimeout(pauseCheck);
+  // Confirm after 500 ms (our own play/pause can race a stale status). The pending check is not
+  // restarted: while playing, statuses arrive every 500 ms and would postpone it forever.
+  if (st.playing !== wantPlaying && st.isLoaded && pauseCheck === undefined) {
     const external = st.playing;
     pauseCheck = setTimeout(() => {
+      pauseCheck = undefined;
       if (!player || player.playing === wantPlaying) return;
       wantPlaying = player.playing;
       base = null;
@@ -74,10 +76,23 @@ function onStatus(st: AudioStatus) {
 }
 
 function recenter() {
-  if (!player) return;
-  ignoreUntil = Date.now() + 1500;
+  // Never seek before the item is ready (AVFoundation can throw), or while a re-centre is running.
+  if (!player || !player.isLoaded || ignoreUntil === Infinity) return;
+  const p = player;
+  ignoreUntil = Infinity;
   base = null;
-  player.seekTo(LOW + 5).catch(() => {});
+  p.seekTo(LOW + 5)
+    .catch(() => {})
+    .finally(() => {
+      // Re-base once the seek has landed, so skips right after a re-centre still count.
+      ignoreUntil = 0;
+      base = { time: p.currentTime, at: Date.now(), playing: p.playing };
+    });
+}
+
+function clearPauseCheck() {
+  clearTimeout(pauseCheck);
+  pauseCheck = undefined;
 }
 
 /**
@@ -104,9 +119,8 @@ export async function activate(mixWithOthers = false) {
       // under the speech synthesizer (expo-audio only checks its own players).
       player = createAudioPlayer(require('../../assets/audio/silence.wav'), { updateInterval: 500, keepAudioSessionActive: true });
       player.loop = true;
+      // The first "loaded" status (at 0 s) re-centres the position via onStatus.
       player.addListener('playbackStatusUpdate', onStatus);
-      ignoreUntil = Date.now() + 1500;
-      player.seekTo(LOW + 5).catch(() => {});
     }
   } catch {
     // Without the session speech still works in the foreground.
@@ -132,9 +146,9 @@ export function setNowPlaying(m: NowPlaying) {
 }
 
 export function setPlaying(playing: boolean) {
+  if (playing !== wantPlaying) base = null;
   wantPlaying = playing;
-  clearTimeout(pauseCheck);
-  base = null;
+  clearPauseCheck();
   if (!player) return;
   try {
     if (playing) {
@@ -146,13 +160,16 @@ export function setPlaying(playing: boolean) {
   } catch {
     /* ignore */
   }
+  // Ducking lasts as long as the session is active: release it while paused so other apps'
+  // audio comes back up (play() re-activates it).
+  if (!playing && configured === 'duck') setIsAudioActiveAsync(false).catch(() => {});
 }
 
 /** Player closed: stop the silent track and hand audio back to other apps. */
 export function deactivate() {
   wantPlaying = false;
   meta = null;
-  clearTimeout(pauseCheck);
+  clearPauseCheck();
   if (!player) return;
   try {
     player.pause();

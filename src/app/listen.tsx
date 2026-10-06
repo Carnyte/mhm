@@ -3,7 +3,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -40,6 +40,8 @@ export default function ListenScreen() {
   const insets = useSafeAreaInsets();
   const s = usePlayer();
   const reader = useSettings((x) => x.reader);
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const sliding = useRef(false);
   const [voice, setVoice] = useState<VoiceInfo | undefined>();
   const [scrub, setScrub] = useState<number | null>(null);
   const textScroll = useRef<ScrollView>(null);
@@ -83,7 +85,14 @@ export default function ListenScreen() {
       <Stack.Screen
         options={{
           title: 'Now listening',
-          headerRight: () => <IconButton icon="book-outline" label="Open in reader" onPress={() => openReader(story.id, s.chapter)} />,
+          headerRight: () => (
+            <IconButton
+              icon="book-outline"
+              label="Open in reader"
+              // Opened from that story's reader: go back to it (it follows the player's chapter).
+              onPress={() => (from === String(story.id) && router.canGoBack() ? router.back() : openReader(story.id, s.chapter))}
+            />
+          ),
         }}
       />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 18, maxWidth: 640, width: '100%', alignSelf: 'center' }}>
@@ -156,8 +165,14 @@ export default function ListenScreen() {
             minimumTrackTintColor={c.accent}
             maximumTrackTintColor={c.border}
             thumbTintColor={c.accent}
-            onValueChange={(v) => setScrub(Math.round(v))}
+            onSlidingStart={() => (sliding.current = true)}
+            onValueChange={(v) => {
+              // VoiceOver adjusts the slider without touch events: seek straight away.
+              if (sliding.current) setScrub(Math.round(v));
+              else player.seek(Math.round(v));
+            }}
             onSlidingComplete={(v) => {
+              sliding.current = false;
               setScrub(null);
               player.seek(Math.round(v));
             }}
