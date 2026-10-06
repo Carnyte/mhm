@@ -22,27 +22,19 @@ Google / Facebook / X / Amazon / Microsoft / FictionPress sign-in, the real logi
 in-app browser that shares the same cookie store. Follow / favourite and reviews use the site's
 own AJAX endpoints (`/api/ajax_subs.php`, `/api/ajax_review.php`).
 
-## Run it on your iPhone
+## Install it on your phone
 
-The app uses native modules (WebView, SQLite, notifications, background tasks), so it needs a
-**development build**. Expo Go won't work.
+**Step-by-step guide for non-developers: [`INSTALL.md`](INSTALL.md).** In short:
 
-```bash
-npm install
-npm test                 # unit tests
-npm run typecheck
+- **iPhone, no Mac** (paid Apple Developer membership): `eas device:create` to register the phone,
+  then `eas build --platform ios --profile preview` and install from the link.
+- **iPhone + Mac, free Apple ID**: `npx expo prebuild -p ios`, sign with your Personal Team in
+  Xcode and run a Release build (reinstall every 7 days).
+- **Android**: `eas build --platform android --profile preview` gives an APK.
 
-# Option A: build in the cloud (no Mac needed), then install from the link EAS gives you
-npx eas-cli@latest login
-npx eas-cli@latest build -p ios --profile development   # or --profile preview for a standalone build
-npx expo start --dev-client
-
-# Option B: on a Mac with Xcode
-npx expo run:ios --device
-```
-
-To publish to the App Store: `npx eas-cli@latest build -p ios --profile production`, then
-`npx eas-cli@latest submit -p ios`. Set your own `ios.bundleIdentifier` in `app.json` first.
+Use the `preview` profile for a normal standalone app. `development` builds need a dev server
+(`npx expo start --dev-client`) and are only for working on the code. Expo Go can't run this app
+because it uses native modules (WebView, SQLite, notifications, background tasks).
 
 ## Project layout
 
@@ -69,7 +61,8 @@ Checks run while building this (October 2026):
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |
 | `npx expo export --platform ios` | bundles (3.8 MB Hermes bytecode) |
-| `npx expo-doctor` | 21 / 21 checks pass |
+| `npx expo-doctor` | 21 / 21 checks pass (dependencies pinned to SDK 57 versions) |
+| `npx expo prebuild -p ios` / `-p android` | native projects generate cleanly (deployment target iOS 16.4, scene life cycle on, no push entitlement) |
 | Web harness screenshots with live data | Browse, fandom directory, story list, story details and reader render correctly |
 
 Not verified here, because this was built on Linux with no iPhone and no account:
