@@ -7,7 +7,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { AppState, FlatList, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { speedLabel } from '../../audio/pickers';
 import * as player from '../../audio/player';
@@ -112,6 +112,33 @@ export default function ReaderScreen() {
   }, [id, chapter, data?.story.id]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
+
+  // iOS can kill the page's web process while the app is in the background, which leaves a blank
+  // page. Rebuild the page then, at the current position and with the current settings.
+  const [rebuilt, setRebuilt] = useState<{ key: string; p: number; gen: number } | null>(null);
+  const aliveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const rebuildPage = useCallback(() => {
+    clearTimeout(aliveTimer.current);
+    const p = progressRef.current;
+    setAutoScroll(false);
+    setRebuilt((r) => ({ key: `${id}:${chapter}`, p, gen: (r?.gen ?? 0) + 1 }));
+  }, [id, chapter]);
+  // A killed process doesn't always report it, so check the page answers when the app returns.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active' || !web.current) return;
+      clearTimeout(aliveTimer.current);
+      aliveTimer.current = setTimeout(rebuildPage, 2500);
+      web.current.injectJavaScript(
+        `(function(){var b=document.body;if(b&&b.innerText&&b.innerText.trim())window.ReactNativeWebView.postMessage('{"type":"alive"}');})(); true;`,
+      );
+    });
+    return () => {
+      sub.remove();
+      clearTimeout(aliveTimer.current);
+    };
+  }, [rebuildPage]);
 
   useEffect(() => {
     let alive = true;
@@ -221,14 +248,15 @@ export default function ReaderScreen() {
         storyTitle: data.story.title,
         author: data.story.author?.name,
         hasNext: chapter < data.story.chapters,
-        progress: startProgress,
+        progress: rebuilt?.key === `${id}:${chapter}` ? rebuilt.p : startProgress,
       },
       settings,
       theme,
     );
-    // Settings changes are applied live via __apply; only rebuild for new content.
+    // Settings changes are applied live via __apply; only rebuild for new content (or a page
+    // that has to be rebuilt, see rebuildPage).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, chapter, segmentedHtml]);
+  }, [data, chapter, segmentedHtml, rebuilt]);
 
   const goChapter = (n: number) => {
     if (!data || n < 1 || n > data.story.chapters) return;
@@ -262,11 +290,14 @@ export default function ReaderScreen() {
         if (m.zone === 'center') setChrome((v) => !v);
         else if (chrome && settings.immersive) setChrome(false);
         break;
+      case 'alive':
+        clearTimeout(aliveTimer.current);
+        break;
       case 'ready':
         if (listeningHere) web.current?.injectJavaScript(`window.__listening = ${playingHere}; window.__ttsMark(${listen.block}); true;`);
         break;
       case 'ttsJump':
-        if (data && playingHere) player.start(data.story, { chapter, block: Number(m.block) || 0 });
+        if (data && playingHere) player.start(data.story, { chapter, block: Number(m.block) || 0, exact: true });
         break;
       case 'next':
         goChapter(chapter + 1);
@@ -322,7 +353,7 @@ export default function ReaderScreen() {
         </View>
       ) : (
         <ReaderWebView
-          key={`${id}:${chapter}`}
+          key={`${id}:${chapter}:${rebuilt?.gen ?? 0}`}
           ref={web}
           userAgent={DESKTOP_USER_AGENT}
           originWhitelist={['*']}
@@ -337,6 +368,8 @@ export default function ReaderScreen() {
           dataDetectorTypes="none"
           textInteractionEnabled
           onShouldStartLoadWithRequest={(r) => r.url === 'about:blank' || r.url.startsWith('https://www.fanfiction.net/') && r.navigationType !== 'click'}
+          onContentProcessDidTerminate={rebuildPage}
+          onRenderProcessGone={() => rebuildPage()}
         />
       )}
 

@@ -186,6 +186,7 @@ your session · ⏳ not built (reason given).
   - ✅ Sleep timer (5 min – 2 h, or end of chapter)
   - ✅ Announce chapter titles (toggle), skips decorative separators like "* * *"
   - ✅ Natural pauses: a beat between paragraphs, longer after chapter titles and at scene breaks (Natural / Long / Off), plus speech-only clean-up of ellipses, "?!?!", *emphasis* markers and dashes
+  - ✅ Skips the author's notes at the top of a chapter (summary, disclaimer, A/N up to the first separator or chapter heading; toggle in the player). They stay in the chapter: tap one, or go back a paragraph, to hear it
   - ✅ Remembers the listening position per story, and updates reading progress as you listen
   - ✅ Optional "play over music and other audio" (lowers other apps instead of stopping them; no lock screen controls in that mode)
   - ⏳ The official app's server "HD" voices (Lauren / Larry) ran on FictionPress's GPUs; the closest equivalent is Apple's free Premium voices (Settings → Accessibility → Read & Speak → Voices)

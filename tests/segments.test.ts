@@ -1,6 +1,6 @@
 // Audiobook text segmentation: spoken segments + data-tts tags for reader highlighting.
 
-import { isSpeakable, MAX_SEGMENT_CHARS, segmentChapter, splitText } from '../src/audio/segments';
+import { frontMatterBlocks, isSpeakable, MAX_SEGMENT_CHARS, segmentChapter, splitText } from '../src/audio/segments';
 
 describe('segmentChapter', () => {
   it('tags paragraphs and skips decorative separators', () => {
@@ -103,5 +103,50 @@ describe('speechText', () => {
     expect(speechText('No. . . please?!?!')).toBe('No… please?!');
     expect(speechText('**Really** _now_ ~softly~')).toBe('Really now softly');
     expect(speechText('wait - what')).toBe('wait — what');
+  });
+});
+
+describe('author’s front matter', () => {
+  const story = (n: number) => Array.from({ length: n }, (_, i) => `<p>Harry walked on, step ${i + 1}, thinking about the lake and the long summer ahead.</p>`).join('');
+
+  it('ends the notes at the separator after them', () => {
+    const html = '<p><strong>Summary:</strong> Harry finds a door.</p><p>Disclaimer: I don’t own Harry Potter.</p><p>Thanks to my beta!</p><hr><p>Chapter text starts.</p>' + story(10);
+    const seg = segmentChapter(html);
+    expect(seg.frontMatter).toBe(3);
+    expect(seg.segments[seg.frontMatter].text).toBe('Chapter text starts.');
+  });
+
+  it('also ends them at a chapter heading, and at "* * *" separators', () => {
+    expect(segmentChapter('<p>A/N: Sorry for the wait!</p><p>Enjoy.</p><p>Chapter 3: The Lake</p>' + story(5)).frontMatter).toBe(2);
+    expect(segmentChapter('<p>(A/N: short one today)</p><p>* * *</p>' + story(5)).frontMatter).toBe(1);
+  });
+
+  it('without a separator, skips only the labelled paragraphs at the top', () => {
+    expect(segmentChapter('<p>Disclaimer: not mine.</p><p>A/N: thanks for reading.</p><p>This chapter was hard.</p>' + story(5)).frontMatter).toBe(2);
+  });
+
+  it('leaves stories alone that just start', () => {
+    expect(segmentChapter(story(6)).frontMatter).toBe(0);
+    // Story text that happens to look like a label further down isn't the author's.
+    expect(segmentChapter(story(3) + '<p>Warning: the sign read, keep out.</p><hr>' + story(3)).frontMatter).toBe(0);
+    // Dialogue with a dash isn't a label.
+    expect(segmentChapter('<p>“Thanks—” she began.</p><hr>' + story(3)).frontMatter).toBe(0);
+    expect(segmentChapter('<p>Notes were passed around the class.</p><hr>' + story(3)).frontMatter).toBe(0);
+  });
+
+  it('never skips a whole chapter of notes, or notes that run too long', () => {
+    expect(segmentChapter('<p>A/N: This story is on hiatus.</p><p>Author’s note: sorry, everyone.</p>').frontMatter).toBe(0);
+    // Too long to be sure where the notes end: only the labelled paragraph is skipped.
+    const longNote = segmentChapter('<p>A/N: ' + 'word '.repeat(600) + '</p><p>' + 'more '.repeat(300) + '</p><hr>' + story(2));
+    expect(longNote.segments[longNote.frontMatter].block).toBe(1);
+    expect(segmentChapter('<p>Author note: hi.</p><p>Story.</p>').frontMatter).toBe(1);
+  });
+
+  it('counts blocks, not segments', () => {
+    expect(frontMatterBlocks([{ text: 'Summary: a door.', scene: false, words: 3 }, { text: 'Story.', scene: true, words: 1 }])).toBe(1);
+    const html = '<p>A/N: ' + 'This is a long note sentence. '.repeat(30) + '</p><hr>' + story(4);
+    const seg = segmentChapter(html);
+    expect(seg.frontMatter).toBeGreaterThan(1); // the long note is split into several segments
+    expect(seg.segments[seg.frontMatter].block).toBe(1);
   });
 });

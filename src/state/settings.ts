@@ -39,6 +39,8 @@ export interface ReaderSettings {
   ttsReadTitles: boolean;
   /** Pauses between paragraphs, after chapter titles and at scene breaks. */
   ttsPauses: 'off' | 'natural' | 'long';
+  /** Start chapters after the author's front matter (summary, disclaimer, notes). */
+  ttsSkipNotes: boolean;
 }
 
 export interface AppSettings {
@@ -84,6 +86,7 @@ export const DEFAULT_READER: ReaderSettings = {
   ttsMixWithOthers: false,
   ttsReadTitles: true,
   ttsPauses: 'natural',
+  ttsSkipNotes: true,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {

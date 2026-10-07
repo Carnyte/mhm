@@ -351,6 +351,58 @@ describe('audiobook player: review fixes', () => {
     }
   });
 
+  describe('author’s notes at the top of a chapter', () => {
+    const NOTES = '<p>Summary: a door.</p><p>Disclaimer: not mine.</p><hr><p>Story one.</p><p>Story two.</p>';
+    beforeEach(() => {
+      saved['7:1'] = NOTES;
+      updateReader({ ttsSkipNotes: true });
+    });
+    afterAll(() => updateReader({ ttsSkipNotes: true }));
+
+    it('starts at the story, not the notes', async () => {
+      await player.start(STORY, { chapter: 1, index: 0 });
+      await flush();
+      expect(spoken.map((x) => x.text)).toEqual(['Story one.', 'Story two.']);
+    });
+
+    it('goes from the spoken chapter title straight to the story', async () => {
+      updateReader({ ttsReadTitles: true });
+      await player.start(STORY, { chapter: 1, index: 0 });
+      await flush();
+      expect(spoken.map((x) => x.text)).toEqual(['Chapter 1: Arrival.', 'Story one.']);
+      lastOf('Story one.').opts.onStart!();
+      expect(player.playerStore.get().index).toBe(3);
+      expect(spoken.map((x) => x.text)).toEqual(['Chapter 1: Arrival.', 'Story one.', 'Story two.']);
+    });
+
+    it('skips them when starting from the reader at the top, but reads a tapped note', async () => {
+      await player.start(STORY, { chapter: 1, block: 0 });
+      await flush();
+      expect(spoken[0].text).toBe('Story one.');
+      spoken.length = 0;
+      await player.start(STORY, { chapter: 1, block: 0, exact: true });
+      await flush();
+      expect(spoken.map((x) => x.text)).toEqual(['Summary: a door.', 'Disclaimer: not mine.']);
+    });
+
+    it('reads them when skipping is off', async () => {
+      updateReader({ ttsSkipNotes: false });
+      await player.start(STORY, { chapter: 1, index: 0 });
+      await flush();
+      expect(spoken[0].text).toBe('Summary: a door.');
+    });
+
+    it('leaves them out of the time left', async () => {
+      updateReader({ ttsReadTitles: true });
+      await player.start(STORY, { chapter: 1, index: 0, autoplay: false });
+      await flush();
+      const st = player.playerStore.get();
+      expect(st.index).toBe(0);
+      // Title (3 words) + story (4), not the notes (6), at 175 words a minute.
+      expect(player.secondsLeft(st)).toBe(Math.round((7 / player.BASE_WPM) * 60));
+    });
+  });
+
   it('retries with the default voice when speech never starts, then reports it', async () => {
     jest.useFakeTimers();
     try {

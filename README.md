@@ -36,7 +36,8 @@ next chapter, has a sleep timer, and shows on the lock screen and in Control Cen
 under iOS Settings → Accessibility → Read & Speak → Voices, and the app picks it automatically.
 Voices that other apps add to iOS (for example the free, offline **Piper – Neural TTS** app) show
 up at the top of the player's voice list, marked **Add-on**. It pauses between paragraphs, and
-longer after chapter titles and at scene breaks. The code is in `src/audio/`.
+longer after chapter titles and at scene breaks, and starts each chapter after the author's notes
+(summary, disclaimer, A/N) unless you turn that off. The code is in `src/audio/`.
 
 ## Install it on your phone
 
@@ -73,7 +74,7 @@ Checks run while building this (October 2026):
 
 | Check | Result |
 |---|---|
-| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session | 104 / 104 pass |
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session | 115 / 115 pass |
 | `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |

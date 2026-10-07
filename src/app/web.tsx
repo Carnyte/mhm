@@ -63,6 +63,8 @@ export default function WebScreen() {
         setSupportMultipleWindows={false}
         allowsBackForwardNavigationGestures
         injectedJavaScript={email ? loginPrefillScript(email) : 'true;'}
+        // iOS can kill the page's web process in the background, leaving it blank.
+        onContentProcessDidTerminate={() => ref.current?.reload()}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
         onNavigationStateChange={(s) => {

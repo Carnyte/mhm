@@ -30,6 +30,11 @@ export interface PlayerState {
   sleep: SleepTimer;
   /** True while the chapter text comes from an offline download. */
   offline: boolean;
+  /**
+   * The author's notes at the start of the chapter (segments from ≤ i < to), passed over when
+   * playback flows into them from the chapter's start and skipping is on. Unset when there are none.
+   */
+  frontMatter?: { from: number; to: number };
 }
 
 export const IDLE: PlayerState = { status: 'idle', chapter: 1, segments: [], index: 0, chapterWords: 0, sleep: { mode: 'off' }, offline: false };

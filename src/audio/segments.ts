@@ -21,6 +21,11 @@ export interface Segment {
 
 export interface SegmentedChapter {
   segments: Segment[];
+  /**
+   * How many segments at the start are the author's front matter (summary, disclaimer, author's
+   * notes) rather than the chapter itself; 0 when there's none or it can't be told apart.
+   */
+  frontMatter: number;
   /** Chapter HTML with data-tts attributes added. */
   html: string;
   words: number;
@@ -75,6 +80,63 @@ export function isSpeakable(s: string): boolean {
     if (/^([a-z])\1*$/.test(only)) return false;
   }
   return true;
+}
+
+// A block that opens with one of these is the author talking, not the story. The first group can
+// be followed by anything ("Disclaimer I don't own…", "Rated T for language"); the second needs a
+// colon or dash and the rest a colon, so "Notes were passed around" or "“Thanks—” she said" in
+// the story don't count.
+const NOTE_START = new RegExp(
+  '^[\\s\\[(*_~"“\'‘-]*(?:' +
+    "a\\s*/\\s*n\\b|a\\.\\s?n\\.|author(?:['’]?s['’]?)?\\s+notes?\\b|disclaimers?\\b|rated\\s+(?:k\\+?|t|m|ma)\\b|" +
+    '(?:summary|chapter summary|warnings?|content warnings?|trigger warnings?|pairings?|rating)\\s*[:\\-–—]|' +
+    '(?:an|n/a|notes?|tw|cw|rated|ships?|beta(?:\'?d)?(?: by| reader)?|edited|updated|thanks|dedicat\\w*|word ?count|words|genres?|' +
+    'characters|fandoms?|tags|spoilers?|timeline|setting|recap|previously on[^:.!?]{0,40})\\s*:' +
+    ')',
+  'i',
+);
+/** "Chapter 3: The Lake", "Ch. 12", "Prologue": where the story starts after the notes. */
+const CHAPTER_HEADING =
+  /^[\s*_~"“-]*(?:chapter\s*\d+|chapter\s+(?:[ivxlc]+|[a-z]+(?:-[a-z]+)?)\b|ch\.?\s*\d+|prologue\b|epilogue\b|interlude\b)/i;
+
+interface BlockInfo {
+  text: string;
+  /** A scene separator ("* * *", <hr>) comes right before this block. */
+  scene: boolean;
+  words: number;
+}
+
+/**
+ * Number of blocks at the start of a chapter that are the author's front matter. It ends at the
+ * first scene separator or chapter heading, when one comes soon after a note ("Summary:",
+ * "Disclaimer", "A/N:") near the top; without one only the labelled paragraphs count. Never the
+ * whole chapter (an author's-note-only chapter is read as is).
+ */
+export function frontMatterBlocks(blocks: BlockInfo[]): number {
+  const WINDOW = 15;
+  const total = blocks.reduce((n, b) => n + b.words, 0);
+  const maxWords = Math.max(400, total * 0.4);
+  let notes = 0;
+  let firstNote = -1;
+  let run = -1; // end of the run of labelled blocks at the very top
+  let words = 0;
+  for (let i = 0; i < Math.min(blocks.length, WINDOW); i++) {
+    const b = blocks[i];
+    if (i > 0 && notes && (b.scene || (b.text.length <= 100 && CHAPTER_HEADING.test(b.text)))) {
+      return firstNote <= 2 && words <= maxWords ? i : run < 0 ? i : run;
+    }
+    const note = NOTE_START.test(b.text);
+    if (note) {
+      notes++;
+      if (firstNote < 0) firstNote = i;
+    } else if (run < 0) {
+      run = i;
+    }
+    words += b.words;
+    if (!notes && i >= 2) break; // no note near the top
+  }
+  if (run < 0) return notes && notes < blocks.length ? notes : 0;
+  return run;
 }
 
 function countWordsIn(s: string): number {
@@ -142,6 +204,7 @@ export function segmentChapter(html: string): SegmentedChapter {
   let block = 0;
   /** A scene separator ("* * *", <hr>, …) was passed since the last spoken block. */
   let sceneBreak = false;
+  const blockInfo: BlockInfo[] = [];
 
   const addBlock = (text: string): number | null => {
     const raw = clean(text);
@@ -151,6 +214,7 @@ export function segmentChapter(html: string): SegmentedChapter {
     const b = block++;
     const breakBefore: SegmentBreak = !segments.length ? 'none' : sceneBreak ? 'scene' : 'paragraph';
     sceneBreak = false;
+    blockInfo.push({ text: raw, scene: breakBefore === 'scene', words: countWordsIn(raw) });
     splitText(t).forEach((part, i) => segments.push({ text: part, block: b, words: countWordsIn(part), breakBefore: i ? 'none' : breakBefore }));
     return b;
   };
@@ -224,8 +288,10 @@ export function segmentChapter(html: string): SegmentedChapter {
 
   dropUnsafe(doc);
   walk(doc);
+  const notes = frontMatterBlocks(blockInfo);
   return {
     segments,
+    frontMatter: notes ? segments.filter((x) => x.block < notes).length : 0,
     html: render(doc.children, { encodeEntities: 'utf8' }),
     words: segments.reduce((n, s) => n + s.words, 0),
     blocks: block,

@@ -212,6 +212,12 @@ export default function ListenScreen() {
         <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border }]}>
           <ToggleRow label="Continue to the next chapter" value={reader.ttsContinue} onChange={(v) => updateReader({ ttsContinue: v })} c={c} />
           <ToggleRow label="Announce chapter titles" value={reader.ttsReadTitles} onChange={(v) => updateReader({ ttsReadTitles: v })} c={c} />
+          <ToggleRow
+            label="Skip author's notes at the start"
+            value={reader.ttsSkipNotes !== false}
+            onChange={(v) => updateReader({ ttsSkipNotes: v })}
+            c={c}
+          />
           <Pressable style={styles.row} onPress={pickPauses} accessibilityRole="button">
             <T size={15} style={{ flex: 1 }}>
               Pauses

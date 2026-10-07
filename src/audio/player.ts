@@ -88,8 +88,10 @@ export function chapterLabel(story: PlayerStory | undefined, chapter: number): s
 /** Remaining seconds in the chapter at the current speed. */
 export function secondsLeft(s: PlayerState): number {
   const rate = settingsStore.get().reader.ttsRate || 1;
+  const skip = skipping(s);
+  const fm = skip && s.index < skip.from ? skip : undefined;
   let words = 0;
-  for (let i = s.index; i < s.segments.length; i++) words += s.segments[i].words;
+  for (let i = s.index; i < s.segments.length; i++) if (!fm || i < fm.from || i >= fm.to) words += s.segments[i].words;
   return Math.round((words / (BASE_WPM * rate)) * 60);
 }
 
@@ -167,18 +169,23 @@ const PAUSES = {
   long: { paragraph: 650, scene: 1800, title: 1200 },
 } as const;
 
-export function pauseBefore(segments: Segment[], k: number, mode: keyof typeof PAUSES = settingsStore.get().reader.ttsPauses ?? 'natural'): number {
-  if (k <= 0 || k >= segments.length) return 0;
+export function pauseBefore(
+  segments: Segment[],
+  k: number,
+  mode: keyof typeof PAUSES = settingsStore.get().reader.ttsPauses ?? 'natural',
+  prev = k - 1,
+): number {
+  if (k <= 0 || k >= segments.length || prev < 0) return 0;
   const p = PAUSES[mode] ?? PAUSES.natural;
-  if (segments[k - 1].block === -1) return p.title;
+  if (segments[prev].block === -1) return p.title;
   const b = segments[k].breakBefore;
   return b === 'scene' ? p.scene : b === 'paragraph' ? p.paragraph : 0;
 }
 
 /** Segment index allowed to start without its pause (where playback was started or resumed). */
 let released = -1;
-/** A segment waiting for the previous one to finish before its pause starts. */
-let held: { k: number; ms: number } | null = null;
+/** A segment waiting for the one before it (`after`) to finish before its pause starts. */
+let held: { k: number; ms: number; after: number } | null = null;
 let pauseTimer: ReturnType<typeof setTimeout> | undefined;
 
 function recordProgress(force = false) {
@@ -253,14 +260,15 @@ async function speakFrom(index: number, opts: { defaultVoice?: boolean } = {}) {
 function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string }) {
   const s = playerStore.get();
   while (g === gen && queued < s.index + LOOKAHEAD && queued < s.segments.length - 1) {
-    const next = queued + 1;
-    const ms = next === released ? 0 : pauseBefore(s.segments, next);
+    const prev = queued;
+    const next = nextSegment(s, prev);
+    const ms = next === released ? 0 : pauseBefore(s.segments, next, undefined, prev);
     if (ms > 0) {
       // Speak it only after the previous segment has finished plus the pause (see onDone).
-      held = { k: next, ms };
+      held = { k: next, ms, after: prev };
       break;
     }
-    const k = ++queued;
+    const k = (queued = next);
     const seg = s.segments[k];
     Speech.speak(seg.text, {
       rate: opts.rate,
@@ -284,7 +292,7 @@ function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string 
           chapterFinished(g);
           return;
         }
-        if (held && held.k === k + 1) {
+        if (held && held.after === k) {
           const { k: next, ms } = held;
           held = null;
           clearTimeout(pauseTimer);
@@ -334,7 +342,7 @@ async function chapterFinished(g: number) {
  * Where to start in a chapter: a segment index, the first segment of a reader block, a body
  * segment (saved listening position), or a fraction of the chapter's words (reading progress).
  */
-type StartPoint = number | { block: number } | { body: number } | { progress: number };
+type StartPoint = number | { block: number; exact?: boolean } | { body: number } | { progress: number };
 
 /** The last requested start, so "Try again" after a failed load resumes at the same place. */
 let lastRequest: { storyId: number; chapter: number; start: StartPoint } | undefined;
@@ -357,6 +365,27 @@ function resolveStart(segments: Segment[], start: StartPoint): number {
   return segments.length - 1;
 }
 
+/** The chapter's front matter, when the listener wants it skipped. */
+function skipping(s: Pick<PlayerState, 'frontMatter'>) {
+  return settingsStore.get().reader.ttsSkipNotes !== false ? s.frontMatter : undefined;
+}
+
+/**
+ * The segment after `k` in reading order: the author's front matter is passed over when reading
+ * flows into it from the start of the chapter (the spoken title), but not when the listener
+ * started in it on purpose (`released`).
+ */
+function nextSegment(s: PlayerState, k: number): number {
+  const fm = skipping(s);
+  return fm && k + 1 === fm.from && fm.from !== released && fm.to < s.segments.length ? fm.to : k + 1;
+}
+
+/** Where to start when a request lands on the first front-matter segment (unless it's exact). */
+function skipFrontMatter(s: Pick<PlayerState, 'frontMatter' | 'segments'>, index: number, exact = false): number {
+  const fm = skipping(s);
+  return fm && !exact && index === fm.from && fm.to < s.segments.length ? fm.to : index;
+}
+
 async function loadChapter(chapter: number, startIndex: StartPoint, opts: { autoplay: boolean }) {
   const s = playerStore.get();
   if (!s.story) return;
@@ -365,7 +394,7 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
   lastRequest = { storyId: story.id, chapter, start: startIndex };
   await stopSpeech();
   if (token !== loadToken) return; // paused or stopped meanwhile
-  set({ status: 'loading', chapter, segments: [], index: 0, chapterWords: 0, error: undefined });
+  set({ status: 'loading', chapter, segments: [], index: 0, chapterWords: 0, error: undefined, frontMatter: undefined });
   // Start the background-audio loop right away, so locking the phone while the chapter downloads
   // doesn't suspend the app before speech begins.
   if (opts.autoplay) audioSession.setPlaying(true);
@@ -385,10 +414,13 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
     if (settingsStore.get().reader.ttsReadTitles !== false && nextStory.chapters > 1) {
       segments.unshift({ text: chapterLabel(nextStory, chapter) + '.', block: -1, words: 3 });
     }
-    const index = Math.max(0, Math.min(segments.length - 1, resolveStart(segments, startIndex)));
+    const off = titleOffset(segments);
+    const frontMatter = seg.frontMatter > 0 ? { from: off, to: off + seg.frontMatter } : undefined;
+    const exact = typeof startIndex === 'object' && 'block' in startIndex && !!startIndex.exact;
+    const index = skipFrontMatter({ frontMatter, segments }, Math.max(0, Math.min(segments.length - 1, resolveStart(segments, startIndex))), exact);
     // Don't write reading progress until listening has actually moved on from the start.
     lastRecorded = Date.now();
-    set({ story: nextStory, chapter, segments, index, chapterWords: seg.words, offline, status: opts.autoplay ? 'playing' : 'paused' });
+    set({ story: nextStory, chapter, segments, index, chapterWords: seg.words, offline, frontMatter, status: opts.autoplay ? 'playing' : 'paused' });
     savePosition(story.id, chapter, Math.max(0, index - titleOffset(segments)));
     if (chapter < nextStory.chapters) prefetch(story.id, chapter + 1);
     if (opts.autoplay) await speakFrom(index);
@@ -456,6 +488,8 @@ export interface StartOptions {
   index?: number;
   /** …or at the first segment of this reader block (data-tts). */
   block?: number;
+  /** Start exactly there, even in the author's notes at the top (a tapped paragraph). */
+  exact?: boolean;
   autoplay?: boolean;
 }
 
@@ -472,7 +506,7 @@ export async function start(story: StoryDetail | LibraryStory | PlayerStory, opt
     let index = opts.index ?? cur.index;
     if (opts.block != null) {
       const found = cur.segments.findIndex((x) => x.block >= opts.block!);
-      if (found >= 0) index = found;
+      if (found >= 0) index = skipFrontMatter(cur, found, opts.exact);
     }
     if (opts.autoplay === false) {
       set({ index });
@@ -489,7 +523,7 @@ export async function start(story: StoryDetail | LibraryStory | PlayerStory, opt
   const readNewer = readP != null && readP > 0.01 && readP < 0.97 && (!listened || (lib?.lastReadAt ?? 0) > listened.at + 90_000);
   const startAt: StartPoint =
     opts.block != null
-      ? { block: opts.block }
+      ? { block: opts.block, exact: opts.exact }
       : opts.index != null
         ? opts.index
         : readNewer
