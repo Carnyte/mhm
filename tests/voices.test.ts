@@ -1,5 +1,5 @@
 import { LANGUAGES } from '../src/ffn/constants';
-import { bestVoice, isAddOnVoice, languageCode, listVoices, voiceBadge, voiceTier } from '../src/audio/voices';
+import { bestVoice, isAddOnVoice, langBase, languageCode, listVoices, voiceBadge, voiceFor, voiceTier } from '../src/audio/voices';
 
 const mockVoices: { identifier: string; name: string; language: string; quality: string }[] = [];
 jest.mock('expo-speech', () => ({ getAvailableVoicesAsync: async () => mockVoices }));
@@ -54,5 +54,15 @@ describe('add-on voices', () => {
     await listVoices(true);
     expect((await bestVoice('en-US'))?.id).toBe('com.apple.voice.compact.en-US.Samantha');
     expect((await bestVoice('is'))?.id).toBe('dev.example.tts.mbm');
+  });
+
+  it('treats Norwegian "no" / "nn" voices as the "nb" FanFiction.net uses', async () => {
+    expect(langBase('no-NO')).toBe('nb');
+    expect(langBase('nb-NO')).toBe('nb');
+    const id = 'dev.example.tts.no_NO-talesyntese';
+    mockVoices.splice(0, mockVoices.length, { identifier: id, name: 'Talesyntese', language: 'no-NO', quality: 'Enhanced' });
+    await listVoices(true);
+    expect((await voiceFor('nb', { ttsVoices: { nb: id } })).voice?.id).toBe(id);
+    expect((await bestVoice('nb'))?.id).toBe(id);
   });
 });

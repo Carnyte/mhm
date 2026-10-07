@@ -59,6 +59,16 @@ function sample(v: VoiceInfo) {
 
 const MAX_ADDON_VOICES = 40;
 
+/** Voices of one model differ only by numbers in their ids ("…libritts_r…<+>3922"). */
+const addOnModel = (id: string) => id.replace(/\d+/g, '#');
+
+// Piper names a voice after its dataset only ("Lessac"), so the low / medium / high models of one
+// voice share a name; the quality is the second field of its id ("…lessac>0<medium>0<22050>…").
+export function addOnQuality(id: string): string {
+  const q = id.split('>0<')[1];
+  return q && /^[a-z_]+$/i.test(q) ? q.replace(/_/g, '-') : '';
+}
+
 /** Voice picker for one language (a story's language, or the device's). */
 export async function pickVoice(lang?: string) {
   const voices = await listVoices(true);
@@ -73,8 +83,12 @@ export async function pickVoice(lang?: string) {
   const chosenId = reader.ttsVoices?.[base] ?? (current.voice && current.voice.id === reader.ttsVoice ? reader.ttsVoice : '');
   const usable = voices.filter((v) => v.tier !== 'novelty');
   // Voices added by another app (Piper, …) first: the user installed them on purpose. One model
-  // can add hundreds of numbered speakers, so only the first few are listed (plus the chosen one).
+  // can add hundreds of numbered speakers, so smaller models come first and only the first few
+  // are listed (plus the chosen one), keeping single voices like Lessac in reach.
   const addOns = usable.filter((v) => langBase(v.language) === base && isAddOnVoice(v.id));
+  const modelSize = new Map<string, number>();
+  for (const v of addOns) modelSize.set(addOnModel(v.id), (modelSize.get(addOnModel(v.id)) ?? 0) + 1);
+  addOns.sort((a, b) => modelSize.get(addOnModel(a.id))! - modelSize.get(addOnModel(b.id))!);
   const shownAddOns = addOns.filter((v, i) => i < MAX_ADDON_VOICES || v.id === chosenId);
   const apple = usable.filter((v) => langBase(v.language) === base && !isAddOnVoice(v.id));
   const others = usable.filter((v) => langBase(v.language) !== base && !isAddOnVoice(v.id));
@@ -84,7 +98,11 @@ export async function pickVoice(lang?: string) {
     shownAddOns.length < addOns.length ? `${title} · ${shownAddOns.length} of ${addOns.length} add-on voices` : title,
     [
       { value: '', label: 'Automatic', sub: auto ? `Best installed: ${auto.name}${voiceBadge(auto) ? ` (${voiceBadge(auto)})` : ''}` : 'System default' },
-      ...list.map((v) => ({ value: v.id, label: `${v.name} · ${v.language}`, sub: voiceBadge(v) || undefined })),
+      ...list.map((v) => ({
+        value: v.id,
+        label: `${v.name} · ${v.language}`,
+        sub: [voiceBadge(v), isAddOnVoice(v.id) ? addOnQuality(v.id) : ''].filter(Boolean).join(' · ') || undefined,
+      })),
     ],
     chosenId ?? '',
     (id) => {

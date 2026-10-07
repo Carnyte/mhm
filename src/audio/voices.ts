@@ -90,9 +90,9 @@ export async function bestVoice(lang?: string): Promise<VoiceInfo | undefined> {
   const voices = await listVoices();
   const locale = deviceLocale();
   const want = (lang || locale).toLowerCase();
-  const base = want.split('-')[0];
+  const base = langBase(want);
   const region = (want.includes('-') ? want : locale.toLowerCase()).split('-')[1];
-  const all = voices.filter((v) => v.tier !== 'novelty' && v.language.toLowerCase().split('-')[0] === base);
+  const all = voices.filter((v) => v.tier !== 'novelty' && langBase(v.language) === base);
   const apple = all.filter((v) => !isAddOnVoice(v.id));
   const candidates = apple.length ? apple : all;
   if (!candidates.length) return undefined;
@@ -101,8 +101,12 @@ export async function bestVoice(lang?: string): Promise<VoiceInfo | undefined> {
   return [...candidates].sort((a, b) => score(b) - score(a))[0];
 }
 
+/** Codes that name the same language: Piper reports Norwegian as "no-NO", Apple and FFN use "nb". */
+const LANG_ALIASES: Record<string, string> = { no: 'nb', nn: 'nb', iw: 'he', in: 'id' };
+
 export function langBase(tag: string | undefined): string {
-  return (tag || deviceLocale()).toLowerCase().split(/[-_]/)[0];
+  const base = (tag || deviceLocale()).toLowerCase().split(/[-_]/)[0];
+  return LANG_ALIASES[base] ?? base;
 }
 
 /**
