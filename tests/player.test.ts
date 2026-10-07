@@ -18,7 +18,7 @@ jest.mock('expo-speech', () => ({
       { identifier: 'com.apple.voice.compact.en-US.Samantha', name: 'Samantha', language: 'en-US', quality: 'Default' },
       { identifier: 'com.apple.voice.premium.en-GB.Serena', name: 'Serena', language: 'en-GB', quality: 'Default' },
       { identifier: 'com.apple.voice.enhanced.es-ES.Monica', name: 'Mónica', language: 'es-ES', quality: 'Enhanced' },
-      { identifier: 'org.example.neural.en-GB.alba', name: 'Alba', language: 'en-GB', quality: 'Default' },
+      { identifier: 'org.example.neural.en-GB.alba', name: 'Alba', language: 'en-GB', quality: 'Enhanced' },
     ]),
 }));
 jest.mock('expo-file-system', () => ({ File: class {}, Paths: {} }));
@@ -206,6 +206,16 @@ describe('audiobook player', () => {
     await player.start(STORY, { chapter: 1 });
     await flush();
     expect(spoken[0].opts.voice).toBe('com.apple.voice.premium.en-GB.Serena');
+  });
+
+  it('says so when a chosen add-on voice has dropped out of the list', async () => {
+    const { toast } = jest.requireMock('../src/components/Sheet') as { toast: jest.Mock };
+    toast.mockClear();
+    updateReader({ ttsVoices: { en: 'org.example.neural.en-GB.gone' } });
+    await player.start(STORY, { chapter: 1 });
+    await flush();
+    expect(spoken[0].opts.voice).toBe('com.apple.voice.premium.en-GB.Serena');
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('add-on voice isn’t available'), 'info');
   });
 
   it('times out with the sleep timer and resets after stop', async () => {

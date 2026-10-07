@@ -17,7 +17,7 @@ import * as audioSession from './session';
 import { segmentChapter, type Segment } from './segments';
 import { IDLE, playerStore, type PlayerState, type PlayerStory } from './state';
 import { toast } from '../components/Sheet';
-import { invalidateVoices, isAddOnVoice, languageCode, voiceFor } from './voices';
+import { invalidateVoices, isAddOnVoice, langBase, languageCode, voiceFor } from './voices';
 
 export {
   playerStore,
@@ -99,16 +99,25 @@ export function playerLanguage(story = playerStore.get().story): string | undefi
 }
 
 const warnedLanguages = new Set<string>();
+const warnedAddOns = new Set<string>();
 
 // The voice chosen for the story's language, or the best installed one (see voiceFor).
 async function resolveVoice(): Promise<string | undefined> {
   const story = playerStore.get().story;
   const lang = playerLanguage(story);
   const unknown = !!story?.language && !lang;
-  const { voice, missing } = await voiceFor(lang ?? '', settingsStore.get().reader);
+  const reader = settingsStore.get().reader;
+  const { voice, missing } = await voiceFor(lang ?? '', reader);
   if ((missing || unknown) && story?.language && !warnedLanguages.has(story.language)) {
     warnedLanguages.add(story.language);
     toast(`No ${story.language} voice is installed, so the default voice is reading. Add one in iOS Settings → Accessibility → Read & Speak → Voices.`, 'info');
+  }
+  // Another app's voice (Piper, …) can drop out of iOS's list, e.g. after a restart, until that
+  // app is opened again.
+  const chosen = reader.ttsVoices?.[langBase(lang ?? '')];
+  if (!unknown && chosen && isAddOnVoice(chosen) && voice?.id !== chosen && !warnedAddOns.has(chosen)) {
+    warnedAddOns.add(chosen);
+    toast('Your add-on voice isn’t available right now, so another voice is reading. Open the app it came from (e.g. Piper) once, then pause and play here to switch back.', 'info');
   }
   return unknown ? undefined : voice?.id;
 }

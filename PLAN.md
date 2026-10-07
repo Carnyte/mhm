@@ -182,6 +182,7 @@ your session · ⏳ not built (reason given).
   - ✅ Carries on into the next chapter without the reader open (works offline for downloaded stories; the next chapter is prefetched)
   - ✅ Mini player across the app, plus a full player screen: cover, current passage, position slider, previous / next paragraph and chapter, chapter picker, time left in chapter
   - ✅ Speed (0.5×–2×), pitch, voice per story language (Premium / Enhanced voices labelled and preferred automatically; a "no voice for this language" notice), voice preview
+  - ✅ Voices other apps add to iOS (e.g. the free Piper – Neural TTS app) listed first and marked "Add-on", with a notice when one drops out (Piper voices can vanish after a restart until Piper is opened)
   - ✅ Sleep timer (5 min – 2 h, or end of chapter)
   - ✅ Announce chapter titles (toggle), skips decorative separators like "* * *"
   - ✅ Natural pauses: a beat between paragraphs, longer after chapter titles and at scene breaks (Natural / Long / Off), plus speech-only clean-up of ellipses, "?!?!", *emphasis* markers and dashes

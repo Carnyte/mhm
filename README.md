@@ -34,7 +34,9 @@ headphones button in the reader. It keeps going with the screen locked, carries 
 next chapter, has a sleep timer, and shows on the lock screen and in Control Center. Apple's free
 **Premium** and **Enhanced** voices sound much more natural than the default ones. Download one
 under iOS Settings → Accessibility → Read & Speak → Voices, and the app picks it automatically.
-The code is in `src/audio/`.
+Voices that other apps add to iOS (for example the free, offline **Piper – Neural TTS** app) show
+up at the top of the player's voice list, marked **Add-on**. It pauses between paragraphs, and
+longer after chapter titles and at scene breaks. The code is in `src/audio/`.
 
 ## Install it on your phone
 
@@ -71,7 +73,7 @@ Checks run while building this (October 2026):
 
 | Check | Result |
 |---|---|
-| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session | 97 / 97 pass |
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session | 100 / 100 pass |
 | `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |

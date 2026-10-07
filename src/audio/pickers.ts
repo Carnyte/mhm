@@ -57,6 +57,8 @@ function sample(v: VoiceInfo) {
   });
 }
 
+const MAX_ADDON_VOICES = 40;
+
 /** Voice picker for one language (a story's language, or the device's). */
 export async function pickVoice(lang?: string) {
   const voices = await listVoices(true);
@@ -68,15 +70,18 @@ export async function pickVoice(lang?: string) {
   const reader = settingsStore.get().reader;
   const auto = await bestVoice(base);
   const current = await voiceFor(base, reader);
-  // Voices added by another app (Piper, …) first: the user installed them on purpose.
-  const same = voices
-    .filter((v) => langBase(v.language) === base && v.tier !== 'novelty')
-    .sort((a, b) => Number(isAddOnVoice(b.id)) - Number(isAddOnVoice(a.id)));
-  const others = voices.filter((v) => langBase(v.language) !== base && v.tier !== 'novelty');
-  const list = [...same, ...others].slice(0, 120);
   const chosenId = reader.ttsVoices?.[base] ?? (current.voice && current.voice.id === reader.ttsVoice ? reader.ttsVoice : '');
+  const usable = voices.filter((v) => v.tier !== 'novelty');
+  // Voices added by another app (Piper, …) first: the user installed them on purpose. One model
+  // can add hundreds of numbered speakers, so only the first few are listed (plus the chosen one).
+  const addOns = usable.filter((v) => langBase(v.language) === base && isAddOnVoice(v.id));
+  const shownAddOns = addOns.filter((v, i) => i < MAX_ADDON_VOICES || v.id === chosenId);
+  const apple = usable.filter((v) => langBase(v.language) === base && !isAddOnVoice(v.id));
+  const others = usable.filter((v) => langBase(v.language) !== base && !isAddOnVoice(v.id));
+  const list = [...shownAddOns, ...apple, ...others].slice(0, 120 + shownAddOns.length);
+  const title = !addOns.length && !apple.length ? `Voice (no ${base.toUpperCase()} voice installed)` : 'Voice';
   pickOption(
-    same.length ? 'Voice' : `Voice (no ${base.toUpperCase()} voice installed)`,
+    shownAddOns.length < addOns.length ? `${title} · ${shownAddOns.length} of ${addOns.length} add-on voices` : title,
     [
       { value: '', label: 'Automatic', sub: auto ? `Best installed: ${auto.name}${voiceBadge(auto) ? ` (${voiceBadge(auto)})` : ''}` : 'System default' },
       ...list.map((v) => ({ value: v.id, label: `${v.name} · ${v.language}`, sub: voiceBadge(v) || undefined })),

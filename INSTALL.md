@@ -383,6 +383,10 @@ TestFlight builds **expire after 90 days**.
   **Premium** or **Enhanced** voice under iOS **Settings → Accessibility → Read & Speak → Voices
   → English** (or the story's language). FicShelf uses the best installed voice automatically,
   or pick one in the player.
+- **Other free voices:** apps that add voices to iOS work too. Install **Piper – Neural TTS**
+  (free, App Store), open it, download a **medium** voice (for example Lessac or LJSpeech;
+  "high" voices are slow), then pick it in FicShelf's player, where it's marked **Add-on**. If
+  it goes missing after restarting the phone, open Piper once and it comes back.
 - Allow notifications if you want new-chapter alerts.
 
 ---

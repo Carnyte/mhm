@@ -19,21 +19,23 @@ const NOVELTY = /speech\.synthesis\.voice|eloquence|\b(Albert|Bad News|Bahh|Bell
 export function voiceTier(v: { identifier: string; name: string; quality?: string }): VoiceTier {
   if (/\.premium\./i.test(v.identifier)) return 'premium';
   if (/\.enhanced\./i.test(v.identifier) || v.quality === 'Enhanced') return 'enhanced';
-  if (NOVELTY.test(v.identifier) || NOVELTY.test(v.name)) return 'novelty';
+  // Only Apple ships the novelty voices (another app's speaker can be called "Albert").
+  if (!isAddOnVoice(v.identifier) && (NOVELTY.test(v.identifier) || NOVELTY.test(v.name))) return 'novelty';
   return 'standard';
 }
 
 /**
- * A voice added by another app (iOS 17+ speech synthesis extensions, e.g. the free Piper app),
- * as opposed to one of Apple's own (com.apple.voice.…, com.apple.ttsbundle.…, …).
+ * A voice added by another app through a speech synthesis extension (e.g. the free Piper app),
+ * as opposed to one of Apple's own (com.apple.voice.…, com.apple.ttsbundle.…, …). iOS reports
+ * these as Enhanced, so they're told apart by identifier.
  */
 export function isAddOnVoice(id: string | undefined): boolean {
   return !!id && !id.startsWith('com.apple.');
 }
 
-/** Short label for a voice's quality, or "Add-on" for another app's voice. */
+/** "Add-on" for another app's voice, else Apple's quality label ("Premium", "Enhanced", ""). */
 export function voiceBadge(v: VoiceInfo): string {
-  return TIER_LABEL[v.tier] || (isAddOnVoice(v.id) ? 'Add-on' : '');
+  return isAddOnVoice(v.id) ? 'Add-on' : TIER_LABEL[v.tier];
 }
 
 const TIER_SCORE: Record<VoiceTier, number> = { premium: 3, enhanced: 2, standard: 1, novelty: 0 };
@@ -81,6 +83,8 @@ function deviceLocale(): string {
 /**
  * Best installed voice for a BCP-47 tag ("en-US") or bare language ("en"): highest quality
  * first, then the device's region, so an English story on a UK phone gets a British voice.
+ * Add-on voices are only used when chosen, or when no Apple voice speaks the language: they
+ * can be slow on older phones, and one model can add hundreds of numbered speakers.
  */
 export async function bestVoice(lang?: string): Promise<VoiceInfo | undefined> {
   const voices = await listVoices();
@@ -88,7 +92,9 @@ export async function bestVoice(lang?: string): Promise<VoiceInfo | undefined> {
   const want = (lang || locale).toLowerCase();
   const base = want.split('-')[0];
   const region = (want.includes('-') ? want : locale.toLowerCase()).split('-')[1];
-  const candidates = voices.filter((v) => v.tier !== 'novelty' && v.language.toLowerCase().split('-')[0] === base);
+  const all = voices.filter((v) => v.tier !== 'novelty' && v.language.toLowerCase().split('-')[0] === base);
+  const apple = all.filter((v) => !isAddOnVoice(v.id));
+  const candidates = apple.length ? apple : all;
   if (!candidates.length) return undefined;
   const score = (v: VoiceInfo) =>
     TIER_SCORE[v.tier] * 10 + (region && v.language.toLowerCase().endsWith('-' + region) ? 1 : 0);
