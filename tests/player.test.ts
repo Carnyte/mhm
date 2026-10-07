@@ -385,6 +385,34 @@ describe('audiobook player: review fixes', () => {
       expect(spoken.map((x) => x.text)).toEqual(['Summary: a door.', 'Disclaimer: not mine.']);
     });
 
+    it('keeps going when skipping is switched off during the title (review)', async () => {
+      jest.useFakeTimers();
+      try {
+        updateReader({ ttsReadTitles: true, ttsPauses: 'natural' });
+        await player.start(STORY, { chapter: 1, index: 0 });
+        await flush();
+        lastOf('Chapter 1: Arrival.').opts.onStart!();
+        updateReader({ ttsSkipNotes: false });
+        lastOf('Chapter 1: Arrival.').opts.onDone!();
+        jest.advanceTimersByTime(5000);
+        await flush();
+        expect(spoken.map((x) => x.text)).toEqual(['Chapter 1: Arrival.', 'Summary: a door.']);
+      } finally {
+        updateReader({ ttsPauses: 'off' });
+        jest.useRealTimers();
+      }
+    });
+
+    it('goes from the title to the story with Next paragraph (review)', async () => {
+      updateReader({ ttsReadTitles: true });
+      await player.start(STORY, { chapter: 1, index: 0, autoplay: false });
+      await flush();
+      await player.skip(1);
+      expect(player.playerStore.get().index).toBe(3);
+      await player.skip(-1);
+      expect(player.playerStore.get().index).toBe(2); // back into the notes on purpose
+    });
+
     it('reads them when skipping is off', async () => {
       updateReader({ ttsSkipNotes: false });
       await player.start(STORY, { chapter: 1, index: 0 });

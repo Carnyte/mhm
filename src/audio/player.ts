@@ -294,13 +294,15 @@ function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string 
           return;
         }
         if (held && held.after === k) {
-          const { k: next, ms } = held;
+          const { ms } = held;
           held = null;
           clearTimeout(pauseTimer);
           // The background-audio loop keeps the app running, so this timer fires when locked too.
           pauseTimer = setTimeout(() => {
             if (g !== gen) return;
-            released = next;
+            // Release whatever follows `k` now: "Skip author's notes" may have been switched
+            // during the pause, and a re-decided segment must not be held for a second pause.
+            released = nextSegment(playerStore.get(), k);
             enqueue(g, opts);
           }, ms);
         }
@@ -581,7 +583,8 @@ export async function skip(delta: number) {
   const s = playerStore.get();
   if (!s.story || !s.segments.length) return;
   if (s.status === 'ended') set({ status: 'paused' }); // moving back after the end: play resumes here
-  const target = s.index + delta;
+  // Forward from the chapter title passes over the author's notes, as playing through would.
+  const target = delta > 0 ? skipFrontMatter(s, s.index + delta) : s.index + delta;
   const playing = s.status === 'playing';
   if (target >= s.segments.length) {
     if (s.chapter < s.story.chapters) await loadChapter(s.chapter + 1, 0, { autoplay: playing });

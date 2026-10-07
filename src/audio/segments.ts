@@ -57,7 +57,8 @@ function hasBlockChild(el: Element): boolean {
 }
 
 function nodeText(n: AnyNode): string {
-  if (isText(n)) return n.data;
+  // Newlines in the HTML source aren't line breaks; only <br> and blocks are.
+  if (isText(n)) return n.data.replace(/\s+/g, ' ');
   if (!isTag(n) || SKIP_TAGS.has(n.name)) return '';
   if (n.name === 'br') return '\n';
   const inner = n.children.map(nodeText).join('');
@@ -79,61 +80,93 @@ export function isSpeakable(s: string): boolean {
     const only = s.replace(/[^A-Za-z]/g, '').toLowerCase();
     if (/^([a-z])\1*$/.test(only)) return false;
   }
+  // Letters-only dividers, used where the site strips symbols: "xXx", "oOoOo", "Line Break". The
+  // case has to alternate, so "Zzz" or "Ooo" still count as words.
+  if (s.length <= 24 && !/["“”'‘’.!?…]/.test(s)) {
+    const only = s.replace(/[^A-Za-z]/g, '');
+    if (/^([a-z])\1*$/i.test(only) && /[a-z][A-Z]/.test(only)) return false;
+    if (/^[^A-Za-z]*(?:line|page|scene)\s*-?\s*break[^A-Za-z]*$/i.test(s)) return false;
+  }
   return true;
 }
 
-// A block that opens with one of these is the author talking, not the story. The first group can
-// be followed by anything ("Disclaimer I don't own…", "Rated T for language"); the second needs a
-// colon or dash and the rest a colon, so "Notes were passed around" or "“Thanks—” she said" in
-// the story don't count.
+/** A wordless reply or beat ("“…”", "?!", "..."): dialogue, not a scene separator like "* * *". */
+const WORDLESS_REPLY = /^["“”'‘’«»(\[]*(?:[.…]+[!?‽]*|[!?‽]+[.…]*)["“”'‘’»)\]]*$/;
+
+// A line that opens with one of these is the author talking, not the story. The first group may
+// run straight into the note ("Disclaimer I don't own…", "Rated T for language"); the second needs
+// a colon, or a dash and a space; the rest a colon. Quoted text is dialogue, never a label, so
+// "“Thanks—” she said" or "“Rating: ten out of ten,” Sirius said" in the story don't count.
 const NOTE_START = new RegExp(
-  '^[\\s\\[(*_~"“\'‘-]*(?:' +
-    "a\\s*/\\s*n\\b|a\\.\\s?n\\.|author(?:['’]?s['’]?)?\\s+notes?\\b|disclaimers?\\b|rated\\s+(?:k\\+?|t|m|ma)\\b|" +
-    '(?:summary|chapter summary|warnings?|content warnings?|trigger warnings?|pairings?|rating)\\s*[:\\-–—]|' +
+  '^[\\s\\[(<{=*_~-]*(?:' +
+    "(author(?:['’]?s['’]?)?\\s+notes?|disclaimers?)\\b|a\\s*/\\s*n\\b|a\\.\\s?n(?:\\.|\\s*[:\\-–—])|rated\\s+(?:k\\+?|t|m|ma)\\b|" +
+    '(?:summary|chapter summary|warnings?|content warnings?|trigger warnings?|pairings?|rating)\\s*(?::|[\\-–—]\\s)|' +
     '(?:an|n/a|notes?|tw|cw|rated|ships?|beta(?:\'?d)?(?: by| reader)?|edited|updated|thanks|dedicat\\w*|word ?count|words|genres?|' +
-    'characters|fandoms?|tags|spoilers?|timeline|setting|recap|previously on[^:.!?]{0,40})\\s*:' +
+    'characters|fandoms?|tags|spoilers?|timeline|setting|recap|reviews?|review replies|(?:previously|last time)(?: on[^:.!?]{0,40})?)\\s*:' +
     ')',
   'i',
 );
-/** "Chapter 3: The Lake", "Ch. 12", "Prologue": where the story starts after the notes. */
+/** "AN - thanks": capitals and a space after the dash, so "An— an idea" in the story doesn't count. */
+const AN_DASH = /^[\s\[(<{=*_~-]*AN\s*[-–—]\s/;
+
+export function isNoteLine(text: string): boolean {
+  if (AN_DASH.test(text)) return true;
+  const m = NOTE_START.exec(text);
+  // A bare "Author's notes" / "Disclaimers" running on in lower case is a sentence ("Disclaimers were…").
+  return !!m && !(m[1] && /^\s+(?!i\b)[a-z]/.test(text.slice(m[0].length)));
+}
+
+/** "Chapter 3: The Lake", "Chapter Three", "Ch. 12", "Prologue": where the story starts after the notes. */
 const CHAPTER_HEADING =
-  /^[\s*_~"“-]*(?:chapter\s*\d+|chapter\s+(?:[ivxlc]+|[a-z]+(?:-[a-z]+)?)\b|ch\.?\s*\d+|prologue\b|epilogue\b|interlude\b)/i;
+  /^[\s*_~"“-]*(?:chapter\s*\d+|chapter\s+(?:[ivxlc]+|[a-z]+(?:-[a-z]+)?)(?=\s*(?:$|[:.\-–—]))|ch\.?\s*\d+|prologue\b|epilogue\b|interlude\b)/i;
 
 interface BlockInfo {
   text: string;
   /** A scene separator ("* * *", <hr>) comes right before this block. */
   scene: boolean;
   words: number;
+  /** The block's lines (split at <br>), when it has more than one. */
+  lines?: string[];
+}
+
+/** Every line is the author's: "A/N: hi!<br>Harry walked in." in one paragraph holds story too. */
+function isNoteBlock(b: BlockInfo): boolean {
+  return (b.lines ?? [b.text]).every(isNoteLine);
 }
 
 /**
  * Number of blocks at the start of a chapter that are the author's front matter. It ends at the
- * first scene separator or chapter heading, when one comes soon after a note ("Summary:",
- * "Disclaimer", "A/N:") near the top; without one only the labelled paragraphs count. Never the
- * whole chapter (an author's-note-only chapter is read as is).
+ * first scene separator or chapter heading after a note ("Summary:", "Disclaimer", "A/N:") near
+ * the top, when at most a short sign-off ("Enjoy!") comes between them; otherwise only the
+ * labelled paragraphs at the very top count. Never the whole chapter (an author's-note-only
+ * chapter is read as is). Errs towards reading a note rather than skipping story.
  */
 export function frontMatterBlocks(blocks: BlockInfo[]): number {
   const WINDOW = 15;
+  /** Unlabelled paragraphs allowed between the last note and the separator. */
+  const MAX_TAIL = 2;
   const total = blocks.reduce((n, b) => n + b.words, 0);
   const maxWords = Math.max(400, total * 0.4);
   let notes = 0;
-  let firstNote = -1;
+  let tail = 0; // unlabelled blocks since the last note
   let run = -1; // end of the run of labelled blocks at the very top
   let words = 0;
   for (let i = 0; i < Math.min(blocks.length, WINDOW); i++) {
     const b = blocks[i];
     if (i > 0 && notes && (b.scene || (b.text.length <= 100 && CHAPTER_HEADING.test(b.text)))) {
-      return firstNote <= 2 && words <= maxWords ? i : run < 0 ? i : run;
+      return words <= maxWords && tail <= MAX_TAIL ? i : run < 0 ? i : run;
     }
-    const note = NOTE_START.test(b.text);
-    if (note) {
+    if (isNoteBlock(b)) {
       notes++;
-      if (firstNote < 0) firstNote = i;
-    } else if (run < 0) {
-      run = i;
+      tail = 0;
+    } else {
+      // Before the first note only a title line may come: a sentence there means the story has begun.
+      if (!notes && (b.text.length > 60 || /[.!?…"”’]$/.test(b.text)) && !CHAPTER_HEADING.test(b.text)) return 0;
+      tail++;
+      if (run < 0) run = i;
     }
     words += b.words;
-    if (!notes && i >= 2) break; // no note near the top
+    if (!notes && i >= 2) return 0; // no note near the top
   }
   if (run < 0) return notes && notes < blocks.length ? notes : 0;
   return run;
@@ -208,13 +241,14 @@ export function segmentChapter(html: string): SegmentedChapter {
 
   const addBlock = (text: string): number | null => {
     const raw = clean(text);
-    if (raw && !isSpeakable(raw)) sceneBreak = true;
+    if (raw && !isSpeakable(raw) && !WORDLESS_REPLY.test(raw)) sceneBreak = true;
     const t = raw && isSpeakable(raw) ? speechText(raw) : '';
     if (!t) return null;
     const b = block++;
     const breakBefore: SegmentBreak = !segments.length ? 'none' : sceneBreak ? 'scene' : 'paragraph';
     sceneBreak = false;
-    blockInfo.push({ text: raw, scene: breakBefore === 'scene', words: countWordsIn(raw) });
+    const lines = text.split('\n').map(clean).filter((l) => l && isSpeakable(l));
+    blockInfo.push({ text: raw, scene: breakBefore === 'scene', words: countWordsIn(raw), lines: lines.length > 1 ? lines : undefined });
     splitText(t).forEach((part, i) => segments.push({ text: part, block: b, words: countWordsIn(part), breakBefore: i ? 'none' : breakBefore }));
     return b;
   };

@@ -20,6 +20,8 @@ export default function WebScreen() {
   const redirected = useRef(new Set<string>());
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useState({ canGoBack: false, canGoForward: false, url: absolute(path || '/'), title: title ?? '' });
+  // Bumped to rebuild the page where the user was, after iOS killed its web process.
+  const [page, setPage] = useState(() => ({ key: 0, uri: absolute(path || '/') }));
 
   if (Platform.OS === 'web') {
     return (
@@ -53,9 +55,10 @@ export default function WebScreen() {
         }}
       />
       <WebView
+        key={page.key}
         ref={ref}
         {...FFN_WEBVIEW_PROPS}
-        source={{ uri: absolute(path || '/') }}
+        source={{ uri: page.uri }}
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
         javaScriptEnabled
@@ -63,8 +66,10 @@ export default function WebScreen() {
         setSupportMultipleWindows={false}
         allowsBackForwardNavigationGestures
         injectedJavaScript={email ? loginPrefillScript(email) : 'true;'}
-        // iOS can kill the page's web process in the background, leaving it blank.
-        onContentProcessDidTerminate={() => ref.current?.reload()}
+        // iOS can kill the page's web process in the background, leaving it blank. WebKit then
+        // forgets the page's URL and reload() would go back to the first page, so rebuild the
+        // WebView at the page the user was on.
+        onContentProcessDidTerminate={() => setPage((p) => ({ key: p.key + 1, uri: nav.url || p.uri }))}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
         onNavigationStateChange={(s) => {

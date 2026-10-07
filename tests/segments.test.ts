@@ -80,7 +80,11 @@ describe('splitText / isSpeakable', () => {
     expect(isSpeakable('* * *')).toBe(false);
     expect(isSpeakable('~~~~~~~')).toBe(false);
     expect(isSpeakable('-x-x-x-')).toBe(false);
-    expect(isSpeakable('oOoOoOo')).toBe(true); // letters only: could be a word, so read it
+    expect(isSpeakable('oOoOoOo')).toBe(false); // letters-only dividers alternate case…
+    expect(isSpeakable('xXx')).toBe(false);
+    expect(isSpeakable('~Line Break~')).toBe(false);
+    expect(isSpeakable('Zzz')).toBe(true); // …words don't
+    expect(isSpeakable('Ooo')).toBe(true);
     expect(isSpeakable('Hi.')).toBe(true);
     expect(isSpeakable('"I-I..."')).toBe(true);
     expect(isSpeakable('“I…”')).toBe(true);
@@ -148,5 +152,41 @@ describe('author’s front matter', () => {
     const seg = segmentChapter(html);
     expect(seg.frontMatter).toBeGreaterThan(1); // the long note is split into several segments
     expect(seg.segments[seg.frontMatter].block).toBe(1);
+  });
+
+  it('reads story that follows a one-line note without a separator (review)', () => {
+    const fm = (html: string) => segmentChapter(html).frontMatter;
+    const opening = '<p>“Get up!” Sakura yelled.</p><p>Naruto groaned.</p><p>“Five more minutes.”</p>';
+    expect(fm('<p>A/N: Thanks for all the reviews! Enjoy.</p>' + opening + '<p>* * *</p><p>Later that day.</p>')).toBe(1);
+    expect(fm('<p>A/N: hi</p>' + story(4) + '<p>Chapter after chapter, the book went on.</p>')).toBe(1);
+    // A silent reply is dialogue, not a scene break.
+    expect(fm('<p>A/N: Enjoy!</p><p>“Hermione, are you okay?”</p><p>“…”</p><p>She didn’t answer.</p>')).toBe(1);
+    expect(fm('<p>A/N: Enjoy!</p><p>“I’m pregnant,” Ginny said.</p><p>“?!”</p><p>Silence.</p>')).toBe(1);
+  });
+
+  it('doesn’t mistake story text for a label (review)', () => {
+    const fm = (html: string) => segmentChapter(html).frontMatter;
+    expect(fm('<p>“Warning—hull breach on deck four!” the computer blared.</p>' + story(3))).toBe(0);
+    expect(fm('<p>Warning-lights flashed red across the bridge.</p>' + story(3))).toBe(0);
+    expect(fm('<p>Disclaimers were the first thing Percy signed at the Ministry.</p>' + story(3))).toBe(0);
+    expect(fm('<p>Author’s notes crowded the margins of the old Potions textbook.</p>' + story(3))).toBe(0);
+    expect(fm('<p>“Rating: ten out of ten,” Sirius declared.</p>' + story(8) + '<hr>' + story(2))).toBe(0);
+    expect(fm('<p>The sign on the gate was old and rusted.</p><p>Warning: Dangerous Creatures Beyond This Point</p>' + story(8) + '<p>~*~*~</p>' + story(2))).toBe(0);
+    // A sign the story opens with is at most one paragraph.
+    expect(fm('<p>WARNING: KEEP OUT. TRESPASSERS WILL BE PROSECUTED.</p>' + story(7) + '<hr>' + story(2))).toBe(1);
+  });
+
+  it('keeps story lines that share a paragraph with a note (review)', () => {
+    expect(segmentChapter('<p>A/N: hi!<br>Harry walked in.<br>He sat down.</p><p>More.</p>').frontMatter).toBe(0);
+    expect(segmentChapter('<p>Disclaimer: not mine.<br>Rating: T<br>A/N: enjoy!</p><hr><p>Story.</p>').frontMatter).toBe(1);
+    expect(segmentChapter('<p>A/N: thanks for\n reading</p><hr><p>Story.</p>').frontMatter).toBe(1);
+  });
+
+  it('knows more front-matter formats (review)', () => {
+    const fm = (note: string) => segmentChapter(`<p>${note}</p><hr>` + story(3)).frontMatter;
+    for (const note of ['A.N: Thanks!', 'AN - Thanks for the reviews!', '&lt;A/N&gt; thanks for reading &lt;/A/N&gt;', '{AN: thanks}', '==Disclaimer== I own nothing', 'Previously: Harry found the door.', 'Last time on DBZ: Goku powered up.', 'Summary - Harry finds a door.']) {
+      expect([note, fm(note)]).toEqual([note, 1]);
+    }
+    expect(segmentChapter('<p>A/N: hi</p><p>Thanks to my beta, Foo!</p><p>xXx</p>' + story(3)).frontMatter).toBe(2);
   });
 });

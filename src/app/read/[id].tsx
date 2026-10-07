@@ -115,21 +115,29 @@ export default function ReaderScreen() {
 
   // iOS can kill the page's web process while the app is in the background, which leaves a blank
   // page. Rebuild the page then, at the current position and with the current settings.
-  const [rebuilt, setRebuilt] = useState<{ key: string; p: number; gen: number } | null>(null);
+  // The rebuild belongs to the loaded chapter it rebuilt (`data`), not to later visits to it.
+  const [rebuilt, setRebuilt] = useState<{ data: Loaded; p: number; gen: number } | null>(null);
   const aliveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** The current page has loaded ('ready'); one that's still loading can't answer yet. */
+  const pageReady = useRef(false);
   const rebuildPage = useCallback(() => {
     clearTimeout(aliveTimer.current);
+    if (!data) return;
+    pageReady.current = false;
     const p = progressRef.current;
     setAutoScroll(false);
-    setRebuilt((r) => ({ key: `${id}:${chapter}`, p, gen: (r?.gen ?? 0) + 1 }));
-  }, [id, chapter]);
+    setRebuilt((r) => ({ data, p, gen: (r?.gen ?? 0) + 1 }));
+  }, [data]);
+  useEffect(() => {
+    pageReady.current = false;
+  }, [data]);
   // A killed process doesn't always report it, so check the page answers when the app returns.
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const sub = AppState.addEventListener('change', (st) => {
       if (st !== 'active' || !web.current) return;
       clearTimeout(aliveTimer.current);
-      aliveTimer.current = setTimeout(rebuildPage, 2500);
+      aliveTimer.current = setTimeout(rebuildPage, pageReady.current ? 2500 : 10_000);
       web.current.injectJavaScript(
         `(function(){var b=document.body;if(b&&b.innerText&&b.innerText.trim())window.ReactNativeWebView.postMessage('{"type":"alive"}');})(); true;`,
       );
@@ -248,7 +256,7 @@ export default function ReaderScreen() {
         storyTitle: data.story.title,
         author: data.story.author?.name,
         hasNext: chapter < data.story.chapters,
-        progress: rebuilt?.key === `${id}:${chapter}` ? rebuilt.p : startProgress,
+        progress: rebuilt?.data === data ? rebuilt.p : startProgress,
       },
       settings,
       theme,
@@ -294,6 +302,8 @@ export default function ReaderScreen() {
         clearTimeout(aliveTimer.current);
         break;
       case 'ready':
+        pageReady.current = true;
+        clearTimeout(aliveTimer.current); // a page that just finished loading is alive too
         if (listeningHere) web.current?.injectJavaScript(`window.__listening = ${playingHere}; window.__ttsMark(${listen.block}); true;`);
         break;
       case 'ttsJump':
