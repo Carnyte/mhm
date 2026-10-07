@@ -403,6 +403,17 @@ describe('audiobook player: review fixes', () => {
     });
   });
 
+  it('passes the speed through the rate mapping', async () => {
+    updateReader({ ttsRate: 2 });
+    try {
+      await player.start(STORY, { chapter: 1, index: 0 });
+      await flush();
+      expect(spoken[0].opts.rate).toBeCloseTo(4 / 3, 6); // iOS: "200%", not "400%"
+    } finally {
+      updateReader({ ttsRate: 1 });
+    }
+  });
+
   it('retries with the default voice when speech never starts, then reports it', async () => {
     jest.useFakeTimers();
     try {

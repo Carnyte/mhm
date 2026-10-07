@@ -14,6 +14,7 @@ import { libraryStore, recordReading, type LibraryStory } from '../state/library
 import { settingsStore } from '../state/settings';
 import { errorMessage } from '../utils/format';
 import * as audioSession from './session';
+import { speechRate } from './rate';
 import { segmentChapter, type Segment } from './segments';
 import { IDLE, playerStore, type PlayerState, type PlayerStory } from './state';
 import { toast } from '../components/Sheet';
@@ -271,7 +272,7 @@ function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string 
     const k = (queued = next);
     const seg = s.segments[k];
     Speech.speak(seg.text, {
-      rate: opts.rate,
+      rate: speechRate(opts.rate, opts.voice),
       pitch: opts.pitch,
       voice: opts.voice,
       onStart: () => {

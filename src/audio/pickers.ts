@@ -4,6 +4,7 @@ import * as Speech from 'expo-speech';
 import { pickOption, toast } from '../components/Sheet';
 import { settingsStore, updateReader } from '../state/settings';
 import * as player from './player';
+import { speechRate } from './rate';
 import { bestVoice, isAddOnVoice, langBase, listVoices, voiceBadge, voiceFor, type VoiceInfo } from './voices';
 
 export const SPEEDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2];
@@ -53,7 +54,7 @@ function sample(v: VoiceInfo) {
   if (player.playerStore.get().status === 'playing') return; // the player re-reads with the new voice
   Speech.stop().finally(() => {
     const r = settingsStore.get().reader;
-    Speech.speak(`Hi, I'm ${v.name}. This is how your stories will sound.`, { voice: v.id, rate: r.ttsRate, pitch: r.ttsPitch });
+    Speech.speak(`Hi, I'm ${v.name}. This is how your stories will sound.`, { voice: v.id, rate: speechRate(r.ttsRate, v.id), pitch: r.ttsPitch });
   });
 }
 
