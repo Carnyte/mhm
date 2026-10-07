@@ -4,7 +4,7 @@ import * as Speech from 'expo-speech';
 import { pickOption, toast } from '../components/Sheet';
 import { settingsStore, updateReader } from '../state/settings';
 import * as player from './player';
-import { bestVoice, langBase, listVoices, TIER_LABEL, voiceFor, type VoiceInfo } from './voices';
+import { bestVoice, isAddOnVoice, langBase, listVoices, voiceBadge, voiceFor, type VoiceInfo } from './voices';
 
 export const SPEEDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2];
 
@@ -68,15 +68,18 @@ export async function pickVoice(lang?: string) {
   const reader = settingsStore.get().reader;
   const auto = await bestVoice(base);
   const current = await voiceFor(base, reader);
-  const same = voices.filter((v) => langBase(v.language) === base && v.tier !== 'novelty');
+  // Voices added by another app (Piper, …) first: the user installed them on purpose.
+  const same = voices
+    .filter((v) => langBase(v.language) === base && v.tier !== 'novelty')
+    .sort((a, b) => Number(isAddOnVoice(b.id)) - Number(isAddOnVoice(a.id)));
   const others = voices.filter((v) => langBase(v.language) !== base && v.tier !== 'novelty');
   const list = [...same, ...others].slice(0, 120);
   const chosenId = reader.ttsVoices?.[base] ?? (current.voice && current.voice.id === reader.ttsVoice ? reader.ttsVoice : '');
   pickOption(
     same.length ? 'Voice' : `Voice (no ${base.toUpperCase()} voice installed)`,
     [
-      { value: '', label: 'Automatic', sub: auto ? `Best installed: ${auto.name}${TIER_LABEL[auto.tier] ? ` (${TIER_LABEL[auto.tier]})` : ''}` : 'System default' },
-      ...list.map((v) => ({ value: v.id, label: `${v.name} · ${v.language}`, sub: TIER_LABEL[v.tier] || undefined })),
+      { value: '', label: 'Automatic', sub: auto ? `Best installed: ${auto.name}${voiceBadge(auto) ? ` (${voiceBadge(auto)})` : ''}` : 'System default' },
+      ...list.map((v) => ({ value: v.id, label: `${v.name} · ${v.language}`, sub: voiceBadge(v) || undefined })),
     ],
     chosenId ?? '',
     (id) => {

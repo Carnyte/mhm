@@ -18,6 +18,7 @@ jest.mock('expo-speech', () => ({
       { identifier: 'com.apple.voice.compact.en-US.Samantha', name: 'Samantha', language: 'en-US', quality: 'Default' },
       { identifier: 'com.apple.voice.premium.en-GB.Serena', name: 'Serena', language: 'en-GB', quality: 'Default' },
       { identifier: 'com.apple.voice.enhanced.es-ES.Monica', name: 'Mónica', language: 'es-ES', quality: 'Enhanced' },
+      { identifier: 'org.example.neural.en-GB.alba', name: 'Alba', language: 'en-GB', quality: 'Default' },
     ]),
 }));
 jest.mock('expo-file-system', () => ({ File: class {}, Paths: {} }));
@@ -319,6 +320,25 @@ describe('audiobook player: review fixes', () => {
     await player.start(STORY, { chapter: 1 });
     await flush();
     expect(spoken[spoken.length - 2].text).toBe('Para 4 has four words.');
+  });
+
+  it('gives a voice added by another app longer to load before falling back', async () => {
+    jest.useFakeTimers();
+    try {
+      updateReader({ ttsVoices: { en: 'org.example.neural.en-GB.alba' } });
+      await player.start(STORY, { chapter: 1 });
+      await flush();
+      expect(spoken[spoken.length - 1].opts.voice).toBe('org.example.neural.en-GB.alba');
+      jest.advanceTimersByTime(5100);
+      await flush();
+      expect(spoken[spoken.length - 1].opts.voice).toBe('org.example.neural.en-GB.alba');
+      jest.advanceTimersByTime(10_000);
+      await flush();
+      expect(spoken[spoken.length - 1].opts.voice).toBeUndefined();
+    } finally {
+      updateReader({ ttsVoices: {} });
+      jest.useRealTimers();
+    }
   });
 
   it('retries with the default voice when speech never starts, then reports it', async () => {

@@ -184,6 +184,7 @@ your session · ⏳ not built (reason given).
   - ✅ Speed (0.5×–2×), pitch, voice per story language (Premium / Enhanced voices labelled and preferred automatically; a "no voice for this language" notice), voice preview
   - ✅ Sleep timer (5 min – 2 h, or end of chapter)
   - ✅ Announce chapter titles (toggle), skips decorative separators like "* * *"
+  - ✅ Natural pauses: a beat between paragraphs, longer after chapter titles and at scene breaks (Natural / Long / Off), plus speech-only clean-up of ellipses, "?!?!", *emphasis* markers and dashes
   - ✅ Remembers the listening position per story, and updates reading progress as you listen
   - ✅ Optional "play over music and other audio" (lowers other apps instead of stopping them; no lock screen controls in that mode)
   - ⏳ The official app's server "HD" voices (Lauren / Larry) ran on FictionPress's GPUs; the closest equivalent is Apple's free Premium voices (Settings → Accessibility → Read & Speak → Voices)

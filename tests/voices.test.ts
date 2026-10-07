@@ -1,5 +1,5 @@
 import { LANGUAGES } from '../src/ffn/constants';
-import { languageCode, voiceTier } from '../src/audio/voices';
+import { isAddOnVoice, languageCode, voiceBadge, voiceTier } from '../src/audio/voices';
 
 jest.mock('expo-speech', () => ({ getAvailableVoicesAsync: async () => [] }));
 
@@ -18,5 +18,22 @@ describe('voices', () => {
     expect(voiceTier({ identifier: 'com.apple.speech.synthesis.voice.Zarvox', name: 'Zarvox' })).toBe('novelty');
     expect(voiceTier({ identifier: 'com.apple.eloquence.en-US.Flo', name: 'Flo' })).toBe('novelty');
     expect(voiceTier({ identifier: 'com.apple.voice.compact.en-US.Samantha', name: 'Samantha' })).toBe('standard');
+  });
+});
+
+describe('add-on voices', () => {
+  it('tells apart voices added by other apps from Apple’s own', () => {
+    expect(isAddOnVoice('com.apple.voice.compact.en-US.Samantha')).toBe(false);
+    expect(isAddOnVoice('com.apple.ttsbundle.siri_Nicky_en-US_compact')).toBe(false);
+    expect(isAddOnVoice('com.ihorshevchuk.piper.en_GB-alba-medium')).toBe(true);
+    expect(isAddOnVoice(undefined)).toBe(false);
+  });
+
+  it('labels them "Add-on" unless they report a quality tier', () => {
+    const v = (id: string, tier: 'premium' | 'enhanced' | 'standard') => ({ id, name: 'X', language: 'en-GB', tier });
+    expect(voiceBadge(v('com.ihorshevchuk.piper.alba', 'standard'))).toBe('Add-on');
+    expect(voiceBadge(v('com.ihorshevchuk.piper.alba', 'enhanced'))).toBe('Enhanced');
+    expect(voiceBadge(v('com.apple.voice.compact.en-GB.Daniel', 'standard'))).toBe('');
+    expect(voiceBadge(v('com.apple.voice.premium.en-GB.Serena', 'premium'))).toBe('Premium');
   });
 });

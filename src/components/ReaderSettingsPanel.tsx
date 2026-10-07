@@ -8,7 +8,7 @@ import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PAUSE_OPTIONS, pickPauses, pickVoice, VOICE_TIP } from '../audio/pickers';
 import * as player from '../audio/player';
-import { TIER_LABEL, voiceFor, type VoiceInfo } from '../audio/voices';
+import { voiceBadge, voiceFor, type VoiceInfo } from '../audio/voices';
 import { updateReader, useSettings } from '../state/settings';
 import { READER_FONTS, READER_THEMES, useReaderTheme } from '../theme';
 import { IconButton, Segmented, T } from './ui';
@@ -170,7 +170,7 @@ export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; on
               Voice
             </T>
             <T size={13} style={{ color: theme.muted }} numberOfLines={1}>
-              {voice ? `${voice.name}${TIER_LABEL[voice.tier] ? ` · ${TIER_LABEL[voice.tier]}` : ''}` : 'System default'}
+              {voice ? `${voice.name}${voiceBadge(voice) ? ` · ${voiceBadge(voice)}` : ''}` : 'System default'}
             </T>
           </Pressable>
           <T size={12} style={{ color: theme.muted, lineHeight: 17 }}>

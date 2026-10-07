@@ -17,7 +17,7 @@ import * as audioSession from './session';
 import { segmentChapter, type Segment } from './segments';
 import { IDLE, playerStore, type PlayerState, type PlayerStory } from './state';
 import { toast } from '../components/Sheet';
-import { invalidateVoices, languageCode, voiceFor } from './voices';
+import { invalidateVoices, isAddOnVoice, languageCode, voiceFor } from './voices';
 
 export {
   playerStore,
@@ -194,6 +194,8 @@ async function stopSpeech() {
 let startedGen = -1;
 let watchdog: ReturnType<typeof setTimeout> | undefined;
 const WATCHDOG_MS = 5000;
+/** Another app's neural voice may need a few seconds to load its model the first time. */
+const ADDON_WATCHDOG_MS = 15_000;
 
 async function speakFrom(index: number, opts: { defaultVoice?: boolean } = {}) {
   // Claim a generation before awaiting, so overlapping calls (quick taps) can't both speak.
@@ -232,7 +234,7 @@ async function speakFrom(index: number, opts: { defaultVoice?: boolean } = {}) {
       set({ status: 'error', error: 'The voice didn’t start. Try another voice in the player.' });
       audioSession.setPlaying(false);
     }
-  }, WATCHDOG_MS);
+  }, isAddOnVoice(voice) ? ADDON_WATCHDOG_MS : WATCHDOG_MS);
 }
 
 function enqueue(g: number, opts: { rate: number; pitch: number; voice?: string }) {

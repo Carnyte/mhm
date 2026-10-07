@@ -23,6 +23,19 @@ export function voiceTier(v: { identifier: string; name: string; quality?: strin
   return 'standard';
 }
 
+/**
+ * A voice added by another app (iOS 17+ speech synthesis extensions, e.g. the free Piper app),
+ * as opposed to one of Apple's own (com.apple.voice.…, com.apple.ttsbundle.…, …).
+ */
+export function isAddOnVoice(id: string | undefined): boolean {
+  return !!id && !id.startsWith('com.apple.');
+}
+
+/** Short label for a voice's quality, or "Add-on" for another app's voice. */
+export function voiceBadge(v: VoiceInfo): string {
+  return TIER_LABEL[v.tier] || (isAddOnVoice(v.id) ? 'Add-on' : '');
+}
+
 const TIER_SCORE: Record<VoiceTier, number> = { premium: 3, enhanced: 2, standard: 1, novelty: 0 };
 
 export const TIER_LABEL: Record<VoiceTier, string> = {
@@ -105,8 +118,8 @@ export async function voiceFor(
 }
 
 export function voiceLabel(v: VoiceInfo): string {
-  const tier = TIER_LABEL[v.tier];
-  return `${v.name} · ${v.language}${tier ? ' · ' + tier : ''}`;
+  const badge = voiceBadge(v);
+  return `${v.name} · ${v.language}${badge ? ' · ' + badge : ''}`;
 }
 
 /**
