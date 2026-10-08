@@ -12,13 +12,13 @@ export default function CollectionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const col = useLibrary((s) => s.collections.find((x) => x.id === id));
   const storiesMap = useLibrary((s) => s.stories);
-  const stories = (col?.storyIds ?? []).map((sid) => storiesMap[sid]).filter(Boolean);
+  const stories = (col?.storyKeys ?? []).map((key) => storiesMap[key]).filter(Boolean);
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <Stack.Screen options={{ title: col?.name ?? 'Collection' }} />
       <FlatList
         data={stories}
-        keyExtractor={(s) => String(s.id)}
+        keyExtractor={(s) => s.key}
         renderItem={({ item }) => (
           <StoryCard
             story={item}

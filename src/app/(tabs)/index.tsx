@@ -15,7 +15,8 @@ type Mode = 'stories' | 'crossovers' | 'communities' | 'forums' | 'betas';
 export default function BrowseScreen() {
   const c = useTheme();
   const [mode, setMode] = useState<Mode>('stories');
-  const pinned = useSettings((s) => s.pinnedFandoms);
+  // This Browse home is FanFiction.net's, so it lists FanFiction.net pins.
+  const pinned = useSettings((s) => s.pinnedFandoms.filter((p) => p.source === 'ffn'));
   const recent = useLibrary((s) =>
     Object.values(s.stories)
       .filter((x) => x.lastReadAt)
@@ -46,8 +47,8 @@ export default function BrowseScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}>
               {recent.map((s) => (
                 <Pressable
-                  key={s.id}
-                  onPress={() => openReader(s.id, s.lastChapter)}
+                  key={s.key}
+                  onPress={() => openReader(s.key, s.lastChapter)}
                   style={[styles.continue, { backgroundColor: c.surface, borderColor: c.border }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Continue ${s.title}, chapter ${s.lastChapter ?? 1}`}
@@ -140,7 +141,7 @@ export default function BrowseScreen() {
             </T>
             {pinned.map((f) => (
               <Pressable
-                key={f.path}
+                key={`${f.source}:${f.path}`}
                 onPress={() => router.push({ pathname: '/list', params: { path: f.path, title: f.name } })}
                 onLongPress={() => togglePinnedFandom(f)}
                 style={({ pressed }) => [styles.pinRow, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}

@@ -16,6 +16,7 @@ import { SEARCH_FORMAT, SEARCH_MATCH, SEARCH_SORTS, type SearchType } from '../.
 import type { SearchResults } from '../../ffn/types';
 import { parseLink, SEARCH_FACET_KEYS, type SearchParams } from '../../ffn/urls';
 import { usePaged } from '../../hooks/useQuery';
+import { ffnKey } from '../../sources/ffn/map';
 import { addRecentSearch, clearRecentSearches, useLibrary } from '../../state/library';
 import { updateSettings, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
@@ -30,7 +31,8 @@ export default function SearchScreen() {
   const [text, setText] = useState('');
   const [params, setParams] = useState<SearchParams | null>(null);
   const [type, setType] = useState<SearchType>('story');
-  const recents = useLibrary((s) => s.searches);
+  // This is FanFiction.net search, so it offers FanFiction.net's recent searches.
+  const recents = useLibrary((s) => s.searches.filter((r) => r.source === 'ffn'));
   const excluded = useSettings((s) => s.excludedFandoms);
 
   const run = (keywords: string, t: SearchType = type, extra: Partial<SearchParams> = {}) => {
@@ -38,7 +40,7 @@ export default function SearchScreen() {
     if (!k) return;
     const link = parseLink(k);
     if (link?.kind === 'story' && (/fanfiction\.net/.test(k) || /^\d+$/.test(k))) {
-      openStory(link.id);
+      openStory(ffnKey(link.id));
       return;
     }
     if (link?.kind === 'user') {
@@ -46,7 +48,7 @@ export default function SearchScreen() {
       return;
     }
     Keyboard.dismiss();
-    addRecentSearch(k, t);
+    addRecentSearch('ffn', k, t);
     setParams({ keywords: k, type: t, ...extra });
   };
 

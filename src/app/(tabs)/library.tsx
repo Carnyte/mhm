@@ -141,7 +141,7 @@ export default function LibraryScreen() {
           />
         ))}
         {collections.map((col) => (
-          <Chip key={col.id} icon="albums" label={`${col.name} ${col.storyIds.length}`} onPress={() => router.push({ pathname: '/collections/[id]', params: { id: col.id } })} />
+          <Chip key={col.id} icon="albums" label={`${col.name} ${col.storyKeys.length}`} onPress={() => router.push({ pathname: '/collections/[id]', params: { id: col.id } })} />
         ))}
       </ScrollView>
 
@@ -161,10 +161,11 @@ export default function LibraryScreen() {
       {shelf === 'authors' ? (
         <FlatList
           data={authors}
-          keyExtractor={(a) => String(a.id)}
+          keyExtractor={(a) => a.key}
           renderItem={({ item }) => (
             <Pressable
-              onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.id), name: item.name } })}
+              // FanFiction.net profiles take the site's numeric id.
+              onPress={() => item.source === 'ffn' && router.push({ pathname: '/user/[id]', params: { id: item.id, name: item.name } })}
               style={({ pressed }) => [styles.author, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
             >
               <Ionicons name="person-circle-outline" size={28} color={c.textFaint} />
@@ -180,7 +181,7 @@ export default function LibraryScreen() {
       ) : (
         <FlatList
           data={stories}
-          keyExtractor={(s) => String(s.id)}
+          keyExtractor={(s) => s.key}
           renderItem={({ item }) => <StoryCard story={item} />}
           ListHeaderComponent={
             shelfStories.length > 0 ? (

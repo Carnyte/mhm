@@ -1,16 +1,20 @@
 import * as Notifications from 'expo-notifications';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BridgeBanner } from '../components/BridgeBanner';
+import { MigrationFailed } from '../components/MigrationFailed';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { useMiniPlayerInset } from '../components/miniPlayerLayout';
 import { SheetHost } from '../components/Sheet';
+import { migrationStatus } from '../db/kv';
 import { checkForUpdates, configureBackgroundChecks } from '../features/updates';
 import { bridge } from '../net/bridge';
 import { BridgeHost } from '../net/BridgeHost';
+import { normalizeKey } from '../sources/keys';
+import { reloadLibrary } from '../state/library';
 import { settingsStore } from '../state/settings';
 import { useTheme } from '../theme';
 
@@ -25,17 +29,20 @@ if (Platform.OS !== 'web') {
   });
 }
 
-function useNotificationRouting() {
+/** `enabled` is false while MigrationFailed is shown (there's no navigator to route into then). */
+function useNotificationRouting(enabled: boolean) {
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web' || !enabled) return;
     const go = (data: Record<string, unknown> | undefined) => {
-      if (data?.storyId) router.push({ pathname: '/story/[id]', params: { id: String(data.storyId) } });
+      // `{ storyKey }` now; notifications delivered by an older build carry `{ storyId }` (FFN).
+      const key = normalizeKey(data?.storyKey) ?? normalizeKey(data?.storyId);
+      if (key) router.push({ pathname: '/story/[id]', params: { id: key } });
       else if (data?.screen === 'updates') router.push('/updates');
     };
     Notifications.getLastNotificationResponseAsync().then((r) => r && go(r.notification.request.content.data));
     const sub = Notifications.addNotificationResponseReceivedListener((r) => go(r.notification.request.content.data));
     return () => sub.remove();
-  }, []);
+  }, [enabled]);
 }
 
 function useAutoChecks() {
@@ -59,7 +66,8 @@ function useAutoChecks() {
 export default function RootLayout() {
   const c = useTheme();
   const playerInset = useMiniPlayerInset();
-  useNotificationRouting();
+  const [migration, setMigration] = useState(migrationStatus);
+  useNotificationRouting(migration.ok);
   useAutoChecks();
 
   const navTheme = {
@@ -73,6 +81,21 @@ export default function RootLayout() {
       border: c.border,
     },
   };
+
+  if (!migration.ok) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style={c.dark ? 'light' : 'dark'} />
+        <MigrationFailed
+          status={migration}
+          onFixed={() => {
+            reloadLibrary();
+            setMigration(migrationStatus());
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>

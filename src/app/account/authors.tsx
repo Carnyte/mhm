@@ -27,7 +27,7 @@ export default function AccountAuthors() {
     async (page) => {
       const r = await getAccountAuthors(kind, page);
       setPath(r.path);
-      if (page === 1 && r.page.lastPage <= 1) syncAuthors(flag, r.rows.map((x) => x.user));
+      if (page === 1 && r.page.lastPage <= 1) syncAuthors('ffn', flag, r.rows.map((x) => x.user));
       return { items: r.rows, lastPage: r.page.lastPage };
     },
     (r) => r.user.id,
@@ -41,7 +41,7 @@ export default function AccountAuthors() {
     }
     try {
       await removeFromAccountList(sitePath, [row.removeValue]);
-      setAuthorFlag(row.user, flag, false);
+      setAuthorFlag('ffn', row.user, flag, false);
       toast('Removed', 'success');
       list.refresh();
     } catch (e) {

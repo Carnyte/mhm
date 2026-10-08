@@ -5,40 +5,41 @@ import { router } from 'expo-router';
 import { Share } from 'react-native';
 import { showActions, toast, type SheetAction } from '../components/Sheet';
 import { LoginRequiredError, subscribe, type SubscriptionFlags } from '../ffn/api';
-import type { StoryDetail, StorySummary, UserRef } from '../ffn/types';
+import type { StoryDetail, UserRef } from '../ffn/types';
 import { absolute, storyPath } from '../ffn/urls';
-import { libraryStore, setAuthorFlag, setInLibrary, toggleInCollection, upsertStory, type LibraryStory } from '../state/library';
+import { ffnId } from '../sources/ffn/map';
+import type { StoryKey } from '../sources/keys';
+import { keyOf, libraryStore, setAuthorFlag, setInLibrary, toggleInCollection, upsertStory, type AnyStory, type LibraryStory } from '../state/library';
 import { getSession } from '../state/session';
 import { settingsStore, updateSettings } from '../state/settings';
 import { errorMessage } from '../utils/format';
 import * as player from '../audio/player';
 import { downloadStory, removeDownload } from './downloads';
 
-type AnyStory = StorySummary | StoryDetail | LibraryStory;
-
-export function openStory(id: number) {
-  router.push({ pathname: '/story/[id]', params: { id: String(id) } });
+export function openStory(key: StoryKey) {
+  router.push({ pathname: '/story/[id]', params: { id: key } });
 }
 
-export function openReader(id: number, chapter?: number) {
-  router.push({ pathname: '/read/[id]', params: { id: String(id), ...(chapter ? { ch: String(chapter) } : {}) } });
+export function openReader(key: StoryKey, chapter?: number) {
+  router.push({ pathname: '/read/[id]', params: { id: key, ...(chapter ? { ch: String(chapter) } : {}) } });
 }
 
+/** A FanFiction.net author's profile (an FFN-only screen, so it takes the numeric id). */
 export function openAuthor(user: UserRef) {
   router.push({ pathname: '/user/[id]', params: { id: String(user.id), name: user.name } });
 }
 
-export function storyUrl(id: number): string {
-  return absolute(storyPath(id));
+export function storyUrl(key: StoryKey): string {
+  return absolute(storyPath(ffnId(key)));
 }
 
-export async function shareStory(s: { id: number; title: string; author?: UserRef }) {
-  const url = storyUrl(s.id);
+export async function shareStory(s: AnyStory) {
+  const url = storyUrl(keyOf(s));
   await Share.share({ message: `${s.title}${s.author ? ` by ${s.author.name}` : ''}\n${url}`, url, title: s.title }).catch(() => {});
 }
 
-export async function copyLink(id: number) {
-  await Clipboard.setStringAsync(storyUrl(id));
+export async function copyLink(key: StoryKey) {
+  await Clipboard.setStringAsync(storyUrl(key));
   toast('Link copied');
 }
 
@@ -61,13 +62,13 @@ export async function addSubscription(story: AnyStory, flags: SubscriptionFlags)
     return false;
   }
   try {
-    const msg = await subscribe(story.id, authorId, flags);
+    const msg = await subscribe(ffnId(keyOf(story)), authorId, flags);
     const patch: Partial<LibraryStory> = {};
     if (flags.storyAlert) patch.followed = true;
     if (flags.favStory) patch.favorited = true;
-    if (Object.keys(patch).length) upsertStory(story as StorySummary, { ...patch, knownChapters: story.chapters });
-    if (flags.authorAlert && story.author) setAuthorFlag(story.author, 'followed', true);
-    if (flags.favAuthor && story.author) setAuthorFlag(story.author, 'favorited', true);
+    if (Object.keys(patch).length) upsertStory(story, { ...patch, knownChapters: story.chapters });
+    if (flags.authorAlert && story.author) setAuthorFlag('ffn', story.author, 'followed', true);
+    if (flags.favAuthor && story.author) setAuthorFlag('ffn', story.author, 'favorited', true);
     toast(msg || 'Saved to your FanFiction.net account', 'success');
     return true;
   } catch (e) {
@@ -78,21 +79,23 @@ export async function addSubscription(story: AnyStory, flags: SubscriptionFlags)
 }
 
 export function collectionActions(story: AnyStory): SheetAction[] {
+  const key = keyOf(story);
   const cols = libraryStore.get().collections;
   return [
     ...cols.map((c) => ({
-      label: `${c.storyIds.includes(story.id) ? '✓ ' : ''}${c.name}`,
+      label: `${c.storyKeys.includes(key) ? '✓ ' : ''}${c.name}`,
       icon: 'albums-outline' as const,
       onPress: () => toggleInCollection(c.id, story),
     })),
-    { label: 'New collection…', icon: 'add-circle-outline', onPress: () => router.push({ pathname: '/collections', params: { add: String(story.id) } }) },
+    { label: 'New collection…', icon: 'add-circle-outline', onPress: () => router.push({ pathname: '/collections', params: { add: key } }) },
   ];
 }
 
 export function storyMenu(story: AnyStory) {
-  const lib = libraryStore.get().stories[story.id];
+  const key = keyOf(story);
+  const lib = libraryStore.get().stories[key];
   const actions: SheetAction[] = [
-    { label: 'Read', icon: 'book-outline', onPress: () => openReader(story.id, lib?.lastChapter) },
+    { label: 'Read', icon: 'book-outline', onPress: () => openReader(key, lib?.lastChapter) },
     {
       label: 'Listen (audiobook)',
       icon: 'headset-outline',
@@ -105,13 +108,13 @@ export function storyMenu(story: AnyStory) {
       label: lib?.inLibrary ? 'Remove from library' : 'Add to library',
       icon: lib?.inLibrary ? 'bookmark' : 'bookmark-outline',
       onPress: () => {
-        setInLibrary(story as StorySummary, !lib?.inLibrary);
+        setInLibrary(story, !lib?.inLibrary);
         toast(lib?.inLibrary ? 'Removed from library' : 'Added to library', 'success');
       },
     },
     { label: 'Add to collection…', icon: 'albums-outline', onPress: () => showActions(collectionActions(story), 'Collections') },
     lib?.downloaded
-      ? { label: 'Remove download', icon: 'trash-outline', destructive: true, onPress: () => removeDownload(story.id) }
+      ? { label: 'Remove download', icon: 'trash-outline', destructive: true, onPress: () => removeDownload(key) }
       : { label: 'Download for offline', icon: 'cloud-download-outline', onPress: () => downloadStory(story) },
     { label: 'Follow story', icon: 'notifications-outline', onPress: () => addSubscription(story, { storyAlert: true }) },
     { label: 'Favorite story', icon: 'heart-outline', onPress: () => addSubscription(story, { favStory: true }) },
@@ -131,7 +134,7 @@ export function storyMenu(story: AnyStory) {
   }
   actions.push(
     { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
-    { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(story.id) },
+    { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
   );
   showActions(actions, story.title, story.author ? `by ${story.author.name}` : undefined);
 }

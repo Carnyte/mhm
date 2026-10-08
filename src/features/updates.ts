@@ -5,9 +5,11 @@ import * as Network from 'expo-network';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
-import { getAccountAuthors, getAccountStories, getStory } from '../ffn/api';
+import { kv } from '../db/kv';
+import { getAccountAuthors, getAccountStories } from '../ffn/api';
 import type { StorySummary, UserRef } from '../ffn/types';
 import { bridge } from '../net/bridge';
+import type { StoryKey } from '../sources/keys';
 import {
   libraryStore,
   newChapterCount,
@@ -21,6 +23,7 @@ import {
 import { getSession } from '../state/session';
 import { settingsStore, updateSettings } from '../state/settings';
 import { createStore, useStore } from '../state/store';
+import { fetchChapter } from './chapters';
 import { downloadStory } from './downloads';
 
 export const UPDATE_TASK = 'ficshelf-update-check';
@@ -52,7 +55,8 @@ async function notify(updates: { story: LibraryStory; added: number }[]) {
         content: {
           title: u.story.title,
           body: `${u.added} new chapter${u.added === 1 ? '' : 's'}${u.story.author ? ` from ${u.story.author.name}` : ''}`,
-          data: { storyId: u.story.id },
+          // Taps are routed in app/_layout.tsx, which also takes the older `{ storyId }` payload.
+          data: { storyKey: u.story.key },
         },
         trigger: null,
       });
@@ -76,10 +80,11 @@ async function notify(updates: { story: LibraryStory; added: number }[]) {
  * Checks each story's first page for its chapter count. Polite: 2 at a time.
  * Returns the stories that gained chapters.
  */
-export async function checkForUpdates(opts: { quiet?: boolean; ids?: number[] } = {}) {
-  if (checkStore.get().running) return [];
-  const list = opts.ids
-    ? opts.ids.map((id) => libraryStore.get().stories[id]).filter(Boolean)
+export async function checkForUpdates(opts: { quiet?: boolean; keys?: StoryKey[] } = {}) {
+  // Nothing could be saved after a failed storage upgrade (see MigrationFailed).
+  if (checkStore.get().running || !kv.writable) return [];
+  const list = opts.keys
+    ? opts.keys.map((key) => libraryStore.get().stories[key]).filter(Boolean)
     : storiesToCheck();
   checkStore.set({ running: true, done: 0, total: list.length });
   const updated: { story: LibraryStory; added: number }[] = [];
@@ -88,7 +93,7 @@ export async function checkForUpdates(opts: { quiet?: boolean; ids?: number[] } 
     while (i < list.length) {
       const s = list[i++];
       try {
-        const d = await getStory(s.id, 1, { quiet: opts.quiet });
+        const d = await fetchChapter(s.key, 1, { quiet: opts.quiet });
         const before = s.chapters;
         const next = upsertStory(d, { lastCheckedAt: Date.now() });
         if (next && d.chapters > before) {
@@ -123,7 +128,7 @@ async function autoDownload(stories: LibraryStory[]) {
   for (const s of targets) await downloadStory(s, { quiet: true });
 }
 
-/** Pulls Follows / Favorites / followed & favourite authors from the account into the library. */
+/** Pulls Follows / Favorites / followed & favourite authors from the FanFiction.net account into the library. */
 export async function syncAccount(): Promise<{ follows: number; favorites: number } | null> {
   if (!getSession().loggedIn) return null;
   const collectAll = async (list: 'storyAlerts' | 'favStories') => {
@@ -151,12 +156,12 @@ export async function syncAccount(): Promise<{ follows: number; favorites: numbe
     return all;
   };
   const follows = await collectAll('storyAlerts');
-  syncAccountList('followed', follows);
+  syncAccountList('ffn', 'followed', follows);
   const favorites = await collectAll('favStories');
-  syncAccountList('favorited', favorites);
+  syncAccountList('ffn', 'favorited', favorites);
   try {
-    syncAuthors('followed', await collectAuthors('authorAlerts'));
-    syncAuthors('favorited', await collectAuthors('favAuthors'));
+    syncAuthors('ffn', 'followed', await collectAuthors('authorAlerts'));
+    syncAuthors('ffn', 'favorited', await collectAuthors('favAuthors'));
   } catch {
     // author lists are optional
   }
@@ -168,8 +173,8 @@ export function totalNewChapters(): number {
   return Object.values(libraryStore.get().stories).reduce((n, s) => n + (newChapterCount(s) > 0 ? 1 : 0), 0);
 }
 
-export function snoozeStory(id: number, notify: boolean) {
-  patchStory(id, { notify });
+export function snoozeStory(key: StoryKey, notify: boolean) {
+  patchStory(key, { notify });
 }
 
 // --- Background task (best effort) --------------------------------------------------------

@@ -10,6 +10,7 @@ import { IconButton, T } from '../../components/ui';
 import { getAccountStories, NeedsWebError, removeFromAccountList, type AccountStoryList } from '../../ffn/api';
 import type { AccountStoryRow } from '../../ffn/types';
 import { usePaged } from '../../hooks/useQuery';
+import { ffnKey } from '../../sources/ffn/map';
 import { patchStory, syncAccountList } from '../../state/library';
 import { useTheme } from '../../theme';
 import { errorMessage } from '../../utils/format';
@@ -26,7 +27,7 @@ export default function AccountStories() {
     async (page) => {
       const r = await getAccountStories(kind, page);
       setPath(r.path);
-      if (page === 1 && r.page.lastPage <= 1) syncAccountList(kind === 'favStories' ? 'favorited' : 'followed', r.rows.map((x) => x.story));
+      if (page === 1 && r.page.lastPage <= 1) syncAccountList('ffn', kind === 'favStories' ? 'favorited' : 'followed', r.rows.map((x) => x.story));
       return { items: r.rows, lastPage: r.page.lastPage };
     },
     (r) => r.story.id,
@@ -40,7 +41,7 @@ export default function AccountStories() {
     }
     try {
       await removeFromAccountList(target, [row.removeValue]);
-      patchStory(row.story.id, kind === 'favStories' ? { favorited: false } : { followed: false });
+      patchStory(ffnKey(row.story.id), kind === 'favStories' ? { favorited: false } : { followed: false });
       toast('Removed', 'success');
       list.refresh();
     } catch (e) {

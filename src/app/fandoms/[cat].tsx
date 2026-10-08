@@ -80,7 +80,7 @@ export default function FandomDirectory() {
             </T>
           }
           renderItem={({ item }) => {
-            const isPinned = pinned.some((p) => p.path === item.path);
+            const isPinned = pinned.some((p) => p.source === 'ffn' && p.path === item.path);
             return (
               <Pressable
                 onPress={() => open(item)}
@@ -96,7 +96,7 @@ export default function FandomDirectory() {
                 </T>
                 {!isX && (
                   <Pressable
-                    onPress={() => togglePinnedFandom({ name: item.name, path: item.path })}
+                    onPress={() => togglePinnedFandom({ source: 'ffn', name: item.name, path: item.path })}
                     hitSlop={10}
                     accessibilityRole="button"
                     accessibilityLabel={isPinned ? `Unpin ${item.name}` : `Pin ${item.name}`}

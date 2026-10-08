@@ -1,6 +1,7 @@
 // Audiobook player state, kept apart from the engine so UI chrome (mini player layout, toasts)
 // can read it without importing the engine.
 
+import type { StoryKey } from '../sources/keys';
 import { createStore, useStore } from '../state/store';
 import type { Segment } from './segments';
 
@@ -9,7 +10,7 @@ export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' |
 export type SleepTimer = { mode: 'off' } | { mode: 'timer'; minutes: number; endsAt: number } | { mode: 'chapter' };
 
 export interface PlayerStory {
-  id: number;
+  key: StoryKey;
   title: string;
   author?: string;
   chapters: number;

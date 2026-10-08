@@ -16,13 +16,14 @@ import { segmentChapter } from '../../audio/segments';
 import { DESKTOP_USER_AGENT } from '../../net/webviewConfig';
 import { ReaderWebView, type ReaderMessageEvent, type ReaderWebViewRef } from '../../components/ReaderWebView';
 import { showActions, toast } from '../../components/Sheet';
-import { ErrorView, Loading } from '../../components/states';
+import { Empty, ErrorView, Loading } from '../../components/states';
 import { IconButton, T } from '../../components/ui';
 import { addSubscription, openStory, shareStory } from '../../features/actions';
-import { getSavedChapter, saveChapter } from '../../features/downloads';
-import { getStory } from '../../ffn/api';
+import { fetchChapter, getSavedChapter, prefetchChapter, saveChapter } from '../../features/chapters';
 import type { StoryDetail } from '../../ffn/types';
 import { parseLink } from '../../ffn/urls';
+import { ffnKey, libraryToFfnDetail } from '../../sources/ffn/map';
+import { keyFromParam, splitKey, type StoryKey } from '../../sources/keys';
 import { addBookmark, libraryStore, recordReading, useLibraryStory } from '../../state/library';
 import { useSettings } from '../../state/settings';
 import { useReaderTheme } from '../../theme';
@@ -36,46 +37,36 @@ interface Loaded {
   offline: boolean;
 }
 
-async function loadChapter(id: number, chapter: number): Promise<Loaded> {
-  const lib = libraryStore.get().stories[id];
-  const saved = await getSavedChapter(id, chapter);
+async function loadChapter(key: StoryKey, chapter: number): Promise<Loaded> {
+  const lib = libraryStore.get().stories[key];
+  const saved = await getSavedChapter(key, chapter);
   if (saved && lib?.downloaded) {
     // Downloaded stories open instantly from disk.
-    return { story: libToDetail(lib, chapter), html: saved, offline: true };
+    return { story: libraryToFfnDetail(lib, chapter), html: saved, offline: true };
   }
   try {
-    const story = await getStory(id, chapter);
-    if (story.chapterHtml) saveChapter(id, chapter, story.chapterHtml).catch(() => {});
+    const story = await fetchChapter(key, chapter);
+    if (story.chapterHtml) saveChapter(key, chapter, story.chapterHtml).catch(() => {});
     return { story, html: story.chapterHtml ?? '', offline: false };
   } catch (e) {
-    if (saved && lib) return { story: libToDetail(lib, chapter), html: saved, offline: true };
+    if (saved && lib) return { story: libraryToFfnDetail(lib, chapter), html: saved, offline: true };
     throw e;
   }
 }
 
-function libToDetail(lib: NonNullable<ReturnType<typeof libraryStore.get>['stories'][number]>, chapter: number): StoryDetail {
-  return {
-    ...lib,
-    author: lib.author ?? { id: 0, name: '' },
-    meta: '',
-    chapterList: (lib.chapterTitles ?? Array.from({ length: lib.chapters }, (_, i) => `Chapter ${i + 1}`)).map((t, i) => ({ number: i + 1, title: t })),
-    breadcrumbs: [],
-    currentChapter: chapter,
-  };
-}
-
 export default function ReaderScreen() {
   const params = useLocalSearchParams<{ id: string; ch?: string }>();
-  const id = Number(params.id);
+  // A bare number (old links) means FanFiction.net; `key` is null for anything that isn't a story.
+  const key = keyFromParam(params.id);
   const insets = useSafeAreaInsets();
   const settings = useSettings((s) => s.reader);
   const theme = useReaderTheme();
-  const lib = useLibraryStory(id);
+  const lib = useLibraryStory(key);
   const web = useRef<ReaderWebViewRef>(null);
 
   const [chapter, setChapter] = useState(() => Number(params.ch) || lib?.lastChapter || 1);
   const [nonce, setNonce] = useState(0);
-  const loadKey = `${id}:${chapter}:${nonce}`;
+  const loadKey = `${key}:${chapter}:${nonce}`;
   const [res, setRes] = useState<{ key: string; data?: Loaded; error?: Error }>({ key: loadKey });
   let current = res;
   if (res.key !== loadKey) {
@@ -94,7 +85,7 @@ export default function ReaderScreen() {
   const progressRef = useRef(0);
   // Audiobook player state for this story (it can keep playing after the reader closes).
   const listen = usePlayer((p) => ({
-    here: p.story?.id === id && p.status !== 'idle',
+    here: !!key && p.story?.key === key && p.status !== 'idle',
     chapter: p.chapter,
     status: p.status,
     block: p.segments[p.index]?.block ?? -1,
@@ -106,10 +97,10 @@ export default function ReaderScreen() {
 
   // Initial progress for this chapter (resume where you left off).
   const startProgress = useMemo(() => {
-    const p = libraryStore.get().stories[id]?.chapterProgress?.[chapter];
+    const p = key ? libraryStore.get().stories[key]?.chapterProgress?.[chapter] : undefined;
     return p != null && p < 0.995 ? p : 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, chapter, data?.story.id]);
+  }, [key, chapter, data?.story.id]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -149,24 +140,16 @@ export default function ReaderScreen() {
   }, [rebuildPage]);
 
   useEffect(() => {
+    if (!key) return;
     let alive = true;
-    loadChapter(id, chapter)
+    loadChapter(key, chapter)
       .then((d) => {
         if (!alive) return;
         setRes({ key: loadKey, data: d });
         progressRef.current = startProgress;
         recordReading(d.story, chapter, startProgress);
         // Prefetch the next chapter so it opens instantly (and is available offline).
-        if (chapter < d.story.chapters) {
-          getSavedChapter(id, chapter + 1).then((have) => {
-            if (have) return;
-            getStory(id, chapter + 1, { quiet: true })
-              .then((n) => {
-                if (n.chapterHtml) saveChapter(id, chapter + 1, n.chapterHtml);
-              })
-              .catch(() => {});
-          });
-        }
+        if (chapter < d.story.chapters) prefetchChapter(key, chapter + 1);
       })
       .catch((e) => {
         if (alive) setRes({ key: loadKey, error: e as Error });
@@ -180,10 +163,10 @@ export default function ReaderScreen() {
   // Save progress when leaving.
   useEffect(() => {
     return () => {
-      const s = libraryStore.get().stories[id];
+      const s = key ? libraryStore.get().stories[key] : undefined;
       if (s) recordReading(s, chapter, progressRef.current);
     };
-  }, [id, chapter]);
+  }, [key, chapter]);
 
   // Keep awake + brightness.
   useEffect(() => {
@@ -313,7 +296,7 @@ export default function ReaderScreen() {
         goChapter(chapter + 1);
         break;
       case 'review':
-        if (data) router.push({ pathname: '/review/[id]', params: { id: String(id), ch: String(chapter), stid: String(data.story.storyTextId ?? '') } });
+        if (data) router.push({ pathname: '/review/[id]', params: { id: String(data.story.id), ch: String(chapter), stid: String(data.story.storyTextId ?? '') } });
         break;
       case 'bookmark':
         bookmark(m.p);
@@ -326,7 +309,7 @@ export default function ReaderScreen() {
         break;
       case 'link': {
         const target = parseLink(String(m.href));
-        if (target?.kind === 'story') router.push({ pathname: '/story/[id]', params: { id: String(target.id) } });
+        if (target?.kind === 'story') router.push({ pathname: '/story/[id]', params: { id: ffnKey(target.id) } });
         else if (target) router.push({ pathname: '/web', params: { path: 'path' in target ? target.path : String(m.href) } });
         break;
       }
@@ -337,8 +320,8 @@ export default function ReaderScreen() {
   };
 
   const bookmark = (p = progressRef.current) => {
-    if (!data) return;
-    addBookmark({ storyId: id, storyTitle: data.story.title, chapter, progress: p });
+    if (!data || !key) return;
+    addBookmark({ storyKey: key, storyTitle: data.story.title, chapter, progress: p });
     toast(`Bookmarked chapter ${chapter} at ${Math.round(p * 100)}%`, 'success');
   };
 
@@ -348,6 +331,17 @@ export default function ReaderScreen() {
   const storyPct = story ? ((chapter - 1 + progress) / story.chapters) * 100 : 0;
   const chromeColor = theme.chrome;
   const fg = theme.text;
+
+  if (!key) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
+        <IconButton icon="chevron-back" label="Back" onPress={() => router.back()} color={fg} style={{ margin: 8 }} />
+        <Empty icon="help-circle-outline" title="Story not found" message={`“${String(params.id ?? '')}” isn’t a story link this app knows.`} />
+      </View>
+    );
+  }
+  // FanFiction.net's own screens (reviews) take its numeric id.
+  const { remoteId } = splitKey(key);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -363,7 +357,7 @@ export default function ReaderScreen() {
         </View>
       ) : (
         <ReaderWebView
-          key={`${id}:${chapter}:${rebuilt?.gen ?? 0}`}
+          key={`${key}:${chapter}:${rebuilt?.gen ?? 0}`}
           ref={web}
           userAgent={DESKTOP_USER_AGENT}
           originWhitelist={['*']}
@@ -387,7 +381,7 @@ export default function ReaderScreen() {
       {chrome && story && (
         <View style={[styles.top, { paddingTop: insets.top + 4, backgroundColor: chromeColor + 'F2', borderColor: theme.muted + '33' }]}>
           <IconButton icon="chevron-back" label="Back" onPress={() => router.back()} color={fg} />
-          <Pressable style={{ flex: 1 }} onPress={() => openStory(id)} accessibilityRole="button" accessibilityLabel="Story details">
+          <Pressable style={{ flex: 1 }} onPress={() => openStory(key)} accessibilityRole="button" accessibilityLabel="Story details">
             <T size={14} weight="700" numberOfLines={1} style={{ color: fg }}>
               {story.title}
             </T>
@@ -406,12 +400,12 @@ export default function ReaderScreen() {
               showActions(
                 [
                   { label: 'Bookmark this spot', icon: 'bookmark-outline', onPress: () => bookmark() },
-                  { label: 'Write a review', icon: 'create-outline', onPress: () => router.push({ pathname: '/review/[id]', params: { id: String(id), ch: String(chapter), stid: String(story.storyTextId ?? '') } }) },
+                  { label: 'Write a review', icon: 'create-outline', onPress: () => router.push({ pathname: '/review/[id]', params: { id: remoteId, ch: String(chapter), stid: String(story.storyTextId ?? '') } }) },
                   { label: 'Follow story', icon: 'notifications-outline', onPress: () => addSubscription(story, { storyAlert: true }) },
                   { label: 'Favorite story', icon: 'heart-outline', onPress: () => addSubscription(story, { favStory: true }) },
-                  { label: 'Reviews', icon: 'chatbubbles-outline', onPress: () => router.push({ pathname: '/reviews/[id]', params: { id: String(id), ch: String(chapter), title: story.title } }) },
+                  { label: 'Reviews', icon: 'chatbubbles-outline', onPress: () => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, ch: String(chapter), title: story.title } }) },
                   { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
-                  { label: 'Story details', icon: 'information-circle-outline', onPress: () => openStory(id) },
+                  { label: 'Story details', icon: 'information-circle-outline', onPress: () => openStory(key) },
                 ],
                 story.title,
               )
@@ -432,12 +426,12 @@ export default function ReaderScreen() {
             size={24}
           />
           <IconButton icon="play-forward" label="Next paragraph" onPress={() => player.skip(1)} color={fg} size={20} />
-          <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/listen', params: { from: String(id) } })} accessibilityRole="button" accessibilityLabel="Open audiobook player">
+          <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/listen', params: { from: key } })} accessibilityRole="button" accessibilityLabel="Open audiobook player">
             <T size={12} style={{ color: theme.muted }} numberOfLines={1}>
               {listen.status === 'loading' ? 'Loading…' : `Part ${listen.index + 1} / ${listen.total} · ${speedLabel(settings.ttsRate)}`}
             </T>
           </Pressable>
-          <IconButton icon="headset-outline" label="Open audiobook player" color={fg} size={20} onPress={() => router.push({ pathname: '/listen', params: { from: String(id) } })} />
+          <IconButton icon="headset-outline" label="Open audiobook player" color={fg} size={20} onPress={() => router.push({ pathname: '/listen', params: { from: key } })} />
           <IconButton icon="close" label="Stop reading aloud" color={fg} size={20} onPress={() => player.stop()} />
         </View>
       )}

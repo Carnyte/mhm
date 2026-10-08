@@ -49,6 +49,13 @@ longer after chapter titles and at scene breaks, and starts each chapter after t
   Xcode and run a Release build (reinstall every 7 days).
 - **Android**: `eas build --platform android --profile preview` gives an APK.
 
+**Updating an installed copy:** before installing a build that changes how the library is stored
+(the multi-source update is the first), use Settings → Back up library and keep the file. The
+update converts the library in one step, keeps a copy of the old database
+(`ficshelf-pre-v2.db`, shown under Settings → Library & storage) and can still restore older
+backup files. An older build installed afterwards can't show the converted library; nothing is
+lost, and what you do in the older build is merged back when the newer build starts.
+
 Use the `preview` profile for a normal standalone app. `development` builds need a dev server
 (`npx expo start --dev-client`) and are only for working on the code. Expo Go can't run this app
 because it uses native modules (WebView, SQLite, notifications, background tasks).
@@ -60,12 +67,15 @@ src/app/            screens (Expo Router): tabs, story, reader, search, library,
 src/net/            WebView bridge (BridgeHost.tsx), challenge handling, image loading
 src/ffn/            URL builders, constants, HTML parsers, form replay, typed API client
 src/state/          library / progress / settings / session stores (persisted to SQLite)
-src/features/       downloads, update checks + notifications, shared story actions
+src/sources/        story keys ('ffn:123', 'ao3:5'…) and FanFiction.net ↔ library mapping
+src/db/             SQLite key-value + chapter store, and the storage migrations (db/migrations)
+src/features/       chapter loading, downloads, update checks + notifications, shared story actions
 src/reader/         reader HTML/CSS/JS template (themes, paging, read-aloud highlight, find)
 src/audio/          audiobook player: text segments, speech engine, background audio, voices
 src/components/     UI kit, story card, filter sheet, profile view, reader settings
-tests/              Jest tests and synthetic HTML fixtures that mirror the real markup
-scripts/            live-check.ts (parsers vs the live site) and dev-proxy.ts (web dev harness)
+tests/              Jest tests, synthetic HTML fixtures and a synthetic v1 library (fixtures/v1-library.ts)
+scripts/            live-check.ts (parsers vs the live site), dev-proxy.ts (web dev harness),
+                    check-keys.ts (part of `npm run lint`: no bare numeric story ids in shared code)
 ```
 
 ## Verification
@@ -74,7 +84,7 @@ Checks run while building this (October 2026):
 
 | Check | Result |
 |---|---|
-| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session | 127 / 127 pass |
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session, story keys and routes, library state, backups, and the storage v2 migration on real SQLite (`node:sqlite`) | 224 / 224 pass |
 | `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |

@@ -28,11 +28,12 @@ jest.mock('../src/db/kv', () => {
     kv: {
       getSync: (k: string) => mem[k],
       prefixSync: () => [],
+      entriesSync: () => [],
+      writable: true,
       set: async (k: string, v: unknown) => void (mem[k] = v),
       delete: async (k: string) => void delete mem[k],
       deletePrefix: async () => {},
     },
-    chapterStore: { get: async () => undefined, put: async () => {}, list: async () => [] },
   };
 });
 jest.mock('../src/audio/session', () => ({
@@ -42,16 +43,13 @@ jest.mock('../src/audio/session', () => ({
   deactivate: jest.fn(() => void sessionCalls.push('deactivate')),
   onRemoteCommand: (fn: (cmd: string) => void) => (remote = fn),
 }));
-jest.mock('../src/features/downloads', () => ({
-  getSavedChapter: async (id: number, ch: number) => saved[`${id}:${ch}`],
-  saveChapter: async (id: number, ch: number, html: string) => void (saved[`${id}:${ch}`] = html),
-}));
-jest.mock('../src/ffn/api', () => ({
-  getStory: async (id: number, ch: number) => {
-    fetched.push(`${id}:${ch}`);
+// Chapter text by story key: `saved` is the device copy, anything else comes "from the site".
+jest.mock('../src/features/chapters', () => {
+  const fetchChapter = async (key: string, ch: number) => {
+    fetched.push(`${key}:${ch}`);
     if (mockFail.fetch) throw new Error('offline');
     return {
-      id,
+      id: Number(key.split(':')[1]),
       title: 'Fetched Story',
       author: { id: 1, name: 'Writer' },
       chapters: 3,
@@ -69,8 +67,20 @@ jest.mock('../src/ffn/api', () => ({
       currentChapter: ch,
       language: 'English',
     };
-  },
-}));
+  };
+  return {
+    loadChapter: async (key: string, ch: number) => {
+      const have = saved[`${key}:${ch}`];
+      if (have) return { html: have, offline: true };
+      const detail = await fetchChapter(key, ch);
+      saved[`${key}:${ch}`] = detail.chapterHtml;
+      return { html: detail.chapterHtml, detail, offline: false };
+    },
+    prefetchChapter: (key: string, ch: number) => {
+      if (!saved[`${key}:${ch}`]) fetchChapter(key, ch).then((d) => void (saved[`${key}:${ch}`] = d.chapterHtml), () => {});
+    },
+  };
+});
 jest.mock('../src/net/images', () => ({ loadImage: async () => null }));
 jest.mock('../src/components/Sheet', () => ({ toast: jest.fn() }));
 
@@ -81,7 +91,7 @@ const { updateReader } = require('../src/state/settings') as typeof import('../s
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const library = require('../src/state/library') as typeof import('../src/state/library');
 
-const STORY = { id: 7, title: 'Owls', chapters: 2, chapterTitles: ['Arrival', 'Departure'], language: 'English' };
+const STORY = { key: 'ffn:7' as const, title: 'Owls', chapters: 2, chapterTitles: ['Arrival', 'Departure'], language: 'English' };
 
 /** Lets pending promises (await chains inside the player) settle. */
 const flush = async () => {
@@ -98,8 +108,8 @@ beforeEach(() => {
   sessionCalls.length = 0;
   fetched.length = 0;
   for (const k of Object.keys(saved)) delete saved[k];
-  saved['7:1'] = '<p>One.</p><p>Two.</p><p>Three.</p>';
-  saved['7:2'] = '<p>Four.</p>';
+  saved['ffn:7:1'] = '<p>One.</p><p>Two.</p><p>Three.</p>';
+  saved['ffn:7:2'] = '<p>Four.</p>';
   updateReader({ ttsContinue: true, ttsReadTitles: false, ttsRate: 1, ttsVoices: {}, ttsVoice: undefined, ttsPauses: 'off' });
 });
 
@@ -187,12 +197,12 @@ describe('audiobook player', () => {
   });
 
   it('fetches chapters that are not saved and remembers the position', async () => {
-    delete saved['7:2'];
+    delete saved['ffn:7:2'];
     await player.start(STORY, { chapter: 2 });
     await flush();
-    expect(fetched).toContain('7:2');
+    expect(fetched).toContain('ffn:7:2');
     expect(player.playerStore.get()).toMatchObject({ offline: false, story: { title: 'Fetched Story', chapters: 3 } });
-    expect(player.listenPosition(7)).toMatchObject({ chapter: 2, index: 0 });
+    expect(player.listenPosition('ffn:7')).toMatchObject({ chapter: 2, index: 0 });
   });
 
   it('uses the chosen voice for the story language and falls back when it is gone', async () => {
@@ -243,8 +253,8 @@ describe('audiobook player: review fixes', () => {
     player.stop();
     spoken.length = 0;
     mockFail.fetch = false;
-    saved['7:1'] = ten;
-    saved['7:2'] = '<p>Four.</p>';
+    saved['ffn:7:1'] = ten;
+    saved['ffn:7:2'] = '<p>Four.</p>';
     updateReader({ ttsContinue: true, ttsReadTitles: false, ttsVoices: {} });
   });
 
@@ -257,12 +267,12 @@ describe('audiobook player: review fixes', () => {
     await player.start(STORY, { chapter: 1 });
     await flush();
     expect(player.playerStore.get().index).toBe(6);
-    expect(library.libraryStore.get().stories[7].chapterProgress?.[1]).toBe(0.6); // not reset to 0
+    expect(library.libraryStore.get().stories['ffn:7'].chapterProgress?.[1]).toBe(0.6); // not reset to 0
     library.upsertStory({ id: 7 } as never, { lastReadAt: 0, chapterProgress: {} });
   });
 
   it('"Try again" after a failed load resumes at the requested place', async () => {
-    delete saved['7:1'];
+    delete saved['ffn:7:1'];
     mockFail.fetch = true;
     await player.start(STORY, { chapter: 1, index: 4 });
     await flush();
@@ -271,7 +281,7 @@ describe('audiobook player: review fixes', () => {
     await player.play();
     await flush();
     expect(player.playerStore.get()).toMatchObject({ status: 'playing', index: 0 }); // fetched chapter has 1 paragraph
-    expect(fetched.filter((f) => f === '7:1').length).toBeGreaterThanOrEqual(2);
+    expect(fetched.filter((f) => f === 'ffn:7:1').length).toBeGreaterThanOrEqual(2);
   });
 
   it('after the end, moving back and pressing play resumes there', async () => {
@@ -313,7 +323,7 @@ describe('audiobook player: review fixes', () => {
 
   it('reports an empty chapter even when titles are announced', async () => {
     updateReader({ ttsReadTitles: true });
-    saved['7:2'] = '<p>* * *</p>';
+    saved['ffn:7:2'] = '<p>* * *</p>';
     await player.start(STORY, { chapter: 2 });
     await flush();
     expect(player.playerStore.get()).toMatchObject({ status: 'error', error: 'This chapter has no text to read.' });
@@ -324,7 +334,7 @@ describe('audiobook player: review fixes', () => {
     await player.start(STORY, { chapter: 1, index: 5 }); // title + body 4
     await flush();
     player.pause();
-    expect(player.listenPosition(7)).toMatchObject({ chapter: 1, index: 4 });
+    expect(player.listenPosition('ffn:7')).toMatchObject({ chapter: 1, index: 4 });
     player.stop();
     updateReader({ ttsReadTitles: false });
     await player.start(STORY, { chapter: 1 });
@@ -354,7 +364,7 @@ describe('audiobook player: review fixes', () => {
   describe('author’s notes at the top of a chapter', () => {
     const NOTES = '<p>Summary: a door.</p><p>Disclaimer: not mine.</p><hr><p>Story one.</p><p>Story two.</p>';
     beforeEach(() => {
-      saved['7:1'] = NOTES;
+      saved['ffn:7:1'] = NOTES;
       updateReader({ ttsSkipNotes: true });
     });
     afterAll(() => updateReader({ ttsSkipNotes: true }));
@@ -464,7 +474,7 @@ describe('audiobook player: natural pauses', () => {
   beforeEach(() => {
     player.stop();
     spoken.length = 0;
-    saved['7:1'] = '<p>One. Uno.</p><p>Two.</p><p>* * *</p><p>Three.</p>';
+    saved['ffn:7:1'] = '<p>One. Uno.</p><p>Two.</p><p>* * *</p><p>Three.</p>';
     updateReader({ ttsPauses: 'natural', ttsReadTitles: false });
   });
   afterAll(() => updateReader({ ttsPauses: 'off' }));
@@ -535,8 +545,8 @@ describe('audiobook player races', () => {
   beforeEach(async () => {
     player.stop();
     spoken.length = 0;
-    saved['7:1'] = '<p>One.</p><p>Two.</p><p>Three.</p>';
-    saved['7:2'] = '<p>Four.</p>';
+    saved['ffn:7:1'] = '<p>One.</p><p>Two.</p><p>Three.</p>';
+    saved['ffn:7:2'] = '<p>Four.</p>';
   });
 
   it('only the last of several quick skips speaks', async () => {

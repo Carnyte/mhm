@@ -3,7 +3,7 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { openStory, storyMenu } from '../features/actions';
 import type { StorySummary } from '../ffn/types';
-import { newChapterCount, storyProgress, useLibraryStory, type LibraryStory } from '../state/library';
+import { keyOf, newChapterCount, statsOf, storyProgress, useLibraryStory, type LibraryStory } from '../state/library';
 import { useTheme } from '../theme';
 import { formatNumber, relativeTime } from '../utils/format';
 import { Cover } from './Cover';
@@ -23,7 +23,9 @@ function StoryCardImpl({
   right?: React.ReactNode;
 }) {
   const c = useTheme();
-  const lib = useLibraryStory(story.id);
+  const key = keyOf(story);
+  const lib = useLibraryStory(key);
+  const st = statsOf(story);
   const fresh = lib ? newChapterCount(lib) : 0;
   const progress = lib?.lastReadAt ? storyProgress(lib) : 0;
   const stats = [
@@ -34,14 +36,14 @@ function StoryCardImpl({
   const numbers = [
     story.chapters > 1 ? `${story.chapters} ch` : '1 ch',
     `${formatNumber(story.words)} words`,
-    story.reviews ? `${formatNumber(story.reviews)} reviews` : undefined,
-    story.favs ? `${formatNumber(story.favs)} favs` : undefined,
-    story.follows ? `${formatNumber(story.follows)} follows` : undefined,
+    st.reviews ? `${formatNumber(st.reviews)} reviews` : undefined,
+    st.favs ? `${formatNumber(st.favs)} favs` : undefined,
+    st.follows ? `${formatNumber(st.follows)} follows` : undefined,
   ].filter(Boolean);
 
   return (
     <Pressable
-      onPress={onPress ?? (() => openStory(story.id))}
+      onPress={onPress ?? (() => openStory(key))}
       onLongPress={() => storyMenu(story)}
       delayLongPress={350}
       accessibilityRole="button"

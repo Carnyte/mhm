@@ -11,6 +11,7 @@ import { Alert, Platform, ScrollView, Switch, View } from 'react-native';
 import { ReaderSettingsPanel } from '../components/ReaderSettingsPanel';
 import { pickOption, toast } from '../components/Sheet';
 import { Row, Section, T } from '../components/ui';
+import { deleteSnapshot, snapshotInfo } from '../db/kv';
 import { downloadedBytes, removeAllDownloads } from '../features/downloads';
 import { configureBackgroundChecks, requestNotificationPermission } from '../features/updates';
 import { LANGUAGES, RATINGS, SORTS } from '../ffn/constants';
@@ -30,6 +31,7 @@ export default function SettingsScreen() {
   const session = useSession();
   const storyCount = useLibrary((x) => Object.keys(x.stories).length);
   const [bytes, setBytes] = useState<number | null>(null);
+  const [snapshot, setSnapshot] = useState(snapshotInfo);
   const [readerPanel, setReaderPanel] = useState(false);
 
   useEffect(() => {
@@ -155,6 +157,24 @@ export default function SettingsScreen() {
       <Section title="Library & storage">
         <Row title="Stories in library" value={String(storyCount)} />
         <Row title="Offline downloads" value={bytes == null ? '…' : formatBytes(bytes)} />
+        {snapshot && (
+          <Row
+            icon="archive-outline"
+            title="Pre-upgrade copy"
+            subtitle="The database as it was before the last storage upgrade. Deleted automatically after 30 days."
+            value={formatBytes(snapshot.bytes)}
+            onPress={() =>
+              confirm('Delete the pre-upgrade copy?', 'Your library isn’t affected; this only frees the space the copy takes.', () => {
+                try {
+                  deleteSnapshot();
+                  setSnapshot(null);
+                } catch (e) {
+                  toast(`Couldn’t delete it: ${(e as Error).message}`, 'error');
+                }
+              })
+            }
+          />
+        )}
         <Row icon="share-outline" title="Back up library" subtitle="Saves stories, progress, bookmarks, collections, drafts" onPress={doExport} />
         <Row icon="download-outline" title="Restore from backup" onPress={doImport} />
         <Row icon="image-outline" title="Clear image cache" onPress={() => (clearImageCache(), toast('Image cache cleared'))} />

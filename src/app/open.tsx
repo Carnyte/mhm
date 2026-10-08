@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Button, Input, T } from '../components/ui';
 import { parseLink } from '../ffn/urls';
+import { ffnKey } from '../sources/ffn/map';
 import { useTheme } from '../theme';
 
 export function openTarget(input: string): boolean {
@@ -13,7 +14,8 @@ export function openTarget(input: string): boolean {
   if (!t) return false;
   switch (t.kind) {
     case 'story':
-      router.replace({ pathname: '/story/[id]', params: { id: String(t.id) } });
+      // fanfiction.net links and bare ids are FanFiction.net stories.
+      router.replace({ pathname: '/story/[id]', params: { id: ffnKey(t.id) } });
       break;
     case 'user':
       router.replace({ pathname: '/user/[id]', params: { id: String(t.id) } });

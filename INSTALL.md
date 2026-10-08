@@ -330,6 +330,11 @@ npx expo run:ios --device --configuration Release --no-bundler
 (or `xed ios` and Cmd+R). **Don't delete the app first**; that erases your library and downloads.
 If the terminal says "No profiles … were found", build once from Xcode with Cmd+R, then retry.
 
+Rebuild from the newest code. If you install a build from **before** the multi-source update
+after the update has run, your library won't show properly in it. Nothing is lost: what you read
+in the older build is merged back when you install the newer one again. Before installing an
+update that changes the library format, use Settings → Back up library.
+
 ---
 
 ## Path C: TestFlight (paid Apple account)

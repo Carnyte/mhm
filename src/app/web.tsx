@@ -8,6 +8,7 @@ import { WebView } from 'react-native-webview';
 import { IconButton, T } from '../components/ui';
 import { FFN_ORIGIN } from '../ffn/constants';
 import { absolute, parseLink } from '../ffn/urls';
+import { ffnKey } from '../sources/ffn/map';
 import { bridge } from '../net/bridge';
 import { loginPrefillScript } from '../net/bridgeScript';
 import { FFN_WEBVIEW_PROPS, isMobileSiteUrl, toDesktopUrl } from '../net/webviewConfig';
@@ -102,7 +103,7 @@ export default function WebScreen() {
           if (url.startsWith(FFN_ORIGIN) && req.navigationType === 'click') {
             const t = parseLink(url);
             if (t?.kind === 'story') {
-              router.push({ pathname: '/story/[id]', params: { id: String(t.id) } });
+              router.push({ pathname: '/story/[id]', params: { id: ffnKey(t.id) } });
               return false;
             }
             if (t?.kind === 'user') {

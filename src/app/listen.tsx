@@ -90,7 +90,7 @@ export default function ListenScreen() {
               icon="book-outline"
               label="Open in reader"
               // Opened from that story's reader: go back to it (it follows the player's chapter).
-              onPress={() => (from === String(story.id) && router.canGoBack() ? router.back() : openReader(story.id, s.chapter))}
+              onPress={() => (from === story.key && router.canGoBack() ? router.back() : openReader(story.key, s.chapter))}
             />
           ),
         }}

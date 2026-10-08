@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test": "jest",
-    "lint": "expo lint",
+    "lint": "expo lint && tsx scripts/check-keys.ts",
     "live-check": "tsx scripts/live-check.ts",
     "dev-proxy": "tsx scripts/dev-proxy.ts"
   },

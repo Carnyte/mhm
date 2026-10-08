@@ -7,6 +7,7 @@ import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { showActions, toast } from '../../components/Sheet';
 import { Empty } from '../../components/states';
 import { Button, Input, T } from '../../components/ui';
+import { keyFromParam } from '../../sources/keys';
 import { createCollection, deleteCollection, libraryStore, renameCollection, toggleInCollection, useLibrary } from '../../state/library';
 import { useTheme } from '../../theme';
 
@@ -20,7 +21,9 @@ export default function Collections() {
     if (!name.trim()) return;
     const col = createCollection(name);
     setName('');
-    const story = add ? libraryStore.get().stories[Number(add)] : undefined;
+    // `add` is the story to put in the new collection (a key; a bare number from older links means FFN).
+    const addKey = keyFromParam(add);
+    const story = addKey ? libraryStore.get().stories[addKey] : undefined;
     if (story) {
       toggleInCollection(col.id, story);
       toast(`Added to “${col.name}”`, 'success');
@@ -69,7 +72,7 @@ export default function Collections() {
                 {item.name}
               </T>
               <T faint size={12}>
-                {item.storyIds.length} {item.storyIds.length === 1 ? 'story' : 'stories'}
+                {item.storyKeys.length} {item.storyKeys.length === 1 ? 'story' : 'stories'}
               </T>
             </View>
             <Ionicons name="chevron-forward" size={16} color={c.textFaint} />

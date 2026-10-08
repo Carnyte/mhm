@@ -7,6 +7,7 @@ import { pickOption, toast } from '../../components/Sheet';
 import { Button, Input, Row, Section, T } from '../../components/ui';
 import { getStory, postReview } from '../../ffn/api';
 import { invalidate } from '../../hooks/useQuery';
+import { ffnKey } from '../../sources/ffn/map';
 import { libraryStore } from '../../state/library';
 import { useSession } from '../../state/session';
 import { useTheme } from '../../theme';
@@ -15,9 +16,10 @@ import { countWords, errorMessage } from '../../utils/format';
 export default function ComposeReview() {
   const c = useTheme();
   const session = useSession();
+  // FanFiction.net-only screen: `id` is the FFN story number.
   const params = useLocalSearchParams<{ id: string; ch?: string; stid?: string }>();
   const id = Number(params.id);
-  const lib = libraryStore.get().stories[id];
+  const lib = libraryStore.get().stories[ffnKey(id)];
   const [chapter, setChapter] = useState(Number(params.ch) || 1);
   const [fetched, setFetched] = useState<{ chapter: number; storyTextId?: number }>();
   const [chapters, setChapters] = useState(lib?.chapters ?? 1);

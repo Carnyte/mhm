@@ -7,14 +7,16 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as player from '../../audio/player';
 import { Cover } from '../../components/Cover';
 import { showActions, toast } from '../../components/Sheet';
-import { ErrorView, Loading } from '../../components/states';
+import { Empty, ErrorView, Loading } from '../../components/states';
 import { Badge, Button, Chip, IconButton, ProgressBar, T } from '../../components/ui';
 import { addSubscription, collectionActions, copyLink, openAuthor, openReader, shareStory } from '../../features/actions';
+import { fetchChapter } from '../../features/chapters';
 import { cancelDownload, downloadStory, removeDownload, useDownloadJob } from '../../features/downloads';
-import { getStory } from '../../ffn/api';
 import type { StoryDetail } from '../../ffn/types';
 import { addToCommunityPath, reportStoryPath } from '../../ffn/urls';
 import { useQuery } from '../../hooks/useQuery';
+import { libraryToFfnDetail } from '../../sources/ffn/map';
+import { keyFromParam, splitKey } from '../../sources/keys';
 import {
   acknowledgeUpdates,
   markAllRead,
@@ -31,10 +33,11 @@ import { formatDate, formatFull, readingTime, relativeTime } from '../../utils/f
 export default function StoryScreen() {
   const c = useTheme();
   const { id: idParam } = useLocalSearchParams<{ id: string }>();
-  const id = Number(idParam);
-  const lib = useLibraryStory(id);
-  const q = useQuery(`story:${id}`, () => getStory(id, 1), { staleMs: 10 * 60_000 });
-  const job = useDownloadJob(id);
+  // A bare number (old links) means FanFiction.net.
+  const key = keyFromParam(idParam);
+  const lib = useLibraryStory(key);
+  const q = useQuery(key ? `story:${key}` : null, () => fetchChapter(key!, 1), { staleMs: 10 * 60_000 });
+  const job = useDownloadJob(key);
   const [bigCover, setBigCover] = useState(false);
   const [chapterSort, setChapterSort] = useState<'asc' | 'desc'>('asc');
 
@@ -43,7 +46,7 @@ export default function StoryScreen() {
     if (!q.data) return;
     upsertStory(q.data, {}, { create: false });
     if (lib && newChapterCount(lib) > 0) {
-      const t = setTimeout(() => acknowledgeUpdates(id), 1500);
+      const t = setTimeout(() => acknowledgeUpdates(lib.key), 1500);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,17 +54,20 @@ export default function StoryScreen() {
 
   const story: StoryDetail | undefined = useMemo(() => {
     if (q.data) return q.data;
-    if (!lib) return undefined;
-    // Offline fallback from the library copy.
-    return {
-      ...lib,
-      author: lib.author ?? { id: 0, name: 'Unknown' },
-      meta: '',
-      chapterList: (lib.chapterTitles ?? Array.from({ length: lib.chapters }, (_, i) => `Chapter ${i + 1}`)).map((t, i) => ({ number: i + 1, title: t })),
-      breadcrumbs: [],
-      currentChapter: 1,
-    } as StoryDetail;
+    // Offline fallback from the library copy (FanFiction.net pages only for now; another site's
+    // story, e.g. from a newer build's backup, shows the error instead).
+    if (!lib || lib.source !== 'ffn') return undefined;
+    return libraryToFfnDetail(lib, 1, 'Unknown');
   }, [q.data, lib]);
+
+  if (!key) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <Stack.Screen options={{ title: '' }} />
+        <Empty icon="help-circle-outline" title="Story not found" message={`“${String(idParam ?? '')}” isn’t a story link this app knows.`} />
+      </View>
+    );
+  }
 
   if (!story) {
     return (
@@ -77,6 +83,8 @@ export default function StoryScreen() {
   const resumeChapter = lib?.lastChapter ?? 1;
   const started = !!lib?.lastReadAt;
   const fresh = lib ? newChapterCount(lib) : 0;
+  // FanFiction.net's own pages (reviews, web) take its numeric id.
+  const { remoteId } = splitKey(key);
   const chapters = chapterSort === 'asc' ? story.chapterList : [...story.chapterList].reverse();
   const fandomCrumb = story.breadcrumbs.filter((b) => !/^\/[a-z]+\/$/.test(b.path) && !/^\/crossovers\/[a-z]+\/$/.test(b.path)).pop();
 
@@ -101,13 +109,13 @@ export default function StoryScreen() {
     showActions(
       [
         { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
-        { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(story.id) },
+        { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
         { label: 'Add to collection…', icon: 'albums-outline', onPress: () => showActions(collectionActions(story), 'Collections') },
-        { label: 'Mark all chapters read', icon: 'checkmark-done-outline', onPress: () => markAllRead(id, true) },
-        { label: 'Mark all unread', icon: 'refresh-outline', onPress: () => markAllRead(id, false) },
-        { label: 'Open on FanFiction.net', icon: 'globe-outline', onPress: () => router.push({ pathname: '/web', params: { path: `/s/${id}/1/` } }) },
-        { label: 'Add to a community', icon: 'people-outline', onPress: () => router.push({ pathname: '/web', params: { path: addToCommunityPath(id) } }) },
-        { label: 'Report abuse', icon: 'flag-outline', destructive: true, onPress: () => router.push({ pathname: '/web', params: { path: reportStoryPath(id, 1, story.title) } }) },
+        { label: 'Mark all chapters read', icon: 'checkmark-done-outline', onPress: () => markAllRead(key, true) },
+        { label: 'Mark all unread', icon: 'refresh-outline', onPress: () => markAllRead(key, false) },
+        { label: 'Open on FanFiction.net', icon: 'globe-outline', onPress: () => router.push({ pathname: '/web', params: { path: `/s/${remoteId}/1/` } }) },
+        { label: 'Add to a community', icon: 'people-outline', onPress: () => router.push({ pathname: '/web', params: { path: addToCommunityPath(story.id) } }) },
+        { label: 'Report abuse', icon: 'flag-outline', destructive: true, onPress: () => router.push({ pathname: '/web', params: { path: reportStoryPath(story.id, 1, story.title) } }) },
       ],
       story.title,
     );
@@ -170,7 +178,7 @@ export default function StoryScreen() {
           <Button
             title={started ? `Continue · Ch. ${resumeChapter}` : 'Start reading'}
             icon="book"
-            onPress={() => openReader(id, started ? resumeChapter : 1)}
+            onPress={() => openReader(key, started ? resumeChapter : 1)}
             style={{ flex: 1 }}
           />
           <Button
@@ -219,7 +227,7 @@ export default function StoryScreen() {
           <Stat label="Words" value={formatFull(story.words)} />
           <Stat label="Chapters" value={String(story.chapters)} />
           <Stat label="Reading time" value={readingTime(story.words)} />
-          <Stat label="Reviews" value={formatFull(story.reviews)} onPress={() => router.push({ pathname: '/reviews/[id]', params: { id: String(id), title: story.title } })} />
+          <Stat label="Reviews" value={formatFull(story.reviews)} onPress={() => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, title: story.title } })} />
           <Stat label="Favorites" value={formatFull(story.favs)} />
           <Stat label="Follows" value={formatFull(story.follows)} />
           <Stat label="Updated" value={story.updated ? formatDate(story.updated) : '—'} />
@@ -229,7 +237,7 @@ export default function StoryScreen() {
 
         <View style={styles.actions}>
           {job ? (
-            <Button title={`Downloading ${job.done}/${job.total}… Cancel`} icon="close-circle-outline" kind="secondary" onPress={() => cancelDownload(id)} style={{ flex: 1 }} />
+            <Button title={`Downloading ${job.done}/${job.total}… Cancel`} icon="close-circle-outline" kind="secondary" onPress={() => cancelDownload(key)} style={{ flex: 1 }} />
           ) : lib?.downloaded ? (
             <Button
               title={`Downloaded${downloaded.size < story.chapters ? ` (${downloaded.size}/${story.chapters}) · Update` : ''}`}
@@ -238,7 +246,7 @@ export default function StoryScreen() {
               onPress={() =>
                 showActions([
                   { label: 'Download new chapters', icon: 'cloud-download-outline', onPress: () => downloadStory(story) },
-                  { label: 'Remove download', icon: 'trash-outline', destructive: true, onPress: () => removeDownload(id) },
+                  { label: 'Remove download', icon: 'trash-outline', destructive: true, onPress: () => removeDownload(key) },
                 ])
               }
               style={{ flex: 1 }}
@@ -246,7 +254,7 @@ export default function StoryScreen() {
           ) : (
             <Button title="Download for offline" icon="cloud-download-outline" kind="secondary" onPress={() => downloadStory(story)} style={{ flex: 1 }} />
           )}
-          <Button title="Reviews" icon="chatbubble-ellipses-outline" kind="secondary" onPress={() => router.push({ pathname: '/reviews/[id]', params: { id: String(id), title: story.title } })} />
+          <Button title="Reviews" icon="chatbubble-ellipses-outline" kind="secondary" onPress={() => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, title: story.title } })} />
         </View>
 
         <View style={styles.chapterHeader}>
@@ -268,11 +276,11 @@ export default function StoryScreen() {
             return (
               <Pressable
                 key={ch.number}
-                onPress={() => openReader(id, ch.number)}
+                onPress={() => openReader(key, ch.number)}
                 onLongPress={() =>
                   showActions([
-                    { label: isRead ? 'Mark unread' : 'Mark read', icon: 'checkmark-outline', onPress: () => markChapterRead(id, ch.number, !isRead) },
-                    { label: 'Reviews for this chapter', icon: 'chatbubbles-outline', onPress: () => router.push({ pathname: '/reviews/[id]', params: { id: String(id), ch: String(ch.number), title: story.title } }) },
+                    { label: isRead ? 'Mark unread' : 'Mark read', icon: 'checkmark-outline', onPress: () => markChapterRead(key, ch.number, !isRead) },
+                    { label: 'Reviews for this chapter', icon: 'chatbubbles-outline', onPress: () => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, ch: String(ch.number), title: story.title } }) },
                   ], `Chapter ${ch.number}`)
                 }
                 style={({ pressed }) => [styles.chapterRow, { borderColor: c.border, backgroundColor: pressed ? c.surfaceAlt : 'transparent' }]}

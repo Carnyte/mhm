@@ -6,11 +6,12 @@ import { File, Paths } from 'expo-file-system';
 import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 import { kv } from '../db/kv';
-import { getSavedChapter, saveChapter } from '../features/downloads';
-import { getStory } from '../ffn/api';
+import { normalizePositions, type Position } from '../db/migrations/v2';
+import { loadChapter as loadChapterText, prefetchChapter } from '../features/chapters';
 import { loadImage } from '../net/images';
 import type { StoryDetail } from '../ffn/types';
-import { libraryStore, recordReading, type LibraryStory } from '../state/library';
+import { SOURCE_NAMES, sourceOfKey, type StoryKey } from '../sources/keys';
+import { keyOf, libraryStore, recordReading, type LibraryStory } from '../state/library';
 import { settingsStore } from '../state/settings';
 import { errorMessage } from '../utils/format';
 import * as audioSession from './session';
@@ -37,12 +38,13 @@ export const BASE_WPM = 175;
 // --- listening positions -------------------------------------------------------------------
 
 /** `index` counts body segments only, so toggling "Announce chapter titles" doesn't shift it. */
-type Positions = Record<string, { chapter: number; index: number; at: number }>;
-let positions: Positions = kv.getSync<Positions>('listenPositions') ?? {};
+type Positions = Record<StoryKey, Position>;
+// Normalised on read: an older build may have added entries under bare FanFiction.net ids.
+let positions: Positions = normalizePositions(kv.getSync('listenPositions'));
 let positionsTimer: ReturnType<typeof setTimeout> | undefined;
 
-function savePosition(storyId: number, chapter: number, index: number) {
-  positions = { ...positions, [storyId]: { chapter, index, at: Date.now() } };
+function savePosition(key: StoryKey, chapter: number, index: number) {
+  positions = { ...positions, [key]: { chapter, index, at: Date.now() } };
   clearTimeout(positionsTimer);
   positionsTimer = setTimeout(() => {
     // Keep the 200 most recent.
@@ -57,8 +59,8 @@ function titleOffset(segments: Segment[]): number {
   return segments[0]?.block === -1 ? 1 : 0;
 }
 
-export function listenPosition(storyId: number): { chapter: number; index: number; at: number } | undefined {
-  return positions[storyId];
+export function listenPosition(key: StoryKey): Position | undefined {
+  return positions[key];
 }
 
 // --- helpers --------------------------------------------------------------------------------
@@ -69,7 +71,7 @@ export function toPlayerStory(s: StoryDetail | LibraryStory): PlayerStory {
       ? s.chapterList.map((c) => c.title)
       : (s as LibraryStory).chapterTitles ?? [];
   return {
-    id: s.id,
+    key: keyOf(s),
     title: s.title,
     author: s.author?.name,
     chapters: s.chapters || 1,
@@ -131,26 +133,6 @@ async function resolveVoice(): Promise<string | undefined> {
 
 // --- chapter loading -----------------------------------------------------------------------
 
-/** Chapter HTML: the offline copy when there is one (works in the background), else the site. */
-async function loadChapterHtml(storyId: number, chapter: number): Promise<{ html: string; detail?: StoryDetail; offline: boolean }> {
-  const saved = await getSavedChapter(storyId, chapter);
-  if (saved) return { html: saved, offline: true };
-  const detail = await getStory(storyId, chapter);
-  if (detail.chapterHtml) saveChapter(storyId, chapter, detail.chapterHtml).catch(() => {});
-  return { html: detail.chapterHtml ?? '', detail, offline: false };
-}
-
-function prefetch(storyId: number, chapter: number) {
-  getSavedChapter(storyId, chapter)
-    .then((have) => {
-      if (have) return;
-      return getStory(storyId, chapter, { quiet: true }).then((d) => {
-        if (d.chapterHtml) return saveChapter(storyId, chapter, d.chapterHtml);
-      });
-    })
-    .catch(() => {});
-}
-
 // --- engine ---------------------------------------------------------------------------------
 
 /** Bumped whenever speech is stopped; callbacks from older utterances are ignored. */
@@ -192,12 +174,12 @@ let pauseTimer: ReturnType<typeof setTimeout> | undefined;
 function recordProgress(force = false) {
   const s = playerStore.get();
   if (!s.story || !s.segments.length) return;
-  savePosition(s.story.id, s.chapter, Math.max(0, s.index - titleOffset(s.segments)));
+  savePosition(s.story.key, s.chapter, Math.max(0, s.index - titleOffset(s.segments)));
   if (!force && Date.now() - lastRecorded < 15_000) return;
   lastRecorded = Date.now();
   const done = s.segments.slice(0, s.index).reduce((n, x) => n + x.words, 0);
   const p = s.chapterWords ? Math.min(0.99, done / s.chapterWords) : 0;
-  const lib = libraryStore.get().stories[s.story.id];
+  const lib = libraryStore.get().stories[s.story.key];
   if (lib) recordReading(lib, s.chapter, p);
 }
 
@@ -324,7 +306,7 @@ function sleepExpired(): boolean {
 async function chapterFinished(g: number) {
   const s = playerStore.get();
   if (!s.story) return;
-  const lib = libraryStore.get().stories[s.story.id];
+  const lib = libraryStore.get().stories[s.story.key];
   if (lib) recordReading(lib, s.chapter, 1);
   const r = settingsStore.get().reader;
   const more = s.chapter < s.story.chapters;
@@ -348,7 +330,7 @@ async function chapterFinished(g: number) {
 type StartPoint = number | { block: number; exact?: boolean } | { body: number } | { progress: number };
 
 /** The last requested start, so "Try again" after a failed load resumes at the same place. */
-let lastRequest: { storyId: number; chapter: number; start: StartPoint } | undefined;
+let lastRequest: { key: StoryKey; chapter: number; start: StartPoint } | undefined;
 
 function resolveStart(segments: Segment[], start: StartPoint): number {
   const off = titleOffset(segments);
@@ -394,7 +376,7 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
   if (!s.story) return;
   const story = s.story;
   const token = ++loadToken;
-  lastRequest = { storyId: story.id, chapter, start: startIndex };
+  lastRequest = { key: story.key, chapter, start: startIndex };
   await stopSpeech();
   if (token !== loadToken) return; // paused or stopped meanwhile
   set({ status: 'loading', chapter, segments: [], index: 0, chapterWords: 0, error: undefined, frontMatter: undefined });
@@ -403,12 +385,12 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
   if (opts.autoplay) audioSession.setPlaying(true);
   pushNowPlaying();
   try {
-    const { html, detail, offline } = await loadChapterHtml(story.id, chapter);
+    const { html, detail, offline } = await loadChapterText(story.key, chapter);
     if (token !== loadToken) return;
     let nextStory = story;
     if (detail) {
       nextStory = { ...toPlayerStory(detail), coverUrl: story.coverUrl ?? detail.coverUrl };
-      const lib = libraryStore.get().stories[story.id];
+      const lib = libraryStore.get().stories[story.key];
       recordReading(lib ?? detail, chapter, lib?.chapterProgress?.[chapter] ?? 0);
     }
     const seg = segmentChapter(html);
@@ -424,8 +406,8 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
     // Don't write reading progress until listening has actually moved on from the start.
     lastRecorded = Date.now();
     set({ story: nextStory, chapter, segments, index, chapterWords: seg.words, offline, frontMatter, status: opts.autoplay ? 'playing' : 'paused' });
-    savePosition(story.id, chapter, Math.max(0, index - titleOffset(segments)));
-    if (chapter < nextStory.chapters) prefetch(story.id, chapter + 1);
+    savePosition(story.key, chapter, Math.max(0, index - titleOffset(segments)));
+    if (chapter < nextStory.chapters) prefetchChapter(story.key, chapter + 1);
     if (opts.autoplay) await speakFrom(index);
     else {
       audioSession.setPlaying(false);
@@ -470,7 +452,7 @@ function pushNowPlaying() {
   const story = s.story;
   const info = {
     title: chapterLabel(story, s.chapter) || story.title,
-    artist: story.author ?? 'FanFiction.net',
+    artist: story.author ?? SOURCE_NAMES[sourceOfKey(story.key)],
     album: story.title,
     artworkUrl: artwork.get(story.coverUrl ?? '') ?? undefined,
   };
@@ -478,7 +460,7 @@ function pushNowPlaying() {
   if (story.coverUrl && !artwork.has(story.coverUrl)) {
     artworkFile(story.coverUrl).then((uri) => {
       const cur = playerStore.get();
-      if (uri && cur.story?.id === story.id) audioSession.setNowPlaying({ ...info, artworkUrl: uri });
+      if (uri && cur.story?.key === story.key) audioSession.setNowPlaying({ ...info, artworkUrl: uri });
     });
   }
 }
@@ -501,11 +483,11 @@ export async function start(story: StoryDetail | LibraryStory | PlayerStory, opt
   await audioSession.activate(settingsStore.get().reader.ttsMixWithOthers);
   const ps: PlayerStory = 'chapterTitles' in story && !('summary' in story) ? (story as PlayerStory) : toPlayerStory(story as StoryDetail | LibraryStory);
   const cur = playerStore.get();
-  const saved = listenPosition(ps.id);
-  const lib = libraryStore.get().stories[ps.id];
+  const saved = listenPosition(ps.key);
+  const lib = libraryStore.get().stories[ps.key];
   const chapter = Math.max(1, Math.min(ps.chapters, opts.chapter ?? saved?.chapter ?? lib?.lastChapter ?? 1));
   // Same story and chapter already loaded: just jump / resume.
-  if (cur.story?.id === ps.id && cur.chapter === chapter && cur.segments.length && cur.status !== 'loading') {
+  if (cur.story?.key === ps.key && cur.chapter === chapter && cur.segments.length && cur.status !== 'loading') {
     let index = opts.index ?? cur.index;
     if (opts.block != null) {
       const found = cur.segments.findIndex((x) => x.block >= opts.block!);
@@ -549,7 +531,7 @@ export async function play() {
     return;
   }
   if (s.status === 'error' || !s.segments.length) {
-    const retry = lastRequest && lastRequest.storyId === s.story.id && lastRequest.chapter === s.chapter ? lastRequest.start : s.index;
+    const retry = lastRequest && lastRequest.key === s.story.key && lastRequest.chapter === s.chapter ? lastRequest.start : s.index;
     await loadChapter(s.chapter, retry, { autoplay: true });
     return;
   }
@@ -599,7 +581,7 @@ export async function skip(delta: number) {
   if (playing) await speakFrom(target);
   else {
     set({ index: target });
-    savePosition(s.story.id, s.chapter, Math.max(0, target - titleOffset(s.segments)));
+    savePosition(s.story.key, s.chapter, Math.max(0, target - titleOffset(s.segments)));
   }
 }
 

@@ -34,7 +34,7 @@ export default function StoryListScreen() {
   }, [params.path]);
   const [filters, setFilters] = useState<StoryFilters>(initial);
   const [showFilters, setShowFilters] = useState(false);
-  const pinned = useSettings((s) => s.pinnedFandoms.some((p) => p.path === basePath));
+  const pinned = useSettings((s) => s.pinnedFandoms.some((p) => p.source === 'ffn' && p.path === basePath));
   const excluded = useSettings((s) => s.excludedFandoms);
 
   const key = `list:${basePath}:${JSON.stringify(filters)}`;
@@ -84,7 +84,7 @@ export default function StoryListScreen() {
                   icon={pinned ? 'star' : 'star-outline'}
                   color={pinned ? c.warning : undefined}
                   label={pinned ? 'Unpin fandom' : 'Pin fandom'}
-                  onPress={() => togglePinnedFandom({ name: title, path: basePath })}
+                  onPress={() => togglePinnedFandom({ source: 'ffn', name: title, path: basePath })}
                 />
               )}
               <IconButton icon="options-outline" label="Filters" onPress={() => setShowFilters(true)} />

@@ -1,0 +1,83 @@
+// Backup files: a v1 file (numeric FanFiction.net ids) restores as ffn: keys, and a v2 export
+// restores to the same library.
+
+import { storyV1toV2 } from '../src/db/migrations/v2';
+import { v1Backup, v1Bookmarks, v1Collections, v1Stories } from './fixtures/v1-library';
+import { mem, seed } from './helpers/memoryKv';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('../src/db/kv', () => require('./helpers/memoryKv').kvModule());
+
+type Library = typeof import('../src/state/library');
+
+function loadLibrary(rows: [string, unknown][] = []): Library {
+  seed(rows);
+  let lib!: Library;
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    lib = require('../src/state/library');
+  });
+  return lib;
+}
+
+/** The library state that matters for a round trip, without the export's dropped downloads. */
+function snapshot(lib: Library) {
+  const st = lib.libraryStore.get();
+  return {
+    stories: Object.fromEntries(Object.entries(st.stories).map(([k, s]) => [k, { ...s, downloaded: false, downloadedChapters: [] }])),
+    authors: st.authors,
+    bookmarks: st.bookmarks,
+    collections: st.collections,
+    drafts: st.drafts,
+  };
+}
+
+describe('restoring a v1 backup file', () => {
+  it('files every story under its ffn: key, with nothing lost', () => {
+    const lib = loadLibrary();
+    // Through JSON, as it comes from the file.
+    const n = lib.importBackup(JSON.parse(JSON.stringify(v1Backup())));
+    expect(n).toBe(v1Stories.length);
+    const st = lib.libraryStore.get();
+    for (const s of v1Stories) {
+      expect(st.stories[`ffn:${s.id}`]).toEqual(storyV1toV2({ ...s, downloaded: false, downloadedChapters: [] } as never));
+      expect(mem.get(`story:ffn:${s.id}`)).toEqual(st.stories[`ffn:${s.id}`]);
+      expect(mem.has(`story:${s.id}`)).toBe(false);
+    }
+    expect(st.bookmarks.map((b) => [b.storyKey, b.storyId])).toEqual(v1Bookmarks.map((b) => [`ffn:${b.storyId}`, b.storyId]));
+    expect(st.collections.map((c) => c.storyKeys)).toEqual(v1Collections.map((c) => c.storyIds.map((id) => `ffn:${id}`)));
+    expect(Object.keys(st.authors).sort()).toEqual(['ffn:501', 'ffn:502']);
+    expect(mem.get('author:ffn:501')).toMatchObject({ key: 'ffn:501', id: '501' });
+    expect(st.drafts).toHaveLength(1);
+  });
+
+  it('a v1 file without a version field is read as v1', () => {
+    const lib = loadLibrary();
+    const { version: _v, ...noVersion } = v1Backup();
+    expect(lib.importBackup(noVersion)).toBe(v1Stories.length);
+    expect(lib.libraryStore.get().stories['ffn:3171550']).toMatchObject({ key: 'ffn:3171550', stats: { reviews: 300 } });
+  });
+});
+
+describe('v2 backups', () => {
+  it('round-trip: export, then restore into an empty library, gives the same library', () => {
+    const source = loadLibrary();
+    source.importBackup(v1Backup());
+    source.upsertStory({ key: 'ao3:3171550', source: 'ao3', remoteId: '3171550', title: 'Same number, other site', summary: '', genres: [], chapters: 2, words: 10, stats: { kudos: 3 }, complete: true, inLibrary: false, addedAt: 1 }, { inLibrary: true });
+    source.toggleInCollection('col-later', source.libraryStore.get().stories['ao3:3171550']);
+    source.addBookmark({ storyKey: 'ao3:3171550', storyTitle: 'Same number, other site', chapter: 2, progress: 0.5 });
+    const file = JSON.parse(JSON.stringify(source.exportBackup()));
+    expect(file).toMatchObject({ app: 'ficshelf', version: 2 });
+    const before = snapshot(source);
+
+    const target = loadLibrary();
+    expect(target.importBackup(file)).toBe(v1Stories.length + 1);
+    expect(snapshot(target)).toEqual(before);
+    expect(target.libraryStore.get().stories['ao3:3171550']).toMatchObject({ source: 'ao3', stats: { kudos: 3 } });
+    expect(target.libraryStore.get().stories['ffn:3171550']).toMatchObject({ source: 'ffn', title: 'Crossroads' });
+
+    // Restoring the same file again changes nothing.
+    target.importBackup(file);
+    expect(snapshot(target)).toEqual(before);
+  });
+});

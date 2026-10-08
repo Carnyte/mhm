@@ -6,6 +6,7 @@ import { FlatList, Pressable, Share, StyleSheet, View } from 'react-native';
 import { addSubscription } from '../features/actions';
 import type { Profile, StorySummary } from '../ffn/types';
 import { absolute, pmComposePath, profilePath } from '../ffn/urls';
+import { authorKey } from '../sources/keys';
 import { libraryStore, setAuthorFlag } from '../state/library';
 import { getSession } from '../state/session';
 import { useTheme } from '../theme';
@@ -54,7 +55,7 @@ export function ProfileView({ profile, isBeta, onRefresh, refreshing }: { profil
   const source = tab === 'favs' ? profile.favStories : profile.stories;
   const fandoms = useMemo(() => [...new Set(source.map((s) => s.fandom).filter(Boolean) as string[])].sort(), [source]);
   const stories = useMemo(() => sortStories(source, sort, status, fandom), [source, sort, status, fandom]);
-  const saved = libraryStore.get().authors[u.id];
+  const saved = libraryStore.get().authors[authorKey({ source: 'ffn', id: u.id })];
 
   const follow = async (kind: 'authorAlert' | 'favAuthor') => {
     if (!getSession().loggedIn) {
@@ -110,7 +111,7 @@ export function ProfileView({ profile, isBeta, onRefresh, refreshing }: { profil
                 { label: 'Share profile', icon: 'share-outline', onPress: () => Share.share({ message: `${u.name} on FanFiction.net\n${absolute(profilePath(u.id))}` }) },
                 { label: 'Open on FanFiction.net', icon: 'globe-outline', onPress: () => router.push({ pathname: '/web', params: { path: profilePath(u.id) } }) },
                 { label: 'Send message on website', icon: 'mail-open-outline', onPress: () => router.push({ pathname: '/web', params: { path: pmComposePath(u.id) } }) },
-                ...(saved?.followed ? [{ label: 'Stop showing as followed (local)', icon: 'eye-off-outline' as const, onPress: () => setAuthorFlag(u, 'followed', false) }] : []),
+                ...(saved?.followed ? [{ label: 'Stop showing as followed (local)', icon: 'eye-off-outline' as const, onPress: () => setAuthorFlag('ffn', u, 'followed', false) }] : []),
               ],
               u.name,
             )

@@ -6,6 +6,7 @@ import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { showActions } from '../components/Sheet';
 import { Empty } from '../components/states';
 import { T } from '../components/ui';
+import type { StoryKey } from '../sources/keys';
 import { patchStory, removeBookmark, updateBookmarkNote, useLibrary } from '../state/library';
 import { useTheme } from '../theme';
 import { relativeMs } from '../utils/format';
@@ -14,10 +15,10 @@ export default function Bookmarks() {
   const c = useTheme();
   const bookmarks = useLibrary((s) => s.bookmarks);
 
-  const open = (storyId: number, chapter: number, progress: number) => {
+  const open = (key: StoryKey, chapter: number, progress: number) => {
     // Set the chapter's saved position so the reader opens right at the bookmark.
-    patchStory(storyId, (s) => ({ chapterProgress: { ...(s.chapterProgress ?? {}), [chapter]: progress } }));
-    router.push({ pathname: '/read/[id]', params: { id: String(storyId), ch: String(chapter) } });
+    patchStory(key, (s) => ({ chapterProgress: { ...(s.chapterProgress ?? {}), [chapter]: progress } }));
+    router.push({ pathname: '/read/[id]', params: { id: key, ch: String(chapter) } });
   };
 
   return (
@@ -28,7 +29,7 @@ export default function Bookmarks() {
         keyExtractor={(b) => b.id}
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => open(item.storyId, item.chapter, item.progress)}
+            onPress={() => open(item.storyKey, item.chapter, item.progress)}
             onLongPress={() =>
               showActions(
                 [

@@ -36,7 +36,7 @@ export default function UpdatesScreen() {
           headerRight: () => (
             <View style={{ flexDirection: 'row', marginRight: 8 }}>
               {updated.length > 0 && (
-                <IconButton icon="checkmark-done-outline" label="Mark all as seen" onPress={() => updated.forEach((s) => acknowledgeUpdates(s.id))} />
+                <IconButton icon="checkmark-done-outline" label="Mark all as seen" onPress={() => updated.forEach((s) => acknowledgeUpdates(s.key))} />
               )}
               <IconButton icon="settings-outline" label="Notification settings" onPress={() => router.push('/settings')} />
             </View>
@@ -45,7 +45,7 @@ export default function UpdatesScreen() {
       />
       <FlatList
         data={updated}
-        keyExtractor={(s) => String(s.id)}
+        keyExtractor={(s) => s.key}
         onRefresh={() => checkForUpdates()}
         refreshing={false}
         ListHeaderComponent={
@@ -80,7 +80,7 @@ export default function UpdatesScreen() {
             <View>
               <StoryCard story={item} />
               <View style={styles.actions}>
-                <Pressable onPress={() => openReader(item.id, firstNew)} style={[styles.pill, { backgroundColor: c.success + '22' }]}>
+                <Pressable onPress={() => openReader(item.key, firstNew)} style={[styles.pill, { backgroundColor: c.success + '22' }]}>
                   <Ionicons name="play" size={13} color={c.success} />
                   <T size={13} weight="600" style={{ color: c.success }}>
                     Read {n} new chapter{n === 1 ? '' : 's'} (from {firstNew})
@@ -89,8 +89,8 @@ export default function UpdatesScreen() {
                 <Pressable
                   onPress={() =>
                     showActions([
-                      { label: 'Mark as seen', icon: 'checkmark-outline', onPress: () => acknowledgeUpdates(item.id) },
-                      { label: 'Story details', icon: 'information-circle-outline', onPress: () => router.push({ pathname: '/story/[id]', params: { id: String(item.id) } }) },
+                      { label: 'Mark as seen', icon: 'checkmark-outline', onPress: () => acknowledgeUpdates(item.key) },
+                      { label: 'Story details', icon: 'information-circle-outline', onPress: () => router.push({ pathname: '/story/[id]', params: { id: item.key } }) },
                     ])
                   }
                   style={[styles.pill, { backgroundColor: c.chip }]}
