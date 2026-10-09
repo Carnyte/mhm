@@ -1,18 +1,16 @@
-// Story actions shared by cards, the story screen and the reader.
+// Story actions shared by cards, the story screen and the reader. The menus are built here from
+// generic entries plus the story's site slots (src/sources/ui.ts), so no screen branches on the site.
 
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
-import { Share } from 'react-native';
+import { Linking, Share } from 'react-native';
 import { showActions, toast, type SheetAction } from '../components/Sheet';
-import { LoginRequiredError, subscribe, type SubscriptionFlags } from '../ffn/api';
-import type { StoryDetail, UserRef } from '../ffn/types';
-import { absolute, storyPath } from '../ffn/urls';
-import { ffnId } from '../sources/ffn/map';
-import type { StoryKey } from '../sources/keys';
-import { keyOf, libraryStore, setAuthorFlag, setInLibrary, toggleInCollection, upsertStory, type AnyStory, type LibraryStory } from '../state/library';
-import { getSession } from '../state/session';
+import { splitKey, toKey, type SourceId, type StoryKey } from '../sources/keys';
+import { disabledMessage, resolveLink, sourceOf, type ResolvedLink } from '../sources/registry';
+import type { ChapterContent, StoryInfo } from '../sources/types';
+import { getUi, uiOf } from '../sources/ui';
+import { keyOf, libraryStore, markAllRead, setInLibrary, toggleInCollection, type AnyStory } from '../state/library';
 import { settingsStore, updateSettings } from '../state/settings';
-import { errorMessage } from '../utils/format';
 import * as player from '../audio/player';
 import { downloadStory, removeDownload } from './downloads';
 
@@ -24,13 +22,14 @@ export function openReader(key: StoryKey, chapter?: number) {
   router.push({ pathname: '/read/[id]', params: { id: key, ...(chapter ? { ch: String(chapter) } : {}) } });
 }
 
-/** A FanFiction.net author's profile (an FFN-only screen, so it takes the numeric id). */
-export function openAuthor(user: UserRef) {
-  router.push({ pathname: '/user/[id]', params: { id: String(user.id), name: user.name } });
+/** An author's screen on their site (FanFiction.net's FFN-only screens pass its numeric user). */
+export function openAuthor(user: { id: number | string; name: string }, source: SourceId = 'ffn') {
+  const route = getUi(source).authorRoute(user);
+  if (route) router.push(route);
 }
 
 export function storyUrl(key: StoryKey): string {
-  return absolute(storyPath(ffnId(key)));
+  return sourceOf(key).webUrl(splitKey(key).remoteId);
 }
 
 export async function shareStory(s: AnyStory) {
@@ -43,39 +42,53 @@ export async function copyLink(key: StoryKey) {
   toast('Link copied');
 }
 
-function requireLogin(): boolean {
-  if (getSession().loggedIn) return true;
-  toast('Log in to FanFiction.net first');
-  router.push('/login');
-  return false;
+/** A page of a site the app has no screen for: the site's in-app page, else Safari. */
+export function openWeb(source: SourceId, url: string, opts: { replace?: boolean } = {}) {
+  const route = getUi(source).webRoute(url);
+  if (!route) Linking.openURL(url).catch(() => {});
+  else if (opts.replace) router.replace(route);
+  else router.push(route);
 }
 
 /**
- * Follow / favourite through the site's own endpoint. FFN's endpoint only *adds*; removing is
- * done from the account lists (Library → Follows / Favorites).
+ * Opens what a link points to: the story page, the author, the app's screen for the page, or the
+ * page itself. Returns false for a link to a known site that's off ("coming soon"); the caller
+ * shows disabledMessage().
  */
-export async function addSubscription(story: AnyStory, flags: SubscriptionFlags): Promise<boolean> {
-  if (!requireLogin()) return false;
-  const authorId = story.author?.id;
-  if (!authorId) {
-    toast('Open the story first to load its author', 'error');
-    return false;
+export function openLinkHit(hit: ResolvedLink, opts: { replace?: boolean } = {}): boolean {
+  const go = (href: Parameters<typeof router.push>[0]) => (opts.replace ? router.replace(href) : router.push(href));
+  switch (hit.kind) {
+    case 'disabled':
+      return false;
+    case 'story':
+      go({ pathname: '/story/[id]', params: { id: toKey(hit.source, hit.id) } });
+      return true;
+    case 'author': {
+      const route = getUi(hit.source).authorRoute({ id: hit.id });
+      if (route) go(route);
+      else if (hit.url) openWeb(hit.source, hit.url, opts);
+      return true;
+    }
+    case 'route':
+      go(hit.href);
+      return true;
+    default:
+      if (hit.url) openWeb(hit.source, hit.url, opts);
+      return true;
   }
-  try {
-    const msg = await subscribe(ffnId(keyOf(story)), authorId, flags);
-    const patch: Partial<LibraryStory> = {};
-    if (flags.storyAlert) patch.followed = true;
-    if (flags.favStory) patch.favorited = true;
-    if (Object.keys(patch).length) upsertStory(story, { ...patch, knownChapters: story.chapters });
-    if (flags.authorAlert && story.author) setAuthorFlag('ffn', story.author, 'followed', true);
-    if (flags.favAuthor && story.author) setAuthorFlag('ffn', story.author, 'favorited', true);
-    toast(msg || 'Saved to your FanFiction.net account', 'success');
-    return true;
-  } catch (e) {
-    if (e instanceof LoginRequiredError) router.push('/login');
-    toast(errorMessage(e), 'error');
-    return false;
-  }
+}
+
+/**
+ * A link tapped inside a chapter: stories open their story page; other pages of a site that's on
+ * open as that site's page; links to sites that are off say why. Anything else is ignored.
+ */
+/** A link tapped in a chapter; `base` is the story's site, which relative links belong to. */
+export function openReaderLink(href: string, base?: string) {
+  const hit = resolveLink(href, base);
+  if (!hit) return;
+  if (hit.kind === 'disabled') toast(disabledMessage(hit.source));
+  else if (hit.kind === 'story') openStory(toKey(hit.source, hit.id));
+  else if (hit.url) openWeb(hit.source, hit.url);
 }
 
 export function collectionActions(story: AnyStory): SheetAction[] {
@@ -91,8 +104,33 @@ export function collectionActions(story: AnyStory): SheetAction[] {
   ];
 }
 
-export function storyMenu(story: AnyStory) {
+/** The story page's ⋯ menu: sharing and library entries, then the site's own. */
+export function storyPageMenu(story: StoryInfo): SheetAction[] {
+  const key = story.key;
+  return [
+    { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
+    { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
+    { label: 'Add to collection…', icon: 'albums-outline', onPress: () => showActions(collectionActions(story), 'Collections') },
+    { label: 'Mark all chapters read', icon: 'checkmark-done-outline', onPress: () => markAllRead(key, true) },
+    { label: 'Mark all unread', icon: 'refresh-outline', onPress: () => markAllRead(key, false) },
+    ...uiOf(key).storyActions(story).menu,
+  ];
+}
+
+/** The reader's ⋯ menu: Bookmark, the site's entries, Share and Story details. */
+export function readerMenu(story: StoryInfo, chapter: number, ctx: { content?: ChapterContent; bookmark: () => void }): SheetAction[] {
+  return [
+    { label: 'Bookmark this spot', icon: 'bookmark-outline', onPress: ctx.bookmark },
+    ...uiOf(story.key).readerActions(story, chapter, { content: ctx.content }).menu,
+    { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
+    { label: 'Story details', icon: 'information-circle-outline', onPress: () => openStory(story.key) },
+  ];
+}
+
+/** The story card's long-press menu. */
+export function storyMenuActions(story: AnyStory): SheetAction[] {
   const key = keyOf(story);
+  const ui = uiOf(key);
   const lib = libraryStore.get().stories[key];
   const actions: SheetAction[] = [
     { label: 'Read', icon: 'book-outline', onPress: () => openReader(key, lib?.lastChapter) },
@@ -100,7 +138,7 @@ export function storyMenu(story: AnyStory) {
       label: 'Listen (audiobook)',
       icon: 'headset-outline',
       onPress: () => {
-        player.start(lib ?? (story as StoryDetail), { chapter: lib?.lastChapter });
+        player.start(lib ?? story, { chapter: lib?.lastChapter });
         router.push('/listen');
       },
     },
@@ -116,10 +154,11 @@ export function storyMenu(story: AnyStory) {
     lib?.downloaded
       ? { label: 'Remove download', icon: 'trash-outline', destructive: true, onPress: () => removeDownload(key) }
       : { label: 'Download for offline', icon: 'cloud-download-outline', onPress: () => downloadStory(story) },
-    { label: 'Follow story', icon: 'notifications-outline', onPress: () => addSubscription(story, { storyAlert: true }) },
-    { label: 'Favorite story', icon: 'heart-outline', onPress: () => addSubscription(story, { favStory: true }) },
+    ...ui.cardActions(story),
   ];
-  if (story.author) actions.push({ label: `More by ${story.author.name}`, icon: 'person-outline', onPress: () => openAuthor(story.author!) });
+  const author = story.author;
+  const authorRoute = author && ui.authorRoute(author);
+  if (author && authorRoute) actions.push({ label: `More by ${author.name}`, icon: 'person-outline', onPress: () => router.push(authorRoute) });
   if (story.fandom) {
     const fandom = story.fandom;
     actions.push({
@@ -136,5 +175,9 @@ export function storyMenu(story: AnyStory) {
     { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
     { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
   );
-  showActions(actions, story.title, story.author ? `by ${story.author.name}` : undefined);
+  return actions;
+}
+
+export function storyMenu(story: AnyStory) {
+  showActions(storyMenuActions(story), story.title, story.author ? `by ${story.author.name}` : undefined);
 }

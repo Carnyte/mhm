@@ -1,6 +1,7 @@
 // App theme (light / dark) and reader colour themes.
 
 import { useColorScheme } from 'react-native';
+import type { SourceId } from '../sources/keys';
 import { useSettings, type ReaderThemeKey } from '../state/settings';
 
 export interface Palette {
@@ -22,6 +23,8 @@ export interface Palette {
   chip: string;
   chipText: string;
   overlay: string;
+  /** Each site's colour (source badges, chips); 4.5:1 on the background. Tint: colour + '22'. */
+  source: Record<SourceId, string>;
 }
 
 export const LIGHT: Palette = {
@@ -43,6 +46,7 @@ export const LIGHT: Palette = {
   chip: '#E8EDF5',
   chipText: '#2A3B52',
   overlay: 'rgba(10,20,30,0.45)',
+  source: { ffn: '#2B4C9B', ao3: '#990000', wp: '#9A3412', local: '#556170' },
 };
 
 export const DARK: Palette = {
@@ -64,6 +68,7 @@ export const DARK: Palette = {
   chip: '#232B36',
   chipText: '#C9D4E3',
   overlay: 'rgba(0,0,0,0.6)',
+  source: { ffn: '#8FA8F0', ao3: '#F28B82', wp: '#FF9A5C', local: '#A9B4C2' },
 };
 
 export function useTheme(): Palette {

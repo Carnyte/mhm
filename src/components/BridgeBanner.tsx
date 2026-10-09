@@ -1,16 +1,23 @@
-// Small status pill shown while connecting to / verifying with FanFiction.net.
+// Small status pill shown while connecting to / verifying with FanFiction.net. It's about the FFN
+// bridge only: hidden when FanFiction.net is switched off, and, once other sites are on too, only
+// shown while FanFiction.net is actually in use (requests waiting) or running its security check.
 
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { bridge } from '../net/bridge';
+import { getSource } from '../sources/registry';
 import { useBridgeStatus } from '../state/session';
 import { MINI_PLAYER_HEIGHT, useMiniPlayerVisible } from './miniPlayerLayout';
+import { useEnabledSourceCount } from './SourceBadge';
 
 export function BridgeBanner() {
   const status = useBridgeStatus();
   const insets = useSafeAreaInsets();
   const lifted = useMiniPlayerVisible();
+  const sources = useEnabledSourceCount();
   if (status === 'ready' || status === 'needs-user') return null;
+  if (!getSource('ffn').enabled()) return null;
+  if (sources > 1 && status !== 'verifying' && !bridge.busy) return null;
   const label =
     status === 'starting'
       ? 'Connecting to FanFiction.net…'

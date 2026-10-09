@@ -45,39 +45,42 @@ jest.mock('../src/audio/session', () => ({
 }));
 // Chapter text by story key: `saved` is the device copy, anything else comes "from the site".
 jest.mock('../src/features/chapters', () => {
+  // A chapter from the site: its text plus the story's metadata (site-neutral StoryInfo).
   const fetchChapter = async (key: string, ch: number) => {
     fetched.push(`${key}:${ch}`);
     if (mockFail.fetch) throw new Error('offline');
+    const remoteId = key.split(':')[1];
     return {
-      id: Number(key.split(':')[1]),
-      title: 'Fetched Story',
-      author: { id: 1, name: 'Writer' },
-      chapters: 3,
-      chapterList: [1, 2, 3].map((n) => ({ number: n, title: `Part ${n}` })),
-      chapterHtml: `<p>Fetched chapter ${ch}.</p>`,
-      summary: '',
-      genres: [],
-      words: 10,
-      reviews: 0,
-      favs: 0,
-      follows: 0,
-      complete: false,
-      meta: '',
-      breadcrumbs: [],
-      currentChapter: ch,
-      language: 'English',
+      number: ch,
+      html: `<p>Fetched chapter ${ch}.</p>`,
+      story: {
+        key,
+        source: 'ffn',
+        remoteId,
+        url: `https://www.fanfiction.net/s/${remoteId}/1/`,
+        title: 'Fetched Story',
+        author: { source: 'ffn', id: '1', name: 'Writer' },
+        chapters: 3,
+        chapterList: [1, 2, 3].map((n) => ({ number: n, title: `Part ${n}` })),
+        summary: '',
+        genres: [],
+        words: 10,
+        stats: { reviews: 0, favs: 0, follows: 0 },
+        complete: false,
+        language: 'English',
+      },
     };
   };
   return {
     loadChapter: async (key: string, ch: number) => {
       const have = saved[`${key}:${ch}`];
       if (have) return { html: have, offline: true };
-      const detail = await fetchChapter(key, ch);
-      saved[`${key}:${ch}`] = detail.chapterHtml;
-      return { html: detail.chapterHtml, detail, offline: false };
+      const c = await fetchChapter(key, ch);
+      saved[`${key}:${ch}`] = c.html;
+      return { html: c.html, story: c.story, offline: false };
     },
     prefetchChapter: (key: string, ch: number) => {
-      if (!saved[`${key}:${ch}`]) fetchChapter(key, ch).then((d) => void (saved[`${key}:${ch}`] = d.chapterHtml), () => {});
+      if (!saved[`${key}:${ch}`]) fetchChapter(key, ch).then((c) => void (saved[`${key}:${ch}`] = c.html), () => {});
     },
   };
 });

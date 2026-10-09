@@ -9,9 +9,8 @@ import { kv } from '../db/kv';
 import { normalizePositions, type Position } from '../db/migrations/v2';
 import { loadChapter as loadChapterText, prefetchChapter } from '../features/chapters';
 import { loadImage } from '../net/images';
-import type { StoryDetail } from '../ffn/types';
 import { SOURCE_NAMES, sourceOfKey, type StoryKey } from '../sources/keys';
-import { keyOf, libraryStore, recordReading, type LibraryStory } from '../state/library';
+import { keyOf, libraryStore, recordReading, type AnyStory, type LibraryStory } from '../state/library';
 import { settingsStore } from '../state/settings';
 import { errorMessage } from '../utils/format';
 import * as audioSession from './session';
@@ -65,7 +64,7 @@ export function listenPosition(key: StoryKey): Position | undefined {
 
 // --- helpers --------------------------------------------------------------------------------
 
-export function toPlayerStory(s: StoryDetail | LibraryStory): PlayerStory {
+export function toPlayerStory(s: AnyStory): PlayerStory {
   const titles =
     'chapterList' in s && s.chapterList?.length
       ? s.chapterList.map((c) => c.title)
@@ -385,13 +384,13 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
   if (opts.autoplay) audioSession.setPlaying(true);
   pushNowPlaying();
   try {
-    const { html, detail, offline } = await loadChapterText(story.key, chapter);
+    const { html, story: info, offline } = await loadChapterText(story.key, chapter);
     if (token !== loadToken) return;
     let nextStory = story;
-    if (detail) {
-      nextStory = { ...toPlayerStory(detail), coverUrl: story.coverUrl ?? detail.coverUrl };
+    if (info) {
+      nextStory = { ...toPlayerStory(info), coverUrl: story.coverUrl ?? info.coverUrl };
       const lib = libraryStore.get().stories[story.key];
-      recordReading(lib ?? detail, chapter, lib?.chapterProgress?.[chapter] ?? 0);
+      recordReading(lib ?? info, chapter, lib?.chapterProgress?.[chapter] ?? 0);
     }
     const seg = segmentChapter(html);
     if (!seg.segments.length) throw new Error('This chapter has no text to read.');
@@ -479,9 +478,9 @@ export interface StartOptions {
 }
 
 /** Starts (or resumes) listening to a story. */
-export async function start(story: StoryDetail | LibraryStory | PlayerStory, opts: StartOptions = {}) {
+export async function start(story: AnyStory | PlayerStory, opts: StartOptions = {}) {
   await audioSession.activate(settingsStore.get().reader.ttsMixWithOthers);
-  const ps: PlayerStory = 'chapterTitles' in story && !('summary' in story) ? (story as PlayerStory) : toPlayerStory(story as StoryDetail | LibraryStory);
+  const ps: PlayerStory = 'chapterTitles' in story && !('summary' in story) ? (story as PlayerStory) : toPlayerStory(story as AnyStory);
   const cur = playerStore.get();
   const saved = listenPosition(ps.key);
   const lib = libraryStore.get().stories[ps.key];

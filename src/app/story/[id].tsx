@@ -8,18 +8,20 @@ import * as player from '../../audio/player';
 import { Cover } from '../../components/Cover';
 import { showActions, toast } from '../../components/Sheet';
 import { Empty, ErrorView, Loading } from '../../components/states';
+import { SourceBadge } from '../../components/SourceBadge';
+import { StatsGrid } from '../../components/StatsGrid';
 import { Badge, Button, Chip, IconButton, ProgressBar, T } from '../../components/ui';
-import { addSubscription, collectionActions, copyLink, openAuthor, openReader, shareStory } from '../../features/actions';
-import { fetchChapter } from '../../features/chapters';
+import { openReader, storyPageMenu } from '../../features/actions';
+import { fetchStory } from '../../features/chapters';
 import { cancelDownload, downloadStory, removeDownload, useDownloadJob } from '../../features/downloads';
-import type { StoryDetail } from '../../ffn/types';
-import { addToCommunityPath, reportStoryPath } from '../../ffn/urls';
 import { useQuery } from '../../hooks/useQuery';
-import { libraryToFfnDetail } from '../../sources/ffn/map';
-import { keyFromParam, splitKey } from '../../sources/keys';
+import { keyFromParam } from '../../sources/keys';
+import { infoFromLibrary } from '../../sources/meta';
+import { sourceOf } from '../../sources/registry';
+import type { StoryInfo } from '../../sources/types';
+import { uiOf } from '../../sources/ui';
 import {
   acknowledgeUpdates,
-  markAllRead,
   markChapterRead,
   newChapterCount,
   setInLibrary,
@@ -28,7 +30,7 @@ import {
   useLibraryStory,
 } from '../../state/library';
 import { useTheme } from '../../theme';
-import { formatDate, formatFull, readingTime, relativeTime } from '../../utils/format';
+import { relativeTime } from '../../utils/format';
 
 export default function StoryScreen() {
   const c = useTheme();
@@ -36,7 +38,7 @@ export default function StoryScreen() {
   // A bare number (old links) means FanFiction.net.
   const key = keyFromParam(idParam);
   const lib = useLibraryStory(key);
-  const q = useQuery(key ? `story:${key}` : null, () => fetchChapter(key!, 1), { staleMs: 10 * 60_000 });
+  const q = useQuery(key ? `story:${key}` : null, () => fetchStory(key!), { staleMs: 10 * 60_000 });
   const job = useDownloadJob(key);
   const [bigCover, setBigCover] = useState(false);
   const [chapterSort, setChapterSort] = useState<'asc' | 'desc'>('asc');
@@ -52,12 +54,12 @@ export default function StoryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q.data]);
 
-  const story: StoryDetail | undefined = useMemo(() => {
+  const story: StoryInfo | undefined = useMemo(() => {
     if (q.data) return q.data;
-    // Offline fallback from the library copy (FanFiction.net pages only for now; another site's
-    // story, e.g. from a newer build's backup, shows the error instead).
-    if (!lib || lib.source !== 'ffn') return undefined;
-    return libraryToFfnDetail(lib, 1, 'Unknown');
+    // Offline fallback from the library copy (not for a site this version can't read yet, e.g. a
+    // story from a newer build's backup: that shows the error instead).
+    if (!lib || sourceOf(lib.key).comingSoon) return undefined;
+    return infoFromLibrary(lib);
   }, [q.data, lib]);
 
   if (!key) {
@@ -83,42 +85,14 @@ export default function StoryScreen() {
   const resumeChapter = lib?.lastChapter ?? 1;
   const started = !!lib?.lastReadAt;
   const fresh = lib ? newChapterCount(lib) : 0;
-  // FanFiction.net's own pages (reviews, web) take its numeric id.
-  const { remoteId } = splitKey(key);
   const chapters = chapterSort === 'asc' ? story.chapterList : [...story.chapterList].reverse();
-  const fandomCrumb = story.breadcrumbs.filter((b) => !/^\/[a-z]+\/$/.test(b.path) && !/^\/crossovers\/[a-z]+\/$/.test(b.path)).pop();
+  // What the story's site adds: its buttons, stats, menu entries and where links go.
+  const ui = uiOf(key);
+  const slots = ui.storyActions(story);
+  const authorRoute = story.author ? ui.authorRoute(story.author) : null;
+  const fandomRoute = ui.fandomRoute(story);
 
-  const subscriptionMenu = () =>
-    showActions(
-      [
-        { label: lib?.followed ? 'Following story ✓' : 'Follow story', icon: 'notifications-outline', onPress: () => addSubscription(story, { storyAlert: true }) },
-        { label: lib?.favorited ? 'Favorite story ✓' : 'Favorite story', icon: 'heart-outline', onPress: () => addSubscription(story, { favStory: true }) },
-        { label: `Follow ${story.author.name}`, icon: 'person-add-outline', onPress: () => addSubscription(story, { authorAlert: true }) },
-        { label: `Favorite ${story.author.name}`, icon: 'star-outline', onPress: () => addSubscription(story, { favAuthor: true }) },
-        {
-          label: 'Follow + favorite everything',
-          icon: 'sparkles-outline',
-          onPress: () => addSubscription(story, { storyAlert: true, favStory: true, authorAlert: true, favAuthor: true }),
-        },
-      ],
-      'Follow / Favorite',
-      'Saved to your FanFiction.net account. To unfollow, use Library → Follows.',
-    );
-
-  const moreMenu = () =>
-    showActions(
-      [
-        { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
-        { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
-        { label: 'Add to collection…', icon: 'albums-outline', onPress: () => showActions(collectionActions(story), 'Collections') },
-        { label: 'Mark all chapters read', icon: 'checkmark-done-outline', onPress: () => markAllRead(key, true) },
-        { label: 'Mark all unread', icon: 'refresh-outline', onPress: () => markAllRead(key, false) },
-        { label: 'Open on FanFiction.net', icon: 'globe-outline', onPress: () => router.push({ pathname: '/web', params: { path: `/s/${remoteId}/1/` } }) },
-        { label: 'Add to a community', icon: 'people-outline', onPress: () => router.push({ pathname: '/web', params: { path: addToCommunityPath(story.id) } }) },
-        { label: 'Report abuse', icon: 'flag-outline', destructive: true, onPress: () => router.push({ pathname: '/web', params: { path: reportStoryPath(story.id, 1, story.title) } }) },
-      ],
-      story.title,
-    );
+  const moreMenu = () => showActions(storyPageMenu(story), story.title);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -150,16 +124,13 @@ export default function StoryScreen() {
             <T size={21} weight="800" selectable>
               {story.title}
             </T>
-            <Pressable onPress={() => story.author.id && openAuthor(story.author)} accessibilityRole="link">
+            <Pressable onPress={() => authorRoute && router.push(authorRoute)} accessibilityRole="link">
               <T size={15} style={{ color: c.accent, marginTop: 4 }}>
-                by {story.author.name}
+                by {story.author?.name ?? 'Unknown'}
               </T>
             </Pressable>
             {!!story.fandom && (
-              <Pressable
-                disabled={!fandomCrumb}
-                onPress={() => fandomCrumb && router.push({ pathname: '/list', params: { path: fandomCrumb.path, title: fandomCrumb.label } })}
-              >
+              <Pressable disabled={!fandomRoute} onPress={() => fandomRoute && router.push(fandomRoute)}>
                 <T muted size={13} style={{ marginTop: 4 }}>
                   {story.isCrossover ? '⇄ ' : ''}
                   {story.fandom}
@@ -170,6 +141,7 @@ export default function StoryScreen() {
               {!!story.rating && <Badge label={story.rating} color={story.rating === 'M' ? c.danger : c.primary} textColor={c.dark && story.rating !== 'M' ? c.primaryText : '#fff'} />}
               <Badge label={story.complete ? 'Complete' : 'In progress'} color={story.complete ? c.success : c.warning} />
               {fresh > 0 && <Badge label={`${fresh} new`} color={c.accent} />}
+              <SourceBadge source={story.source} />
             </View>
           </View>
         </View>
@@ -190,7 +162,8 @@ export default function StoryScreen() {
               router.push('/listen');
             }}
           />
-          <IconButton icon="heart-outline" label="Follow or favorite" onPress={subscriptionMenu} />
+          {slots.endorse && <IconButton icon={slots.endorse.icon} label={slots.endorse.label} onPress={slots.endorse.onPress} />}
+          {slots.follow && <IconButton icon={slots.follow.icon} label={slots.follow.label} onPress={slots.follow.onPress} />}
         </View>
         {started && lib && (
           <View style={{ paddingHorizontal: 16, marginTop: 4 }}>
@@ -223,17 +196,7 @@ export default function StoryScreen() {
           )}
         </View>
 
-        <View style={[styles.stats, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <Stat label="Words" value={formatFull(story.words)} />
-          <Stat label="Chapters" value={String(story.chapters)} />
-          <Stat label="Reading time" value={readingTime(story.words)} />
-          <Stat label="Reviews" value={formatFull(story.reviews)} onPress={() => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, title: story.title } })} />
-          <Stat label="Favorites" value={formatFull(story.favs)} />
-          <Stat label="Follows" value={formatFull(story.follows)} />
-          <Stat label="Updated" value={story.updated ? formatDate(story.updated) : '—'} />
-          <Stat label="Published" value={formatDate(story.published)} />
-          <Stat label="Story ID" value={String(story.id)} />
-        </View>
+        <StatsGrid cells={ui.statCells(story)} />
 
         <View style={styles.actions}>
           {job ? (
@@ -254,7 +217,7 @@ export default function StoryScreen() {
           ) : (
             <Button title="Download for offline" icon="cloud-download-outline" kind="secondary" onPress={() => downloadStory(story)} style={{ flex: 1 }} />
           )}
-          <Button title="Reviews" icon="chatbubble-ellipses-outline" kind="secondary" onPress={() => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, title: story.title } })} />
+          {slots.discuss && <Button title={slots.discuss.label} icon={slots.discuss.icon} kind="secondary" onPress={slots.discuss.onPress} />}
         </View>
 
         <View style={styles.chapterHeader}>
@@ -278,10 +241,13 @@ export default function StoryScreen() {
                 key={ch.number}
                 onPress={() => openReader(key, ch.number)}
                 onLongPress={() =>
-                  showActions([
-                    { label: isRead ? 'Mark unread' : 'Mark read', icon: 'checkmark-outline', onPress: () => markChapterRead(key, ch.number, !isRead) },
-                    { label: 'Reviews for this chapter', icon: 'chatbubbles-outline', onPress: () => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, ch: String(ch.number), title: story.title } }) },
-                  ], `Chapter ${ch.number}`)
+                  showActions(
+                    [
+                      { label: isRead ? 'Mark unread' : 'Mark read', icon: 'checkmark-outline', onPress: () => markChapterRead(key, ch.number, !isRead) },
+                      ...ui.chapterActions(story, ch.number),
+                    ],
+                    `Chapter ${ch.number}`,
+                  )
                 }
                 style={({ pressed }) => [styles.chapterRow, { borderColor: c.border, backgroundColor: pressed ? c.surfaceAlt : 'transparent' }]}
                 accessibilityRole="button"
@@ -311,35 +277,11 @@ export default function StoryScreen() {
   );
 }
 
-function Stat({ label, value, onPress }: { label: string; value: string; onPress?: () => void }) {
-  const c = useTheme();
-  return (
-    <Pressable style={styles.stat} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}>
-      <T size={15} weight="700" style={onPress ? { color: c.accent } : undefined} numberOfLines={1}>
-        {value}
-      </T>
-      <T faint size={11}>
-        {label}
-      </T>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   hero: { flexDirection: 'row', gap: 14, padding: 16 },
   badges: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
   actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 8 },
   box: { marginHorizontal: 16, marginTop: 8, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
-  stats: {
-    marginHorizontal: 16,
-    marginVertical: 12,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingVertical: 6,
-  },
-  stat: { width: '33.33%', paddingVertical: 8, paddingHorizontal: 8, alignItems: 'center' },
   chapterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 12, marginBottom: 6 },
   chapters: { marginHorizontal: 16, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   chapterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },

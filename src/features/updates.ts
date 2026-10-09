@@ -23,7 +23,7 @@ import {
 import { getSession } from '../state/session';
 import { settingsStore, updateSettings } from '../state/settings';
 import { createStore, useStore } from '../state/store';
-import { fetchChapter } from './chapters';
+import { fetchStory } from './chapters';
 import { downloadStory } from './downloads';
 
 export const UPDATE_TASK = 'ficshelf-update-check';
@@ -77,7 +77,7 @@ async function notify(updates: { story: LibraryStory; added: number }[]) {
 }
 
 /**
- * Checks each story's first page for its chapter count. Polite: 2 at a time.
+ * Checks each story's page for its chapter count. Polite: 2 at a time.
  * Returns the stories that gained chapters.
  */
 export async function checkForUpdates(opts: { quiet?: boolean; keys?: StoryKey[] } = {}) {
@@ -93,7 +93,7 @@ export async function checkForUpdates(opts: { quiet?: boolean; keys?: StoryKey[]
     while (i < list.length) {
       const s = list[i++];
       try {
-        const d = await fetchChapter(s.key, 1, { quiet: opts.quiet });
+        const d = await fetchStory(s.key, { quiet: opts.quiet, priority: 'background' });
         const before = s.chapters;
         const next = upsertStory(d, { lastCheckedAt: Date.now() });
         if (next && d.chapters > before) {

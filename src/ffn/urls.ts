@@ -342,7 +342,8 @@ const CATEGORY_RE = /^\/(anime|book|cartoon|comic|game|misc|movie|play|tv)\/[^/]
 export function parseLink(input: string): LinkTarget | null {
   const s = input.trim();
   if (/^\d{1,9}$/.test(s)) return { kind: 'story', id: Number(s), chapter: 1 };
-  const isFfn = /fanfiction\.net/i.test(s) || s.startsWith('/');
+  // A leading "/" is a FanFiction.net path, but "//host/…" names another host.
+  const isFfn = /fanfiction\.net/i.test(s) || /^\/(?!\/)/.test(s);
   const deep = s.match(/^ficshelf:\/\/(.*)$/i);
   const path = deep ? '/' + deep[1].replace(/^\/+/, '') : isFfn ? toPath(s) : null;
   if (!path) return null;

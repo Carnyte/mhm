@@ -18,12 +18,13 @@ import { ReaderWebView, type ReaderMessageEvent, type ReaderWebViewRef } from '.
 import { showActions, toast } from '../../components/Sheet';
 import { Empty, ErrorView, Loading } from '../../components/states';
 import { IconButton, T } from '../../components/ui';
-import { addSubscription, openStory, shareStory } from '../../features/actions';
-import { fetchChapter, getSavedChapter, prefetchChapter, saveChapter } from '../../features/chapters';
-import type { StoryDetail } from '../../ffn/types';
-import { parseLink } from '../../ffn/urls';
-import { ffnKey, libraryToFfnDetail } from '../../sources/ffn/map';
-import { keyFromParam, splitKey, type StoryKey } from '../../sources/keys';
+import { openReaderLink, openStory, readerMenu } from '../../features/actions';
+import { fetchChapter, fetchStory, getSavedChapter, prefetchChapter, renderChapter, saveChapter } from '../../features/chapters';
+import { keyFromParam, type StoryKey } from '../../sources/keys';
+import { infoFromLibrary } from '../../sources/meta';
+import { sourceOf } from '../../sources/registry';
+import type { ChapterContent, StoryInfo } from '../../sources/types';
+import { uiOf } from '../../sources/ui';
 import { addBookmark, libraryStore, recordReading, useLibraryStory } from '../../state/library';
 import { useSettings } from '../../state/settings';
 import { useReaderTheme } from '../../theme';
@@ -32,7 +33,9 @@ import { ReaderSettingsPanel as SettingsPanel } from '../../components/ReaderSet
 import { countWords, htmlToText, readingTime } from '../../utils/format';
 
 interface Loaded {
-  story: StoryDetail;
+  story: StoryInfo;
+  /** The chapter as fetched from the site (absent when it came from the device). */
+  content?: ChapterContent;
   html: string;
   offline: boolean;
 }
@@ -42,14 +45,17 @@ async function loadChapter(key: StoryKey, chapter: number): Promise<Loaded> {
   const saved = await getSavedChapter(key, chapter);
   if (saved && lib?.downloaded) {
     // Downloaded stories open instantly from disk.
-    return { story: libraryToFfnDetail(lib, chapter), html: saved, offline: true };
+    return { story: infoFromLibrary(lib), html: saved, offline: true };
   }
   try {
-    const story = await fetchChapter(key, chapter);
-    if (story.chapterHtml) saveChapter(key, chapter, story.chapterHtml).catch(() => {});
-    return { story, html: story.chapterHtml ?? '', offline: false };
+    const content = await fetchChapter(key, chapter);
+    const html = renderChapter(content);
+    if (html) saveChapter(key, chapter, html).catch(() => {});
+    // FanFiction.net chapter pages carry the story's metadata; other sites' may not.
+    const story = content.story ?? (lib ? infoFromLibrary(lib) : await fetchStory(key));
+    return { story, content, html, offline: false };
   } catch (e) {
-    if (saved && lib) return { story: libraryToFfnDetail(lib, chapter), html: saved, offline: true };
+    if (saved && lib) return { story: infoFromLibrary(lib), html: saved, offline: true };
     throw e;
   }
 }
@@ -100,7 +106,7 @@ export default function ReaderScreen() {
     const p = key ? libraryStore.get().stories[key]?.chapterProgress?.[chapter] : undefined;
     return p != null && p < 0.995 ? p : 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, chapter, data?.story.id]);
+  }, [key, chapter, data?.story.key]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -226,6 +232,10 @@ export default function ReaderScreen() {
 
   const segmentedHtml = useMemo(() => (data ? segmentChapter(data.html).html : ''), [data]);
 
+  // The story's site: the reader page's base URL and CSP, its menu entries and end-of-chapter buttons.
+  const source = key ? sourceOf(key) : undefined;
+  const slots = useMemo(() => (data ? uiOf(data.story.key).readerActions(data.story, chapter, { content: data.content }) : undefined), [data, chapter]);
+
   const html = useMemo(() => {
     if (!data) return '';
     const ch = data.story.chapterList.find((c) => c.number === chapter);
@@ -240,6 +250,8 @@ export default function ReaderScreen() {
         author: data.story.author?.name,
         hasNext: chapter < data.story.chapters,
         progress: rebuilt?.data === data ? rebuilt.p : startProgress,
+        endActions: slots?.end.map(({ id, label }) => ({ id, label })),
+        csp: source?.reader.csp,
       },
       settings,
       theme,
@@ -295,8 +307,8 @@ export default function ReaderScreen() {
       case 'next':
         goChapter(chapter + 1);
         break;
-      case 'review':
-        if (data) router.push({ pathname: '/review/[id]', params: { id: String(data.story.id), ch: String(chapter), stid: String(data.story.storyTextId ?? '') } });
+      case 'action':
+        slots?.end.find((a) => a.id === m.id)?.onPress();
         break;
       case 'bookmark':
         bookmark(m.p);
@@ -307,12 +319,9 @@ export default function ReaderScreen() {
       case 'find':
         setFindInfo({ count: m.count, index: m.index });
         break;
-      case 'link': {
-        const target = parseLink(String(m.href));
-        if (target?.kind === 'story') router.push({ pathname: '/story/[id]', params: { id: ffnKey(target.id) } });
-        else if (target) router.push({ pathname: '/web', params: { path: 'path' in target ? target.path : String(m.href) } });
+      case 'link':
+        openReaderLink(String(m.href), source?.reader.baseUrl);
         break;
-      }
       case 'autoscrollEnd':
         setAutoScroll(false);
         break;
@@ -340,8 +349,7 @@ export default function ReaderScreen() {
       </View>
     );
   }
-  // FanFiction.net's own screens (reviews) take its numeric id.
-  const { remoteId } = splitKey(key);
+  const baseUrl = source?.reader.baseUrl ?? 'about:blank';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -361,7 +369,7 @@ export default function ReaderScreen() {
           ref={web}
           userAgent={DESKTOP_USER_AGENT}
           originWhitelist={['*']}
-          source={{ html, baseUrl: 'https://www.fanfiction.net/' }}
+          source={{ html, baseUrl }}
           onMessage={onMessage}
           style={{ flex: 1, backgroundColor: theme.bg }}
           javaScriptEnabled
@@ -371,7 +379,7 @@ export default function ReaderScreen() {
           allowsLinkPreview={false}
           dataDetectorTypes="none"
           textInteractionEnabled
-          onShouldStartLoadWithRequest={(r) => r.url === 'about:blank' || r.url.startsWith('https://www.fanfiction.net/') && r.navigationType !== 'click'}
+          onShouldStartLoadWithRequest={(r) => r.url === 'about:blank' || (baseUrl !== 'about:blank' && r.url.startsWith(baseUrl) && r.navigationType !== 'click')}
           onContentProcessDidTerminate={rebuildPage}
           onRenderProcessGone={() => rebuildPage()}
         />
@@ -396,20 +404,7 @@ export default function ReaderScreen() {
             icon="ellipsis-horizontal"
             label="More"
             color={fg}
-            onPress={() =>
-              showActions(
-                [
-                  { label: 'Bookmark this spot', icon: 'bookmark-outline', onPress: () => bookmark() },
-                  { label: 'Write a review', icon: 'create-outline', onPress: () => router.push({ pathname: '/review/[id]', params: { id: remoteId, ch: String(chapter), stid: String(story.storyTextId ?? '') } }) },
-                  { label: 'Follow story', icon: 'notifications-outline', onPress: () => addSubscription(story, { storyAlert: true }) },
-                  { label: 'Favorite story', icon: 'heart-outline', onPress: () => addSubscription(story, { favStory: true }) },
-                  { label: 'Reviews', icon: 'chatbubbles-outline', onPress: () => router.push({ pathname: '/reviews/[id]', params: { id: remoteId, ch: String(chapter), title: story.title } }) },
-                  { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
-                  { label: 'Story details', icon: 'information-circle-outline', onPress: () => openStory(key) },
-                ],
-                story.title,
-              )
-            }
+            onPress={() => showActions(readerMenu(story, chapter, { content: data?.content, bookmark: () => bookmark() }), story.title)}
           />
         </View>
       )}
@@ -535,7 +530,7 @@ function ChapterPanel({
   onClose,
 }: {
   visible: boolean;
-  story: StoryDetail;
+  story: StoryInfo;
   current: number;
   readSet: Set<number>;
   onPick: (n: number) => void;

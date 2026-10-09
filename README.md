@@ -64,17 +64,20 @@ because it uses native modules (WebView, SQLite, notifications, background tasks
 
 ```
 src/app/            screens (Expo Router): tabs, story, reader, search, library, account…
-src/net/            WebView bridge (BridgeHost.tsx), challenge handling, image loading
+src/net/            WebView bridge (BridgeHost.tsx), challenge handling, image loading, the polite HTTP
+                    client for other sites (http.ts: per-host queue, gaps, Retry-After) and bot-check detection
 src/ffn/            URL builders, constants, HTML parsers, form replay, typed API client
 src/state/          library / progress / settings / session stores (persisted to SQLite)
-src/sources/        story keys ('ffn:123', 'ao3:5'…) and FanFiction.net ↔ library mapping
+src/sources/        the site layer: story keys ('ffn:123', 'ao3:5'…), the Source contract and registry
+                    (resolveLink), the FanFiction.net adapter and its UI slots, AO3 / Wattpad link parsing
+src/html/           shared HTML helpers (dom.ts) and the allowlist sanitizer for other sites' HTML
 src/db/             SQLite key-value + chapter store, and the storage migrations (db/migrations)
 src/features/       chapter loading, downloads, update checks + notifications, shared story actions
 src/reader/         reader HTML/CSS/JS template (themes, paging, read-aloud highlight, find)
 src/audio/          audiobook player: text segments, speech engine, background audio, voices
 src/components/     UI kit, story card, filter sheet, profile view, reader settings
 tests/              Jest tests, synthetic HTML fixtures and a synthetic v1 library (fixtures/v1-library.ts)
-scripts/            live-check.ts (parsers vs the live site), dev-proxy.ts (web dev harness),
+scripts/            live-check.ts (parsers vs the live site), dev-proxy.ts (web dev harness: FFN bridge + /http),
                     check-keys.ts (part of `npm run lint`: no bare numeric story ids in shared code)
 ```
 
@@ -84,7 +87,7 @@ Checks run while building this (October 2026):
 
 | Check | Result |
 |---|---|
-| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session, story keys and routes, library state, backups, and the storage v2 migration on real SQLite (`node:sqlite`) | 224 / 224 pass |
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session, story keys and routes, library state, backups, the storage v2 migration on real SQLite (`node:sqlite`), the source registry and link parsing (FanFiction.net, AO3, Wattpad), the FanFiction.net adapter and its menus (labels unchanged), the polite HTTP client, bot-check detection, the HTML sanitizer, image loading and chapter remapping | 484 / 484 pass |
 | `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |

@@ -1,13 +1,13 @@
-// Offline downloads: fetches every chapter through the bridge and stores the HTML in SQLite.
+// Offline downloads: fetches every chapter from the story's site and stores the HTML in SQLite.
 
 import { toast } from '../components/Sheet';
 import { chapterStore } from '../db/kv';
-import type { StoryDetail } from '../ffn/types';
 import type { StoryKey } from '../sources/keys';
+import type { StoryInfo } from '../sources/types';
 import { keyOf, libraryStore, patchStory, upsertStory, type AnyStory } from '../state/library';
 import { createStore, useStore } from '../state/store';
 import { errorMessage } from '../utils/format';
-import { fetchChapter } from './chapters';
+import { fetchChapter, renderChapter } from './chapters';
 
 export interface DownloadJob {
   key: StoryKey;
@@ -44,21 +44,23 @@ export async function downloadStory(story: AnyStory, opts: { quiet?: boolean } =
   setJob(key, { key, title: story.title, done: 0, total: story.chapters || 1 });
   try {
     // Chapter 1 also refreshes metadata (chapter count may have changed).
-    let detail: StoryDetail | undefined;
+    let info: StoryInfo | undefined;
     if (!have.has(1) || !('chapterList' in story)) {
-      detail = await fetchChapter(key, 1, { quiet: opts.quiet });
-      if (detail.chapterHtml) await chapterStore.put(key, 1, detail.chapterHtml);
+      const first = await fetchChapter(key, 1, { quiet: opts.quiet });
+      const html = renderChapter(first);
+      if (html) await chapterStore.put(key, 1, html);
       have.add(1);
+      info = first.story;
     }
-    const total = detail?.chapters ?? story.chapters ?? 1;
-    upsertStory(detail ?? story, { downloaded: true, inLibrary: true });
+    const total = info?.chapters ?? story.chapters ?? 1;
+    upsertStory(info ?? story, { downloaded: true, inLibrary: true });
     let done = have.size;
     setJob(key, { key, title: story.title, done, total });
     for (let n = 1; n <= total; n++) {
       if (have.has(n)) continue;
       if (!downloadsStore.get()[key]) return; // cancelled
-      const ch = await fetchChapter(key, n, { quiet: opts.quiet });
-      if (ch.chapterHtml) await chapterStore.put(key, n, ch.chapterHtml);
+      const html = renderChapter(await fetchChapter(key, n, { quiet: opts.quiet }));
+      if (html) await chapterStore.put(key, n, html);
       done++;
       setJob(key, { key, title: story.title, done, total });
     }

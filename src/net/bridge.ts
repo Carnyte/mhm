@@ -120,6 +120,11 @@ class Bridge {
     return usernameFromCookies(this.cookies);
   }
 
+  /** Requests are waiting or in flight (FanFiction.net is in use right now). */
+  get busy(): boolean {
+    return this.pending.size > 0;
+  }
+
   // --- transport callbacks ------------------------------------------------------
 
   /** The bridge page finished loading (challenge page or the real site). */

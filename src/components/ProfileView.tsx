@@ -3,7 +3,7 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, Share, StyleSheet, View } from 'react-native';
-import { addSubscription } from '../features/actions';
+import { addSubscription } from '../sources/ffn/ui';
 import type { Profile, StorySummary } from '../ffn/types';
 import { absolute, pmComposePath, profilePath } from '../ffn/urls';
 import { authorKey } from '../sources/keys';

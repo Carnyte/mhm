@@ -2,7 +2,7 @@ import { router, Stack, usePathname } from 'expo-router';
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import { Empty } from '../components/states';
-import { parseLink } from '../ffn/urls';
+import { resolveLink } from '../sources/registry';
 import { useTheme } from '../theme';
 import { openTarget } from './open';
 
@@ -10,10 +10,11 @@ import { openTarget } from './open';
 export default function NotFound() {
   const c = useTheme();
   const path = usePathname();
-  const target = parseLink(path);
   useEffect(() => {
-    if (target && target.kind !== 'web') openTarget(path);
-  }, [path, target]);
+    // Pages the app has no screen for stay here (instead of opening the in-app browser).
+    const hit = resolveLink(path);
+    if (hit && hit.kind !== 'web' && hit.kind !== 'disabled') openTarget(path);
+  }, [path]);
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <Stack.Screen options={{ title: 'Not found' }} />

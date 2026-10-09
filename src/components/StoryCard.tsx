@@ -3,10 +3,14 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { openStory, storyMenu } from '../features/actions';
 import type { StorySummary } from '../ffn/types';
-import { keyOf, newChapterCount, statsOf, storyProgress, useLibraryStory, type LibraryStory } from '../state/library';
+import { splitKey } from '../sources/keys';
+import type { StoryMeta } from '../sources/types';
+import { uiOf } from '../sources/ui';
+import { keyOf, newChapterCount, storyProgress, useLibraryStory, type LibraryStory } from '../state/library';
 import { useTheme } from '../theme';
-import { formatNumber, relativeTime } from '../utils/format';
+import { relativeTime } from '../utils/format';
 import { Cover } from './Cover';
+import { SourceBadge } from './SourceBadge';
 import { Badge, ProgressBar, T } from './ui';
 
 function StoryCardImpl({
@@ -16,7 +20,7 @@ function StoryCardImpl({
   onPress,
   right,
 }: {
-  story: StorySummary | LibraryStory;
+  story: StorySummary | StoryMeta | LibraryStory;
   compact?: boolean;
   showFandom?: boolean;
   onPress?: () => void;
@@ -25,21 +29,10 @@ function StoryCardImpl({
   const c = useTheme();
   const key = keyOf(story);
   const lib = useLibraryStory(key);
-  const st = statsOf(story);
   const fresh = lib ? newChapterCount(lib) : 0;
   const progress = lib?.lastReadAt ? storyProgress(lib) : 0;
-  const stats = [
-    story.rating && `Rated ${story.rating}`,
-    story.language,
-    story.genres.length ? story.genres.join('/') : undefined,
-  ].filter(Boolean);
-  const numbers = [
-    story.chapters > 1 ? `${story.chapters} ch` : '1 ch',
-    `${formatNumber(story.words)} words`,
-    st.reviews ? `${formatNumber(st.reviews)} reviews` : undefined,
-    st.favs ? `${formatNumber(st.favs)} favs` : undefined,
-    st.follows ? `${formatNumber(st.follows)} follows` : undefined,
-  ].filter(Boolean);
+  // The site's own counters ("Rated T · English · … · 12 ch · 34K words · 56 reviews").
+  const statLine = uiOf(key).statLine(story);
 
   return (
     <Pressable
@@ -87,10 +80,11 @@ function StoryCardImpl({
       )}
       <View style={styles.meta}>
         <T faint size={12} numberOfLines={1} style={{ flex: 1 }}>
-          {[...stats, ...numbers].join(' · ')}
+          {statLine}
         </T>
       </View>
       <View style={styles.footer}>
+        <SourceBadge source={splitKey(key).source} />
         {story.complete ? (
           <View style={[styles.status, { backgroundColor: c.success + '22' }]}>
             <T size={11} weight="700" style={{ color: c.success }}>

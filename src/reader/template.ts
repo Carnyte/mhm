@@ -1,5 +1,5 @@
 // Builds the local HTML document used by the reader WebView, plus its in-page script.
-// Chapter HTML comes from the parser (already sanitised).
+// Chapter HTML comes from the story's site adapter (already sanitised).
 
 import type { ReaderSettings } from '../state/settings';
 import { fontCss, type ReaderTheme } from '../theme';
@@ -14,6 +14,13 @@ export interface ReaderPayload {
   author?: string;
   hasNext: boolean;
   progress: number;
+  /**
+   * The site's buttons at the end of the chapter, before Bookmark (FanFiction.net: "Write a
+   * review"). A tap posts `{type:'action', id}`.
+   */
+  endActions?: { id: string; label: string }[];
+  /** A Content-Security-Policy for the page (imported files); none for the sites. */
+  csp?: string;
 }
 
 export function readerCssVars(s: ReaderSettings, t: ReaderTheme): Record<string, string> {
@@ -35,14 +42,16 @@ export function readerCssVars(s: ReaderSettings, t: ReaderTheme): Record<string,
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const escAttr = (s: string) => esc(s).replace(/"/g, '&quot;');
 
 export function buildReaderHtml(p: ReaderPayload, s: ReaderSettings, t: ReaderTheme): string {
   const vars = Object.entries(readerCssVars(s, t))
     .map(([k, v]) => `${k}:${v}`)
     .join(';');
+  const endButtons = (p.endActions ?? []).map((a) => `<button class="alt" data-action="${escAttr(a.id)}">${esc(a.label)}</button>`).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<style>
+${p.csp ? `<meta http-equiv="Content-Security-Policy" content="${escAttr(p.csp)}">\n` : ''}<style>
 :root{${vars}}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);-webkit-text-size-adjust:100%;}
 body{font-family:var(--font);font-size:var(--size);line-height:var(--lh);}
@@ -52,6 +61,10 @@ body{font-family:var(--font);font-size:var(--size);line-height:var(--lh);}
 #text hr{border:0;border-top:1px solid var(--muted);opacity:.4;margin:1.6em 18%;}
 #text img{max-width:100%;height:auto;}
 #text table{max-width:100%;}
+#text aside.fs-notes{margin:0 0 1.6em;padding:.75em 1em;border-left:3px solid var(--muted);border-radius:6px;background:rgba(127,127,127,.09);font-size:.92em;}
+#text aside.fs-notes[data-pos=after]{margin:1.6em 0 0;}
+#text aside.fs-notes>:first-child{margin-top:0;}
+#text aside.fs-notes>:last-child{margin-bottom:0;}
 a{color:var(--link);}
 .hd{margin-bottom:1.4em;}
 .hd .story{font-size:.8em;color:var(--muted);font-family:-apple-system,system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase;}
@@ -73,14 +86,14 @@ body.paged .hd,body.paged #text,body.paged .end{padding:0 var(--margin);max-widt
 <div id="text">${p.html}</div>
 <div class="end" id="end"><div>End of chapter ${p.chapter} of ${p.chapters}</div>
 ${p.hasNext ? '<button id="next">Next chapter →</button>' : '<div style="margin:8px 0 4px">You reached the end of the story.</div>'}
-<div><button class="alt" id="review">Write a review</button><button class="alt" id="mark">Bookmark</button></div></div>
+<div>${endButtons}<button class="alt" id="mark">Bookmark</button></div></div>
 </div>
 <script>${READER_JS}</script>
 <script>window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn })});</script>
 </body></html>`;
 }
 
-/** In-page reader logic. Messages: progress, tap, next, review, bookmark, startBlock, ttsJump, find. */
+/** In-page reader logic. Messages: progress, tap, next, action, bookmark, startBlock, ttsJump, find. */
 const READER_JS = String.raw`
 (function(){
   var post=function(o){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(o));};
@@ -184,7 +197,8 @@ const READER_JS = String.raw`
   },{passive:true});
   document.addEventListener('click',function(e){
     var id=e.target&&e.target.id;
-    if(id==='next')post({type:'next'});else if(id==='review')post({type:'review'});else if(id==='mark')post({type:'bookmark',p:progress()});
+    if(id==='next')post({type:'next'});else if(id==='mark')post({type:'bookmark',p:progress()});
+    var act=e.target.closest&&e.target.closest('#end [data-action]');if(act){post({type:'action',id:act.getAttribute('data-action')});return;}
     var a=e.target.closest&&e.target.closest('a[href]');if(a){e.preventDefault();post({type:'link',href:a.getAttribute('href')});}
   });
   window.__init=function(o){

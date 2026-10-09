@@ -1,11 +1,16 @@
-// Loading / error / empty states, with the right recovery action for each error type.
+// Loading / error / empty states, with the right recovery action for each error type, in the
+// words of the site the error came from.
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { LoginRequiredError, NeedsWebError } from '../ffn/api';
 import { FfnPageError } from '../ffn/parsers/story';
+import { SourceBlockedError } from '../net/blocks';
 import { bridge, BridgeError } from '../net/bridge';
+import { HttpTimeoutError, NetworkError, RateLimitedError } from '../net/httpCore';
+import { SOURCE_NAMES } from '../sources/keys';
+import { ComingSoonError } from '../sources/registry';
 import { useTheme } from '../theme';
 import { errorMessage } from '../utils/format';
 import { Button, T, type IconName } from './ui';
@@ -79,17 +84,61 @@ export function ErrorView({ error, onRetry }: { error: unknown; onRetry?: () => 
       />
     );
   }
-  const offline = error instanceof BridgeError && (error.code === 'network' || error.code === 'timeout');
+  if (error instanceof ComingSoonError) {
+    return (
+      <Empty
+        icon="time-outline"
+        title={error.message}
+        message={`This version of FicShelf can't open ${SOURCE_NAMES[error.source]} stories yet. FanFiction.net stories work as before.`}
+      />
+    );
+  }
+  if (error instanceof RateLimitedError) {
+    return (
+      <Empty
+        icon="hourglass-outline"
+        title={`${error.site} asked FicShelf to slow down`}
+        message={error.message}
+        action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined}
+      />
+    );
+  }
+  if (error instanceof SourceBlockedError) {
+    return <Empty icon="shield-checkmark-outline" title="Security check needed" message={error.message} action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined} />;
+  }
+  const offline = (error instanceof BridgeError && (error.code === 'network' || error.code === 'timeout')) || error instanceof NetworkError || error instanceof HttpTimeoutError;
+  const site = error instanceof NetworkError || error instanceof HttpTimeoutError ? error.site : 'FanFiction.net';
   return (
     <Empty
       icon={offline ? 'cloud-offline-outline' : 'alert-circle-outline'}
-      title={offline ? "Can't reach FanFiction.net" : error instanceof FfnPageError && error.code === 'not_found' ? 'Not found' : 'Something went wrong'}
+      title={offline ? `Can't reach ${site}` : error instanceof FfnPageError && error.code === 'not_found' ? 'Not found' : 'Something went wrong'}
       message={errorMessage(error)}
       action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined}
     />
   );
 }
 
+/** An inline message card (e.g. "AO3 support is coming soon" under a pasted link). */
+export function Notice({ icon = 'information-circle-outline', title, message }: { icon?: IconName; title: string; message?: string }) {
+  const c = useTheme();
+  return (
+    <View style={[styles.notice, { backgroundColor: c.surface, borderColor: c.border }]} accessibilityRole="alert">
+      <Ionicons name={icon} size={22} color={c.accent} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1 }}>
+        <T size={15} weight="600">
+          {title}
+        </T>
+        {!!message && (
+          <T muted size={13} style={{ marginTop: 3, lineHeight: 19 }}>
+            {message}
+          </T>
+        )}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, minHeight: 240 },
+  notice: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
 });

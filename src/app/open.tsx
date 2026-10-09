@@ -1,58 +1,59 @@
-// Open a pasted fanfiction.net link or story id (also used for clipboard links).
+// Open a pasted link or story id (also used for clipboard links and ficshelf://open?url=… links).
+// FanFiction.net links open as before; links to sites the app knows but can't read yet (AO3,
+// Wattpad) say so instead of failing.
 
 import * as Clipboard from 'expo-clipboard';
-import { router, Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { Notice } from '../components/states';
 import { Button, Input, T } from '../components/ui';
-import { parseLink } from '../ffn/urls';
-import { ffnKey } from '../sources/ffn/map';
+import { openLinkHit } from '../features/actions';
+import { disabledNotice, resolveLink } from '../sources/registry';
 import { useTheme } from '../theme';
 
-export function openTarget(input: string): boolean {
-  const t = parseLink(input);
-  if (!t) return false;
-  switch (t.kind) {
-    case 'story':
-      // fanfiction.net links and bare ids are FanFiction.net stories.
-      router.replace({ pathname: '/story/[id]', params: { id: ffnKey(t.id) } });
-      break;
-    case 'user':
-      router.replace({ pathname: '/user/[id]', params: { id: String(t.id) } });
-      break;
-    case 'reviews':
-      router.replace({ pathname: '/reviews/[id]', params: { id: String(t.id) } });
-      break;
-    case 'storyList':
-      router.replace({ pathname: '/list', params: { path: t.path } });
-      break;
-    case 'community':
-      router.replace({ pathname: '/community', params: { path: t.path } });
-      break;
-    case 'forum':
-      router.replace({ pathname: '/forum', params: { path: t.path } });
-      break;
-    case 'topic':
-      router.replace({ pathname: '/topic', params: { path: t.path } });
-      break;
-    default:
-      router.replace({ pathname: '/web', params: { path: t.path } });
-  }
-  return true;
+const NOT_A_LINK = 'That doesn’t look like a fanfiction.net link or story ID.';
+
+/** Why a link or id can't be opened: not a link at all, or a site that isn't readable yet. */
+export type OpenProblem = { error: string } | { notice: { title: string; message?: string } };
+
+export function openProblem(input: string): OpenProblem | undefined {
+  const hit = resolveLink(input);
+  if (!hit) return { error: NOT_A_LINK };
+  if (hit.kind === 'disabled') return { notice: disabledNotice(hit.source) };
+  return undefined;
+}
+
+/** Opens what a link or id points to (replacing this screen); what's wrong when it can't. */
+export function openTarget(input: string): OpenProblem | undefined {
+  const hit = resolveLink(input);
+  if (!hit || hit.kind === 'disabled') return openProblem(input);
+  openLinkHit(hit, { replace: true });
+  return undefined;
 }
 
 export default function OpenLink() {
   const c = useTheme();
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string>();
+  const { url } = useLocalSearchParams<{ url?: string }>();
+  const [text, setText] = useState(url ?? '');
+  const [problem, setProblem] = useState<OpenProblem | undefined>(() => (url ? openProblem(url) : undefined));
+
+  const open = (input: string) => setProblem(openTarget(input));
 
   useEffect(() => {
+    // ficshelf://open?url=… opens the link straight away.
+    if (url) {
+      if (!openProblem(url)) openTarget(url);
+      return;
+    }
     Clipboard.getStringAsync()
       .then((s) => {
-        if (s && parseLink(s) && /fanfiction\.net/.test(s)) setText(s.trim());
+        const hit = s ? resolveLink(s) : null;
+        // A link from the clipboard: fanfiction.net's, or another site the app knows.
+        if (hit && (hit.kind === 'disabled' || hit.source !== 'ffn' || /fanfiction\.net/.test(s))) setText(s.trim());
       })
       .catch(() => {});
-  }, []);
+  }, [url]);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, padding: 20, gap: 12 }}>
@@ -64,15 +65,16 @@ export default function OpenLink() {
         value={text}
         onChangeText={(t) => {
           setText(t);
-          setError(undefined);
+          setProblem(undefined);
         }}
         autoCapitalize="none"
         autoCorrect={false}
         autoFocus
-        onSubmitEditing={() => !openTarget(text) && setError('That doesn’t look like a fanfiction.net link or story ID.')}
+        onSubmitEditing={() => open(text)}
       />
-      {!!error && <T style={{ color: c.danger }}>{error}</T>}
-      <Button title="Open" icon="arrow-forward" onPress={() => !openTarget(text) && setError('That doesn’t look like a fanfiction.net link or story ID.')} />
+      {problem && 'error' in problem && <T style={{ color: c.danger }}>{problem.error}</T>}
+      {problem && 'notice' in problem && <Notice icon="time-outline" title={problem.notice.title} message={problem.notice.message} />}
+      <Button title="Open" icon="arrow-forward" onPress={() => open(text)} />
     </View>
   );
 }

@@ -1,5 +1,6 @@
 // Search: stories, writers, forums, communities — with match / type / sort options, live facets,
-// fandom exclusion, recent searches and "open by link or id".
+// fandom exclusion, recent searches and "open by link or id". Searching is FanFiction.net's; a
+// pasted link to another site the app knows (AO3, Wattpad) says whether it can be opened yet.
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -8,15 +9,15 @@ import { FlatList, Keyboard, Pressable, ScrollView, StyleSheet, View } from 'rea
 import { Cover } from '../../components/Cover';
 import { pickOption } from '../../components/Sheet';
 import { StoryCard } from '../../components/StoryCard';
-import { Empty, ErrorView, Loading } from '../../components/states';
+import { Empty, ErrorView, Loading, Notice } from '../../components/states';
 import { Chip, Input, Segmented, T } from '../../components/ui';
-import { openStory } from '../../features/actions';
+import { openLinkHit } from '../../features/actions';
 import { search } from '../../ffn/api';
 import { SEARCH_FORMAT, SEARCH_MATCH, SEARCH_SORTS, type SearchType } from '../../ffn/constants';
 import type { SearchResults } from '../../ffn/types';
-import { parseLink, SEARCH_FACET_KEYS, type SearchParams } from '../../ffn/urls';
+import { SEARCH_FACET_KEYS, type SearchParams } from '../../ffn/urls';
 import { usePaged } from '../../hooks/useQuery';
-import { ffnKey } from '../../sources/ffn/map';
+import { disabledNotice, resolveLink } from '../../sources/registry';
 import { addRecentSearch, clearRecentSearches, useLibrary } from '../../state/library';
 import { updateSettings, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
@@ -31,6 +32,8 @@ export default function SearchScreen() {
   const [text, setText] = useState('');
   const [params, setParams] = useState<SearchParams | null>(null);
   const [type, setType] = useState<SearchType>('story');
+  /** Why a pasted link can't be opened (a site that isn't readable in this version). */
+  const [notice, setNotice] = useState<{ title: string; message?: string }>();
   // This is FanFiction.net search, so it offers FanFiction.net's recent searches.
   const recents = useLibrary((s) => s.searches.filter((r) => r.source === 'ffn'));
   const excluded = useSettings((s) => s.excludedFandoms);
@@ -38,13 +41,22 @@ export default function SearchScreen() {
   const run = (keywords: string, t: SearchType = type, extra: Partial<SearchParams> = {}) => {
     const k = keywords.trim();
     if (!k) return;
-    const link = parseLink(k);
-    if (link?.kind === 'story' && (/fanfiction\.net/.test(k) || /^\d+$/.test(k))) {
-      openStory(ffnKey(link.id));
+    setNotice(undefined);
+    const link = resolveLink(k);
+    if (link?.kind === 'disabled') {
+      Keyboard.dismiss();
+      setParams(null);
+      setNotice(disabledNotice(link.source));
       return;
     }
-    if (link?.kind === 'user') {
-      router.push({ pathname: '/user/[id]', params: { id: String(link.id) } });
+    // A pasted story link (or a bare story number) opens the story; a relative path such as
+    // "/s/123" is searched like any other text.
+    if (link?.kind === 'story' && (link.source !== 'ffn' || /fanfiction\.net/.test(k) || /^\d+$/.test(k))) {
+      openLinkHit(link);
+      return;
+    }
+    if (link?.kind === 'author') {
+      openLinkHit(link);
       return;
     }
     Keyboard.dismiss();
@@ -86,7 +98,10 @@ export default function SearchScreen() {
           icon="search"
           placeholder="Search stories, writers… or paste a link"
           value={text}
-          onChangeText={setText}
+          onChangeText={(t) => {
+            setText(t);
+            setNotice(undefined);
+          }}
           onSubmitEditing={() => run(text)}
           returnKeyType="search"
           autoCapitalize="none"
@@ -94,6 +109,7 @@ export default function SearchScreen() {
           onClear={() => {
             setText('');
             setParams(null);
+            setNotice(undefined);
           }}
         />
         <Segmented
@@ -113,6 +129,11 @@ export default function SearchScreen() {
 
       {!params ? (
         <ScrollView contentContainerStyle={{ padding: 12 }} keyboardShouldPersistTaps="handled">
+          {!!notice && (
+            <View style={{ marginBottom: 14 }}>
+              <Notice icon="time-outline" title={notice.title} message={notice.message} />
+            </View>
+          )}
           {recents.length > 0 && (
             <>
               <View style={styles.recentHead}>

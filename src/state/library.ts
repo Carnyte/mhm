@@ -19,19 +19,20 @@ import {
 import type { StoryDetail, StorySummary, UserRef } from '../ffn/types';
 import { libraryMetaFromFfn } from '../sources/ffn/map';
 import { authorKey, normalizeKey, splitKey, toKey, type SourceId, type StoryKey } from '../sources/keys';
+import { isStoryMeta, libraryMetaFromMeta } from '../sources/meta';
+import type { StoryMeta, StoryStats } from '../sources/types';
 import { createStore, useStore } from './store';
 
-/** Counters a site shows for a story; each site fills the ones it has (FFN: reviews, favs, follows). */
-export interface StoryStats {
-  reviews?: number;
-  favs?: number;
-  follows?: number;
-  kudos?: number;
-  hits?: number;
-  bookmarks?: number;
-  comments?: number;
-  reads?: number;
-  votes?: number;
+export type { StoryStats } from '../sources/types';
+
+/**
+ * A story's author as the library keeps it. FanFiction.net stores its numeric user id (what its
+ * screens and older builds read); other sites their own id string.
+ */
+export interface LibraryAuthor {
+  id: number | string;
+  name: string;
+  avatarUrl?: string;
 }
 
 export interface LibraryStory {
@@ -40,7 +41,7 @@ export interface LibraryStory {
   /** The site's own id. Opaque: only that site's code reads it as a number. */
   remoteId: string;
   title: string;
-  author?: UserRef;
+  author?: LibraryAuthor;
   summary: string;
   fandom?: string;
   isCrossover?: boolean;
@@ -130,21 +131,25 @@ export interface RecentSearch {
   at: number;
 }
 
-/** Anything the library takes a story from: a library record, or a FanFiction.net list row / page. */
-export type AnyStory = StorySummary | StoryDetail | LibraryStory;
+/**
+ * Anything the library takes a story from: a library record, a site-neutral story from an adapter
+ * (StoryMeta / StoryInfo), or a FanFiction.net list row / page (the FFN list screens hand those).
+ */
+export type AnyStory = StorySummary | StoryDetail | StoryMeta | LibraryStory;
 
+/** A library record (site-neutral stories carry a `url`, library records don't). */
 export function isLibraryStory(s: AnyStory): s is LibraryStory {
-  return 'key' in s;
+  return 'key' in s && !('url' in s);
 }
 
-/** The key of any story: a library record's own, or 'ffn:<id>' for a FanFiction.net item. */
+/** The key of any story: its own, or 'ffn:<id>' for a FanFiction.net item. */
 export function keyOf(s: AnyStory): StoryKey {
-  return isLibraryStory(s) ? s.key : toKey('ffn', s.id);
+  return 'key' in s ? s.key : toKey('ffn', s.id);
 }
 
 /** A story's counters, whichever shape it comes in. */
 export function statsOf(s: AnyStory): StoryStats {
-  return isLibraryStory(s) ? s.stats : { reviews: s.reviews, favs: s.favs, follows: s.follows };
+  return 'key' in s ? s.stats : { reviews: s.reviews, favs: s.favs, follows: s.follows };
 }
 
 interface LibraryState {
@@ -242,7 +247,8 @@ function metaFrom(src: AnyStory): Partial<LibraryStory> {
     for (const f of META_FIELDS) (out as Record<string, unknown>)[f] = src[f];
     if (src.author?.id) out.author = src.author;
     if (src.coverUrl) out.coverUrl = src.coverUrl;
-  } else out = libraryMetaFromFfn(src);
+  } else if (isStoryMeta(src)) out = libraryMetaFromMeta(src);
+  else out = libraryMetaFromFfn(src);
   // Drop undefined so partial list data doesn't wipe richer saved data.
   for (const k of Object.keys(out) as (keyof LibraryStory)[]) if (out[k] === undefined) delete out[k];
   if (!src.summary) delete out.summary;
@@ -311,7 +317,7 @@ export function setInLibrary(src: AnyStory, inLibrary: boolean) {
 }
 
 /** Called whenever a chapter is opened in the reader. */
-export function recordReading(src: StoryDetail | LibraryStory, chapter: number, progress: number) {
+export function recordReading(src: AnyStory, chapter: number, progress: number) {
   const prev = libraryStore.get().stories[keyOf(src)];
   const read = new Set(prev?.readChapters ?? []);
   if (progress > 0.97) read.add(chapter);
@@ -394,7 +400,7 @@ export function syncAccountList(source: SourceId, kind: 'followed' | 'favorited'
 }
 
 /** An author as the library saves it. */
-function savedAuthor(source: SourceId, user: { id: number | string; name: string; avatarUrl?: string }): SavedAuthor {
+function savedAuthor(source: SourceId, user: LibraryAuthor): SavedAuthor {
   const id = String(user.id);
   const out: SavedAuthor = { key: authorKey({ source, id }), source, id, name: user.name };
   if (user.avatarUrl) out.avatarUrl = user.avatarUrl;
@@ -426,7 +432,7 @@ export function syncAuthors(source: SourceId, kind: 'followed' | 'favorited', us
   });
 }
 
-export function setAuthorFlag(source: SourceId, user: UserRef, kind: 'followed' | 'favorited', value: boolean) {
+export function setAuthorFlag(source: SourceId, user: LibraryAuthor, kind: 'followed' | 'favorited', value: boolean) {
   libraryStore.set((st) => {
     const incoming = savedAuthor(source, user);
     const a: SavedAuthor = { ...st.authors[incoming.key], ...incoming, [kind]: value };
