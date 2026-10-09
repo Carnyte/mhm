@@ -25,6 +25,16 @@ export function chapterIdsOf(info: Pick<StoryInfo, 'chapterList'>): string[] | n
   return ids.length && ids.every(Boolean) ? (ids as string[]) : null;
 }
 
+/** Chapter titles follow their chapters; a chapter the library hasn't seen is "Chapter N". */
+function remapTitles(titles: readonly string[], count: number, r: ChapterRemap): string[] {
+  const out: (string | undefined)[] = new Array(count).fill(undefined);
+  titles.forEach((t, i) => {
+    const to = remapNumber(i + 1, r);
+    if (to != null && to <= count) out[to - 1] = t;
+  });
+  return out.map((t, i) => t ?? `Chapter ${i + 1}`);
+}
+
 /**
  * Stores a library story's current chapter ids, first moving everything recorded per chapter
  * if chapters were reordered or deleted. Stories not in the library are left alone.
@@ -49,7 +59,12 @@ export async function applyChapterIds(key: StoryKey, ids: readonly string[] | nu
     if (to !== n) moves.set(n, to ?? null);
   }
   await chapterStore.renumber(key, moves);
-  patchStory(key, (s) => ({ ...remapStoryState(s, r), chapters: Math.max(ids.length, 1), chapterIds: [...ids] }));
+  patchStory(key, (s) => ({
+    ...remapStoryState(s, r),
+    chapters: Math.max(ids.length, 1),
+    chapterIds: [...ids],
+    ...(s.chapterTitles ? { chapterTitles: remapTitles(s.chapterTitles, ids.length, r) } : {}),
+  }));
   remapStoryBookmarks(key, r);
   for (const fn of listeners) fn(key, r);
   return r;

@@ -19,9 +19,9 @@ import {
 import type { StoryDetail, StorySummary, UserRef } from '../ffn/types';
 import { libraryMetaFromFfn } from '../sources/ffn/map';
 import { authorKey, normalizeKey, splitKey, toKey, type SourceId, type StoryKey } from '../sources/keys';
-import { isStoryMeta, libraryMetaFromMeta } from '../sources/meta';
+import { isStoryMeta, libraryMetaFromMeta, withKnownTitles } from '../sources/meta';
 import { remapBookmarks, type ChapterRemap } from '../sources/remap';
-import type { SeriesRef, StoryMeta, StoryStats, Tag } from '../sources/types';
+import type { SeriesRef, StoryInfo, StoryMeta, StoryStats, Tag } from '../sources/types';
 import { createStore, useStore } from './store';
 
 export type { StoryStats } from '../sources/types';
@@ -104,6 +104,11 @@ export interface LibraryStory {
   /** Chapter count the user has "seen" (story opened or update acknowledged). */
   knownChapters?: number;
   lastCheckedAt?: number;
+  /**
+   * The site said the story doesn't exist any more (an update check got a 404). Update checks
+   * skip it; opening the story successfully clears it.
+   */
+  gone?: boolean;
   addedAt: number;
   notify?: boolean;
 }
@@ -292,6 +297,10 @@ export function upsertStory(src: AnyStory, patch: Partial<LibraryStory> = {}, op
     const { source, remoteId } = splitKey(key);
     const defaults = { key, source, remoteId, stats: {}, genres: [] as string[], summary: '', inLibrary: false, addedAt: Date.now() };
     const meta = metaFrom(src);
+    // A title the site shortened (AO3's chapter menu) never replaces the full one stored.
+    if (meta.chapterTitles && prev?.chapterTitles && isStoryMeta(src) && 'chapterList' in src) {
+      meta.chapterTitles = withKnownTitles((src as StoryInfo).chapterList, prev).map((c) => c.title);
+    }
     // Chapter ids change only through applyChapterIds, which moves reading state with them.
     if (prev?.chapterIds?.length) delete meta.chapterIds;
     const next = { ...defaults, ...(prev ?? {}), ...meta, ...patch } as LibraryStory;
@@ -584,22 +593,28 @@ export function deleteDraft(id: string) {
 
 // --- Recent searches -------------------------------------------------------------------------
 
+/** Recent searches kept per site. */
+export const RECENT_SEARCHES_PER_SITE = 20;
+
+/** Remembers a search; each site keeps its own 20 most recent (one site's don't push out another's). */
 export function addRecentSearch(source: SourceId, keywords: string, type: string) {
   const k = keywords.trim();
   if (!k) return;
-  libraryStore.set((st) => ({
-    ...st,
-    searches: [
-      { source, keywords: k, type, at: Date.now() },
-      ...st.searches.filter((s) => !(s.source === source && s.keywords === k && s.type === type)),
-    ].slice(0, 20),
-  }));
+  libraryStore.set((st) => {
+    const rest = st.searches.filter((s) => !(s.source === source && s.keywords === k && s.type === type));
+    const mine = rest.filter((s) => s.source === source).slice(0, RECENT_SEARCHES_PER_SITE - 1);
+    return {
+      ...st,
+      searches: [{ source, keywords: k, type, at: Date.now() }, ...rest.filter((s) => s.source !== source || mine.includes(s))],
+    };
+  });
   kv.set('searches', libraryStore.get().searches).catch(() => {});
 }
 
-export function clearRecentSearches() {
-  libraryStore.set((st) => ({ ...st, searches: [] }));
-  kv.set('searches', []).catch(() => {});
+/** Forgets one site's recent searches (every site's without `source`). */
+export function clearRecentSearches(source?: SourceId) {
+  libraryStore.set((st) => ({ ...st, searches: source ? st.searches.filter((s) => s.source !== source) : [] }));
+  kv.set('searches', libraryStore.get().searches).catch(() => {});
 }
 
 // --- Backup ------------------------------------------------------------------------------------

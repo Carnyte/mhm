@@ -334,7 +334,7 @@ scripts/dev-proxy.ts   lets the web build use a real Chromium session (for scree
 
 ```bash
 npm install
-npm test               # unit tests (554)
+npm test               # unit tests (600)
 npm run lint           # eslint + check-keys
 npm run typecheck
 npx expo run:ios       # local dev build (needs Xcode), or:
@@ -346,6 +346,6 @@ use a **development build**, not Expo Go.
 
 ## 5. Verification done
 
-See the **Verification** section of `README.md`: 554 unit tests, a 17-check live run of the
+See the **Verification** section of `README.md`: 600 unit tests, a 17-check live run of the
 FanFiction.net parsers and a 5-check live run of the AO3 parsers, typecheck, lint, iOS bundle
 export, expo-doctor, and live-data screenshots.

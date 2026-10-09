@@ -21,9 +21,11 @@ import {
 import { ao3Source, listTagWorks, resetAo3Session, searchWorks } from '../src/sources/ao3/adapter';
 import { renderChapter } from '../src/features/chapters';
 import { httpRows } from './helpers/memoryKv';
-import { fixture, on, requests, resetFake } from './helpers/fakeAo3';
+import { chapterPage, fixture, on, requests, resetFake } from './helpers/fakeAo3';
 
 const AO3 = 'https://archiveofourown.org';
+/** The chapter ids of the synthetic work 3171550 (work_multi_ch1.html, work_navigate.html). */
+const IDS17 = ['6887378', '6887446', '6887560', '6887636', '6887740', '6887828', '6887868', '6887912', '7088717', '7088801', '7088888', '7088954', '7089026', '7089065', '7089173', '7089281', '7089416'];
 
 beforeEach(() => {
   resetFake();
@@ -97,13 +99,14 @@ describe('AO3 story pages', () => {
 
   it('finds a chapter’s id on /navigate when nothing knows it yet', async () => {
     on(/\/works\/3171550\/navigate$/, fixture('work_navigate.html'));
-    on(/\/works\/3171550\/chapters\/6887740\?view_adult=true$/, fixture('work_multi_ch1.html'));
+    on(/\/works\/3171550\/chapters\/6887740\?view_adult=true$/, chapterPage({ ids: IDS17 }, 5));
     await ao3Source.getChapter('3171550', { number: 5, title: '' });
     expect(requests.map((r) => r.url)).toEqual([`${AO3}/works/3171550/navigate`, `${AO3}/works/3171550/chapters/6887740?view_adult=true`]);
   });
 
   it('asks for every work and chapter page with view_adult=true', async () => {
     on(/./, fixture('work_multi_ch1.html'));
+    on(/\/chapters\/6887560/, chapterPage({ ids: IDS17 }, 3));
     await ao3Source.getStory('3171550').catch(() => {});
     await ao3Source.getChapter('3171550', { number: 3, title: '', remoteId: '6887560' });
     for (const r of requests.filter((x) => /\/works\/\d+(\/chapters\/\d+)?\?/.test(x.url))) expect(r.url).toMatch(/[?&]view_adult=true/);

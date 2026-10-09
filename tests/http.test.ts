@@ -11,6 +11,7 @@ import {
   NetworkError,
   parseRetryAfter,
   RateLimitedError,
+  ServerBusyError,
   type HttpResponse,
   type Transport,
   type TransportRequest,
@@ -197,13 +198,58 @@ describe('rate limits', () => {
     calls[0].resolve({ status: 503 });
     await tick();
     expect(a.value?.status).toBe(503);
-    await tick(1000);
+    // A plain 5xx is answered, and the host rests a little before the next request.
+    await tick(10_000);
     const b = track(client.text(WP + 2));
     await tick();
     calls[1].resolve({ status: 503, headers: { 'retry-after': '90' } });
     await tick();
     expect(b.error).toBeInstanceOf(RateLimitedError);
     expect((b.error as RateLimitedError).retryAt - Date.now()).toBe(90_000);
+  });
+});
+
+describe('server errors (policy.1)', () => {
+  it('rests the host after a 5xx: the next requests fail fast for a while, longer after each failure', async () => {
+    const a = track(client.text(AO3 + 1));
+    const queued = track(client.text(AO3 + 2, { priority: 'background' }));
+    await tick();
+    calls[0].resolve({ status: 502 });
+    await tick();
+    // The answer itself is handed back (the caller reports "AO3 is busy").
+    expect(a.value?.status).toBe(502);
+    expect(queued.error).toBeInstanceOf(ServerBusyError);
+    expect(queued.error).toBeInstanceOf(RateLimitedError);
+    expect(queued.error?.message).toMatch(/^AO3 is having trouble right now \(error 502\)/);
+    const b = track(client.text(AO3 + 3));
+    await tick();
+    expect(b.error).toBeInstanceOf(ServerBusyError);
+    expect(calls).toHaveLength(1);
+    expect(client.cooldownUntil('archiveofourown.org') - Date.now()).toBe(10_000);
+
+    await tick(10_000);
+    client.text(AO3 + 4);
+    await tick();
+    expect(calls).toHaveLength(2);
+    calls[1].resolve({ status: 503 });
+    await tick();
+    expect(client.cooldownUntil('archiveofourown.org') - Date.now()).toBe(20_000);
+
+    // A good answer ends the run of failures.
+    await tick(20_000);
+    client.text(AO3 + 5);
+    await tick();
+    calls[2].resolve({ text: 'ok' });
+    await tick(2000);
+    client.text(AO3 + 6);
+    await tick();
+    calls[3].resolve({ status: 500 });
+    await tick();
+    expect(client.cooldownUntil('archiveofourown.org') - Date.now()).toBe(10_000);
+    // Other sites aren't held up.
+    track(client.text(WP + 1));
+    await tick();
+    expect(calls).toHaveLength(5);
   });
 });
 

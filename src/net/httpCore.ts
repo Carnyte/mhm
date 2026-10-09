@@ -7,6 +7,9 @@
 //  - user requests go ahead of queued background ones;
 //  - 429 (and 503 with Retry-After) puts the host on a cooldown: the request and everything queued
 //    behind it fail with RateLimitedError until then, and repeated limits back off exponentially;
+//  - any other 5xx is answered as it is, and the host rests a little before the next request
+//    (ServerBusyError until then), longer with each failure in a row: an overloaded site isn't
+//    asked again straight away by anyone;
 //  - a GET that fails at the network level is retried once; a POST is never retried;
 //  - every request has a timeout and can be aborted.
 //
@@ -60,12 +63,16 @@ export interface HostPolicy {
   timeoutMs: number;
   /** First cooldown after a 429 without Retry-After; doubles with each limit in a row. */
   cooldownMs: number;
+  /** Rest after a 5xx (DEFAULT_ERROR_COOLDOWN_MS when unset); doubles with each 5xx in a row. */
+  errorCooldownMs?: number;
   /** Replaces the default user agent (FicHub asks for one with contact details). */
   userAgent?: string;
 }
 
 const SECOND = 1000;
 const MAX_COOLDOWN_MS = 30 * 60 * SECOND;
+export const DEFAULT_ERROR_COOLDOWN_MS = 10 * SECOND;
+const MAX_ERROR_COOLDOWN_MS = 5 * 60 * SECOND;
 
 export const DEFAULT_POLICY: HostPolicy = { gapUserMs: 1000, gapBackgroundMs: 3000, timeoutMs: 30 * SECOND, cooldownMs: 30 * SECOND };
 
@@ -94,6 +101,18 @@ export class RateLimitedError extends Error {
   ) {
     super(`${site} asked FicShelf to slow down. Try again after ${new Date(retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
     this.name = 'RateLimitedError';
+  }
+}
+
+/**
+ * The site just failed with a server error (5xx) and is resting: nothing is sent to it before
+ * `retryAt`. A RateLimitedError, so everything that stops on a rate limit stops on this too.
+ */
+export class ServerBusyError extends RateLimitedError {
+  constructor(host: string, retryAt: number, site = host, public status?: number) {
+    super(host, retryAt, site);
+    this.message = `${site} is having trouble right now${status ? ` (error ${status})` : ''}. FicShelf waits a moment before asking again: try after ${new Date(retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.`;
+    this.name = 'ServerBusyError';
   }
 }
 
@@ -162,8 +181,12 @@ interface HostState {
   /** When the last request to the host finished (0 = none yet). */
   lastEnd: number;
   cooldownUntil: number;
+  /** Why the host is cooling down: a rate limit, or a server error (with its status). */
+  cooldownStatus?: number;
   /** Rate limits in a row, for the exponential cooldown. */
   strikes: number;
+  /** Server errors in a row, for the rest after each. */
+  errors: number;
   timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -206,7 +229,7 @@ export class HttpClient {
     if (opts.signal?.aborted) return Promise.reject(abortError());
     if (policy.direct) return this.send(url, host, policy, opts);
     const st = this.state(host, policy);
-    if (st.cooldownUntil > this.now()) return Promise.reject(new RateLimitedError(host, st.cooldownUntil, policy.site ?? host));
+    if (st.cooldownUntil > this.now()) return Promise.reject(this.cooling(st, host));
     return new Promise<HttpResponse>((resolve, reject) => {
       const job: Job = { url, host, opts, priority: opts.priority ?? 'user', attempts: 0, resolve, reject };
       if (opts.signal) {
@@ -224,10 +247,16 @@ export class HttpClient {
     });
   }
 
+  /** The error for a request the host's cooldown turns away. */
+  private cooling(st: HostState, host: string): RateLimitedError {
+    const site = st.policy.site ?? host;
+    return st.cooldownStatus ? new ServerBusyError(host, st.cooldownUntil, site, st.cooldownStatus) : new RateLimitedError(host, st.cooldownUntil, site);
+  }
+
   private state(host: string, policy: HostPolicy): HostState {
     let st = this.hosts.get(host);
     if (!st) {
-      st = { policy, queue: [], inFlight: false, lastEnd: 0, cooldownUntil: 0, strikes: 0 };
+      st = { policy, queue: [], inFlight: false, lastEnd: 0, cooldownUntil: 0, strikes: 0, errors: 0 };
       this.hosts.set(host, st);
     }
     return st;
@@ -253,7 +282,7 @@ export class HttpClient {
       // Everything queued behind a rate limit fails now rather than piling up.
       for (const job of st.queue.splice(0)) {
         job.unlisten?.();
-        job.reject(new RateLimitedError(job.host, st.cooldownUntil, st.policy.site ?? job.host));
+        job.reject(this.cooling(st, job.host));
       }
       return;
     }
@@ -286,9 +315,17 @@ export class HttpClient {
         st.strikes++;
         const backoff = Math.min(MAX_COOLDOWN_MS, st.policy.cooldownMs * 2 ** (st.strikes - 1));
         st.cooldownUntil = now + Math.max(parseRetryAfter(r.headers['retry-after'], now) ?? 0, backoff);
+        st.cooldownStatus = undefined;
         job.reject(new RateLimitedError(job.host, st.cooldownUntil, st.policy.site ?? job.host));
       } else {
         st.strikes = 0;
+        if (r.status >= 500) {
+          // Answered (the caller reports it), but the host rests before anyone asks it again.
+          st.errors++;
+          const rest = Math.min(MAX_ERROR_COOLDOWN_MS, (st.policy.errorCooldownMs ?? DEFAULT_ERROR_COOLDOWN_MS) * 2 ** (st.errors - 1));
+          st.cooldownUntil = Math.max(st.cooldownUntil, this.now() + rest);
+          st.cooldownStatus = r.status;
+        } else st.errors = 0;
         job.resolve(r);
       }
     } catch (e) {

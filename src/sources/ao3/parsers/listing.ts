@@ -51,6 +51,7 @@ export function parseFacets(form: El | null): Ao3Facet[] {
 
 function parseTotal(root: El): { total?: string; title?: string } {
   // Search: "15,237 Found". Tag pages: "1 - 20 of 604,646 Works in <tag>". Creators: "16 Works by name".
+  // With "Search within results" (work_search[query]) AO3 adds "found": "10 Works found by name".
   const found = root
     .querySelectorAll('h3.heading')
     .map(text)
@@ -61,9 +62,9 @@ function parseTotal(root: El): { total?: string; title?: string } {
       .querySelectorAll('h2.heading')
       .map(text)
       .find((t) => /\bWorks?\b/.test(t)) ?? '';
-  const inTag = h2.match(/(?:of\s+)?([\d,]+)\s+Works?\s+in\s+(.+)$/);
+  const inTag = h2.match(/(?:of\s+)?([\d,]+)\s+Works?\s+(?:found\s+)?in\s+(.+)$/);
   if (inTag) return { total: inTag[1], title: inTag[2].trim() };
-  const by = h2.match(/([\d,]+)\s+Works?\s+(?:by|in)\s+(.+)$/);
+  const by = h2.match(/([\d,]+)\s+Works?\s+(?:found\s+)?(?:by|in)\s+(.+)$/);
   if (by) return { total: by[1], title: by[2].trim() };
   return {};
 }

@@ -15,8 +15,8 @@ export const httpRows: Map<string, { body: string; fetchedAt: number }> = ((
 ).__memoryHttp ??= new Map());
 
 /** Saved chapter text by "<story key>#<number>" (with the site's chapter id). */
-export const chapterRows: Map<string, { html: string; remoteId?: string }> = ((
-  globalThis as { __memoryChapters?: Map<string, { html: string; remoteId?: string }> }
+export const chapterRows: Map<string, { html: string; remoteId?: string; savedAt?: number }> = ((
+  globalThis as { __memoryChapters?: Map<string, { html: string; remoteId?: string; savedAt?: number }> }
 ).__memoryChapters ??= new Map());
 
 const chapterNumbers = (key: string) =>
@@ -29,7 +29,11 @@ export function kvModule() {
   return {
     chapterStore: {
       get: async (key: string, n: number) => chapterRows.get(`${key}#${n}`)?.html,
-      put: async (key: string, n: number, html: string, remoteId?: string) => void chapterRows.set(`${key}#${n}`, { html, remoteId }),
+      getRow: async (key: string, n: number) => {
+        const row = chapterRows.get(`${key}#${n}`);
+        return row ? { ...row } : undefined;
+      },
+      put: async (key: string, n: number, html: string, remoteId?: string) => void chapterRows.set(`${key}#${n}`, { html, remoteId, savedAt: Date.now() }),
       list: async (key: string) => chapterNumbers(key),
       remove: async (key: string) => {
         for (const n of chapterNumbers(key)) chapterRows.delete(`${key}#${n}`);

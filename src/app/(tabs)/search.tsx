@@ -24,7 +24,7 @@ import type { Ao3Search } from '../../sources/ao3/urls';
 import { toKey } from '../../sources/keys';
 import { disabledNotice, isBareStoryNumber, resolveLink } from '../../sources/registry';
 import { addRecentSearch, clearRecentSearches, useLibrary } from '../../state/library';
-import { updateSettings, useSettings } from '../../state/settings';
+import { hiddenFandomsOf, setFandomHidden, updateSettings, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
 
 type Item =
@@ -45,7 +45,9 @@ export default function SearchScreen() {
   const [ao3, setAo3] = useState<Ao3Search>({});
   // Each site's own recent searches.
   const recents = useLibrary((s) => s.searches.filter((r) => r.source === scope));
+  // FanFiction.net's hidden fandoms filter its results; the chips below show the chosen site's own.
   const excluded = useSettings((s) => s.excludedFandoms);
+  const hidden = useSettings((s) => hiddenFandomsOf(scope, s));
 
   /** AO3's search, with the box as its any-field query. */
   const runAo3 = (keywords: string, fields: Ao3Search = ao3) => {
@@ -193,7 +195,7 @@ export default function SearchScreen() {
                 <T size={13} weight="600" muted>
                   RECENT SEARCHES
                 </T>
-                <T size={13} style={{ color: c.accent }} onPress={clearRecentSearches}>
+                <T size={13} style={{ color: c.accent }} onPress={() => clearRecentSearches(scope)}>
                   Clear
                 </T>
               </View>
@@ -233,13 +235,13 @@ export default function SearchScreen() {
               </T>
             </View>
           )}
-          {excluded.length > 0 && (
+          {hidden.length > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
               <T size={13} weight="600" muted style={{ width: '100%' }}>
                 HIDDEN FANDOMS
               </T>
-              {excluded.map((e) => (
-                <Chip key={e} label={e} onRemove={() => updateSettings({ excludedFandoms: excluded.filter((x) => x !== e) })} />
+              {hidden.map((e) => (
+                <Chip key={e} label={e} onRemove={() => setFandomHidden(scope, e, false)} />
               ))}
             </View>
           )}

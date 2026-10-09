@@ -59,6 +59,11 @@ export interface SourceSettings {
   enabled: boolean;
   /** AO3: ask before opening a Mature, Explicit or Not Rated work the first time. */
   askAdult?: boolean;
+  /**
+   * Fandoms hidden from this site's lists and search, by their exact name (AO3). FanFiction.net's
+   * are `AppSettings.excludedFandoms`, where older builds read them.
+   */
+  hiddenFandoms?: string[];
 }
 
 export interface AppSettings {
@@ -73,11 +78,15 @@ export interface AppSettings {
   wifiOnly: boolean;
   checkOnLaunch: boolean;
   haptics: boolean;
+  /** FanFiction.net fandoms hidden from its lists and search (other sites: `sources[id].hiddenFandoms`). */
   excludedFandoms: string[];
   pinnedFandoms: PinnedFandom[];
   sources: Record<SourceId, SourceSettings>;
   reader: ReaderSettings;
+  /** When every site with stories to check had last been checked (what the screens show). */
   lastUpdateCheck?: number;
+  /** When each site's stories were last all checked: automatic checks are due per site. */
+  lastUpdateCheckBySource?: Partial<Record<SourceId, number>>;
   onboarded?: boolean;
   /** The site whose Browse home / search form is showing (when more than one is on). */
   browseSource?: SourceId;
@@ -193,6 +202,25 @@ export function updateReader(patch: Partial<ReaderSettings>) {
 
 export function updateSource(id: SourceId, patch: Partial<SourceSettings>) {
   settingsStore.set((s) => ({ ...s, sources: { ...s.sources, [id]: { ...s.sources[id], ...patch } } }));
+}
+
+/** The fandoms hidden from a site's lists and search. */
+export function hiddenFandomsOf(source: SourceId, st: AppSettings = settingsStore.get()): string[] {
+  return source === 'ffn' ? st.excludedFandoms : (st.sources[source]?.hiddenFandoms ?? []);
+}
+
+/** Whether a work names a hidden fandom, by its exact name (AO3's fandom tags; a crossover names several). */
+export function hasHiddenFandom(fandoms: readonly string[] | undefined, hidden: readonly string[]): boolean {
+  return !!hidden.length && !!fandoms?.some((f) => hidden.includes(f));
+}
+
+/** Hides (or shows again) a fandom in one site's lists and search. */
+export function setFandomHidden(source: SourceId, fandom: string, hidden: boolean) {
+  const cur = hiddenFandomsOf(source);
+  if (cur.includes(fandom) === hidden) return;
+  const next = hidden ? [...cur, fandom] : cur.filter((f) => f !== fandom);
+  if (source === 'ffn') updateSettings({ excludedFandoms: next });
+  else updateSource(source, { hiddenFandoms: next });
 }
 
 export function togglePinnedFandom(f: PinnedFandom) {

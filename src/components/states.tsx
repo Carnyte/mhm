@@ -8,9 +8,9 @@ import { LoginRequiredError, NeedsWebError } from '../ffn/api';
 import { FfnPageError } from '../ffn/parsers/story';
 import { SourceBlockedError } from '../net/blocks';
 import { bridge, BridgeError } from '../net/bridge';
-import { HttpTimeoutError, NetworkError, RateLimitedError } from '../net/httpCore';
+import { HttpTimeoutError, NetworkError, RateLimitedError, ServerBusyError } from '../net/httpCore';
 import { SOURCE_NAMES } from '../sources/keys';
-import { Ao3AdultNoticeError, Ao3NotFoundError, Ao3RestrictedError, Ao3UnavailableError } from '../sources/ao3/api';
+import { Ao3AdultNoticeError, Ao3ChapterGoneError, Ao3NotFoundError, Ao3RestrictedError, Ao3UnavailableError } from '../sources/ao3/api';
 import { ComingSoonError } from '../sources/registry';
 import { useTheme } from '../theme';
 import { errorMessage } from '../utils/format';
@@ -30,7 +30,25 @@ export function Loading({ label }: { label?: string }) {
   );
 }
 
-export function Empty({ icon = 'file-tray-outline', title, message, action }: { icon?: IconName; title: string; message?: string; action?: { label: string; onPress: () => void } }) {
+interface EmptyAction {
+  label: string;
+  onPress: () => void;
+}
+
+export function Empty({
+  icon = 'file-tray-outline',
+  title,
+  message,
+  action,
+  secondary,
+}: {
+  icon?: IconName;
+  title: string;
+  message?: string;
+  action?: EmptyAction;
+  /** A second way out under the first (e.g. "Open on AO3" under "Try again"). */
+  secondary?: EmptyAction;
+}) {
   const c = useTheme();
   return (
     <View style={styles.center}>
@@ -44,11 +62,29 @@ export function Empty({ icon = 'file-tray-outline', title, message, action }: { 
         </T>
       )}
       {action && <Button title={action.label} onPress={action.onPress} style={{ marginTop: 16 }} />}
+      {secondary && <Button title={secondary.label} kind={action ? 'ghost' : 'primary'} onPress={secondary.onPress} style={{ marginTop: action ? 8 : 16 }} />}
     </View>
   );
 }
 
-export function ErrorView({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+/** An error that came from AO3 (its own refusals, or the polite client's errors for its hosts). */
+function isAo3Error(error: unknown): boolean {
+  return (
+    error instanceof Ao3NotFoundError ||
+    error instanceof Ao3UnavailableError ||
+    error instanceof Ao3AdultNoticeError ||
+    (error instanceof SourceBlockedError && error.source === 'ao3') ||
+    ((error instanceof RateLimitedError || error instanceof NetworkError || error instanceof HttpTimeoutError) && error.site === SOURCE_NAMES.ao3)
+  );
+}
+
+/**
+ * An error with the right way out. `webUrl` is the page on the story's site: every AO3 error then
+ * also offers "Open on AO3" (a retry may well meet the same answer, and the work stays one tap away).
+ */
+export function ErrorView({ error, onRetry, webUrl }: { error: unknown; onRetry?: () => void; webUrl?: string }) {
+  const retry = onRetry ? { label: 'Try again', onPress: onRetry } : undefined;
+  const openOnAo3 = webUrl && isAo3Error(error) ? { label: 'Open on AO3', onPress: () => Linking.openURL(webUrl).catch(() => {}) } : undefined;
   if (error instanceof LoginRequiredError || (error instanceof FfnPageError && error.code === 'login_required')) {
     return (
       <Empty
@@ -97,10 +133,18 @@ export function ErrorView({ error, onRetry }: { error: unknown; onRetry?: () => 
     );
   }
   if (error instanceof Ao3NotFoundError) {
-    return <Empty icon="help-circle-outline" title="Not on AO3" message={error.message} action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined} />;
+    return <Empty icon="help-circle-outline" title={error instanceof Ao3ChapterGoneError ? 'Chapter not on AO3' : 'Not on AO3'} message={error.message} action={retry} secondary={openOnAo3} />;
   }
   if (error instanceof Ao3UnavailableError || error instanceof Ao3AdultNoticeError) {
-    return <Empty icon="cloud-offline-outline" title={error instanceof Ao3UnavailableError ? 'AO3 is busy' : 'AO3 asked to confirm'} message={error.message} action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined} />;
+    return (
+      <Empty
+        icon="cloud-offline-outline"
+        title={error instanceof Ao3UnavailableError ? 'AO3 is busy' : 'AO3 asked to confirm'}
+        message={error.message}
+        action={retry}
+        secondary={openOnAo3}
+      />
+    );
   }
   if (error instanceof ComingSoonError) {
     return (
@@ -111,18 +155,14 @@ export function ErrorView({ error, onRetry }: { error: unknown; onRetry?: () => 
       />
     );
   }
+  if (error instanceof ServerBusyError) {
+    return <Empty icon="cloud-offline-outline" title={`${error.site} is busy`} message={error.message} action={retry} secondary={openOnAo3} />;
+  }
   if (error instanceof RateLimitedError) {
-    return (
-      <Empty
-        icon="hourglass-outline"
-        title={`${error.site} asked FicShelf to slow down`}
-        message={error.message}
-        action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined}
-      />
-    );
+    return <Empty icon="hourglass-outline" title={`${error.site} asked FicShelf to slow down`} message={error.message} action={retry} secondary={openOnAo3} />;
   }
   if (error instanceof SourceBlockedError) {
-    return <Empty icon="shield-checkmark-outline" title="Security check needed" message={error.message} action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined} />;
+    return <Empty icon="shield-checkmark-outline" title="Security check needed" message={error.message} action={retry} secondary={openOnAo3} />;
   }
   const offline = (error instanceof BridgeError && (error.code === 'network' || error.code === 'timeout')) || error instanceof NetworkError || error instanceof HttpTimeoutError;
   const site = error instanceof NetworkError || error instanceof HttpTimeoutError ? error.site : 'FanFiction.net';
@@ -131,7 +171,8 @@ export function ErrorView({ error, onRetry }: { error: unknown; onRetry?: () => 
       icon={offline ? 'cloud-offline-outline' : 'alert-circle-outline'}
       title={offline ? `Can't reach ${site}` : error instanceof FfnPageError && error.code === 'not_found' ? 'Not found' : 'Something went wrong'}
       message={errorMessage(error)}
-      action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined}
+      action={retry}
+      secondary={openOnAo3}
     />
   );
 }

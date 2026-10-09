@@ -118,7 +118,10 @@ export interface PagedState<T, M> {
   refreshing: boolean;
   hasMore: boolean;
   total?: string;
+  /** The next page; nothing while a page failed (retry() asks again). */
   loadMore: () => void;
+  /** Asks again for the page that failed (the first, or the next one). */
+  retry: () => void;
   refresh: () => Promise<void>;
 }
 
@@ -193,6 +196,12 @@ export function usePaged<T, M = undefined>(
     if (!current.loading && !current.loadingMore && hasMore && !current.error) load(current.page + 1, false);
   }, [current.loading, current.loadingMore, hasMore, current.error, current.page, load]);
 
+  const retry = useCallback(() => {
+    if (current.loading || current.loadingMore) return;
+    if (current.page === 0) load(1, true);
+    else if (hasMore) load(current.page + 1, false);
+  }, [current.loading, current.loadingMore, current.page, hasMore, load]);
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
     await load(1, true);
@@ -209,6 +218,7 @@ export function usePaged<T, M = undefined>(
     hasMore,
     total: current.total,
     loadMore,
+    retry,
     refresh,
   };
 }

@@ -6,7 +6,7 @@ import { toast } from '../components/Sheet';
 import { chapterStore } from '../db/kv';
 import { splitKey, type StoryKey } from '../sources/keys';
 import { sourceOf } from '../sources/registry';
-import type { Source, StoryInfo } from '../sources/types';
+import type { FetchOpts, Source, StoryInfo } from '../sources/types';
 import { keyOf, libraryStore, patchStory, upsertStory, type AnyStory } from '../state/library';
 import { createStore, useStore } from '../state/store';
 import { errorMessage } from '../utils/format';
@@ -40,11 +40,19 @@ function setJob(key: StoryKey, job: DownloadJob | null) {
   });
 }
 
+export interface DownloadStoryOpts {
+  quiet?: boolean;
+  /** Refresh a whole-story download even when it looks current. */
+  force?: boolean;
+  /** 'background' for downloads nobody tapped (after an update check): the site's wider spacing. */
+  priority?: FetchOpts['priority'];
+}
+
 /**
  * Downloads all missing chapters (sites with a whole-story download: the whole story when the
- * saved copy is stale). `force` refreshes a whole-story download even when it looks current.
+ * saved copy is stale).
  */
-export async function downloadStory(story: AnyStory, opts: { quiet?: boolean; force?: boolean } = {}) {
+export async function downloadStory(story: AnyStory, opts: DownloadStoryOpts = {}) {
   const key = keyOf(story);
   if (downloadsStore.get()[key]) return;
   const src = sourceOf(key);
@@ -86,7 +94,7 @@ export async function downloadStory(story: AnyStory, opts: { quiet?: boolean; fo
 const cancelled = () => Object.assign(new Error('The download was cancelled.'), { name: 'AbortError' });
 
 /** The whole story in as few requests as the site allows, each chapter saved as it arrives. */
-async function downloadWhole(story: AnyStory, src: Source, opts: { quiet?: boolean; force?: boolean }) {
+async function downloadWhole(story: AnyStory, src: Source, opts: DownloadStoryOpts) {
   const key = keyOf(story);
   const title = story.title;
   setJob(key, { key, title, done: 0, total: story.chapters || 1 });
@@ -109,6 +117,7 @@ async function downloadWhole(story: AnyStory, src: Source, opts: { quiet?: boole
       },
       {
         quiet: opts.quiet,
+        priority: opts.priority,
         knownVersion,
         onInfo: async (i) => {
           total = i.chapters || 1;

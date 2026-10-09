@@ -92,9 +92,9 @@ describe('AO3 official download', () => {
     expect(got).toHaveLength(3);
   });
 
-  it('falls back to the full-work page when the download fails', async () => {
+  it('falls back to the full-work page when the download doesn’t match the work', async () => {
     on(/\/works\/3171550\?view_adult=true$/, workPage());
-    on(/\/downloads\//, { status: 500, text: 'oops' });
+    on(/\/downloads\//, { status: 200, text: '<html><body><p>Not a download</p></body></html>' });
     on(/view_full_work=true/, fullWork());
     const { got } = await collect();
     expect(requests.map((r) => r.url.replace(AO3, ''))).toEqual([
@@ -115,6 +115,27 @@ describe('AO3 official download', () => {
 });
 
 describe('downloading an AO3 work', () => {
+  it('asks AO3 in the background queue for a download nobody tapped (policy.3)', async () => {
+    on(/\/works\/3171550\?view_adult=true$/, workPage());
+    on(/\/downloads\//, fixture('download.html'));
+    const meta = {
+      key: 'ao3:3171550' as const,
+      source: 'ao3' as const,
+      remoteId: '3171550',
+      url: `${AO3}/works/3171550`,
+      title: 'T',
+      summary: '',
+      genres: [],
+      chapters: 3,
+      words: 1,
+      stats: {},
+      complete: true,
+    };
+    await downloadStory(meta, { quiet: true, priority: 'background' });
+    expect(requests.map((r) => r.priority)).toEqual(['background', 'background']);
+    expect(chapterRows.size).toBe(3);
+  });
+
   it('saves each chapter with its AO3 id and remembers the version it saved', async () => {
     on(/\/works\/3171550\?view_adult=true$/, workPage());
     on(/\/downloads\//, fixture('download.html'));

@@ -123,10 +123,28 @@ export const kv = {
   },
 };
 
+/** A chapter saved on the device. */
+export interface SavedChapter {
+  html: string;
+  /** When it was saved (ms since epoch). */
+  savedAt?: number;
+  /** The site's id of the chapter (AO3 chapter id), when it has one. */
+  remoteId?: string;
+}
+
 export const chapterStore = {
   async get(key: StoryKey, n: number): Promise<string | undefined> {
     const row = await open().getFirstAsync<{ html: string }>('SELECT html FROM chapter_text WHERE story_key = ? AND number = ?', key, n);
     return row?.html;
+  },
+  /** The saved copy with when it was saved (ms) and the site's id of the chapter it is. */
+  async getRow(key: StoryKey, n: number): Promise<SavedChapter | undefined> {
+    const row = await open().getFirstAsync<{ html: string; saved_at: number | null; remote_id: string | null }>(
+      'SELECT html, saved_at, remote_id FROM chapter_text WHERE story_key = ? AND number = ?',
+      key,
+      n,
+    );
+    return row ? { html: row.html, savedAt: row.saved_at ?? undefined, remoteId: row.remote_id ?? undefined } : undefined;
   },
   /** `remoteId` is the site's own id for the chapter (AO3 chapter, Wattpad part), when it has one. */
   async put(key: StoryKey, n: number, html: string, remoteId?: string): Promise<void> {

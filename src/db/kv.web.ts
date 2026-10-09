@@ -161,6 +161,12 @@ export const chapterStore = {
     migrate();
     return read(chKey(key, n)) ?? undefined;
   },
+  /** The web build keeps only the text (no chapter id or date), so the reader asks the site again. */
+  async getRow(key: StoryKey, n: number): Promise<{ html: string; savedAt?: number; remoteId?: string } | undefined> {
+    migrate();
+    const html = read(chKey(key, n));
+    return html == null ? undefined : { html };
+  },
   async put(key: StoryKey, n: number, html: string, _remoteId?: string) {
     if (kv.writable) write(chKey(key, n), html);
   },

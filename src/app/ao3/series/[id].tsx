@@ -106,7 +106,15 @@ export default function Ao3SeriesScreen() {
             <Empty icon="library-outline" title="No works to show" message="The works in this series may be visible only to people logged in to AO3." />
           )
         }
-        ListFooterComponent={list.loadingMore ? <Loading /> : <View style={{ height: 24 }} />}
+        ListFooterComponent={
+          list.loadingMore ? (
+            <Loading />
+          ) : list.error && list.items.length ? (
+            <ErrorView error={list.error} onRetry={list.retry} />
+          ) : (
+            <View style={{ height: 24 }} />
+          )
+        }
       />
     </View>
   );

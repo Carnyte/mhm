@@ -58,6 +58,11 @@ export interface ChapterInfo {
   words?: number;
   /** A paid part the reader hasn't unlocked (Wattpad). Never fetched, saved or spoken. */
   locked?: { price?: number };
+  /**
+   * The site shortened this title (AO3's chapter menu cuts long ones and adds "..."): a full
+   * title already known for the chapter is kept instead.
+   */
+  abbreviated?: boolean;
 }
 
 /** A story as a list row or story page shows it. */
@@ -159,6 +164,8 @@ export interface UpdateResult {
   meta?: StoryMeta;
   /** The chapter ids in order, when the check saw all of them (AO3's /navigate). */
   chapterIds?: string[];
+  /** The chapter titles in the same order, when the check saw them whole (AO3's /navigate). */
+  chapterTitles?: string[];
   chapters?: number;
   changed: boolean;
   /** The text changed without new chapters (AO3 edits): downloads should be refreshed. */
@@ -174,6 +181,17 @@ export interface FetchOpts {
   signal?: AbortSignal;
   /** User requests go ahead of background ones (update checks) and are spaced less. */
   priority?: 'user' | 'background';
+}
+
+/** How an update check runs (the background task's window is short). */
+export interface UpdateCheckOpts extends FetchOpts {
+  /** Start no request after this time (ms since epoch); works not reached get no result. */
+  deadline?: number;
+  /**
+   * Called with each batch's results as soon as they arrive, so a run that's cut short (the
+   * background window ends) keeps what it learnt. Results passed here are also returned.
+   */
+  onResults?: (results: UpdateResult[]) => Promise<void> | void;
 }
 
 export interface DownloadOpts extends FetchOpts {
@@ -235,6 +253,12 @@ export interface Source {
   readonly reader: { baseUrl: string; csp?: string };
   /** Known (its links are recognised) but not readable in this version yet. */
   readonly comingSoon?: boolean;
+  /**
+   * A chapter's text rarely changes once posted (AO3): the reader shows a copy saved on the
+   * device (a prefetched or earlier-read chapter) while it's still that chapter and the story's
+   * version stamp is older than the copy, instead of asking the site again.
+   */
+  readonly stableText?: boolean;
   /** Switched on (Settings → Sources) and usable. */
   enabled(): boolean;
   parseLink(input: string): LinkHit | null;
@@ -245,7 +269,7 @@ export interface Source {
   getChapter(remoteId: string, ch: ChapterInfo, o?: FetchOpts): Promise<ChapterContent>;
   /** Every chapter in as few requests as the site allows (AO3's official HTML download). */
   downloadAll?(remoteId: string, onChapter: (c: ChapterContent) => Promise<void>, o?: DownloadOpts): Promise<StoryInfo>;
-  checkUpdates?(stories: LibraryStory[], o?: FetchOpts): Promise<UpdateResult[]>;
+  checkUpdates?(stories: LibraryStory[], o?: UpdateCheckOpts): Promise<UpdateResult[]>;
   search?(q: SearchQuery, page: number, o?: FetchOpts): Promise<{ items: StoryMeta[]; lastPage: number; total?: string }>;
   session?: SourceSession;
 }

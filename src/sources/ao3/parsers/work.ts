@@ -38,6 +38,11 @@ export interface Ao3ChapterRef {
   number: number;
   id: string;
   title: string;
+  /**
+   * The chapter menu of a chapter page cut the title short: AO3 shortens "N. Title" to 51
+   * characters plus "..." once it's longer than 50. /navigate and the download have it whole.
+   */
+  abbreviated?: boolean;
   /** Unix seconds (from /navigate only). */
   published?: number;
 }
@@ -72,12 +77,25 @@ export function stripChapterNumber(s: string): string {
   return s.replace(/^\s*\d+\.\s*/, '').trim();
 }
 
+/**
+ * Whether a chapter menu entry ("17. Epilogue: Where the River Meets the Sky, and Ev...") may be
+ * AO3's shortened title (otwarchive's `abbreviated_display_title`: 51 characters, then "...").
+ * A title that really ends in "..." is flagged too; that only means a full one known already wins.
+ */
+export function isAbbreviatedEntry(label: string): boolean {
+  return label.endsWith('...') && [...label].length >= 50;
+}
+
 function parseChapterIndex(root: El): Ao3ChapterRef[] {
-  return root.querySelectorAll('select#selected_id option').map((o, i) => ({
-    number: i + 1,
-    id: o.getAttribute('value') ?? '',
-    title: stripChapterNumber(text(o)) || `Chapter ${i + 1}`,
-  }));
+  return root.querySelectorAll('select#selected_id option').map((o, i) => {
+    const label = text(o);
+    return {
+      number: i + 1,
+      id: o.getAttribute('value') ?? '',
+      title: stripChapterNumber(label) || `Chapter ${i + 1}`,
+      ...(isAbbreviatedEntry(label) ? { abbreviated: true } : {}),
+    };
+  });
 }
 
 /** A `div.chapter#chapter-N` of a chapter page or the full-work view. */

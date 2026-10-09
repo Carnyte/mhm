@@ -91,7 +91,15 @@ export default function Ao3UserScreen() {
             <Empty icon="person-outline" title="No works to show" message="This creator's works may be visible only to people logged in to AO3." />
           )
         }
-        ListFooterComponent={list.loadingMore ? <Loading /> : <View style={{ height: 24 }} />}
+        ListFooterComponent={
+          list.loadingMore ? (
+            <Loading />
+          ) : list.error && list.items.length ? (
+            <ErrorView error={list.error} onRetry={list.retry} />
+          ) : (
+            <View style={{ height: 24 }} />
+          )
+        }
       />
       <Ao3FilterSheet
         mode="filters"

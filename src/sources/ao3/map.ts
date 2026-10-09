@@ -74,21 +74,31 @@ export function ao3Meta(m: Ao3WorkMeta): StoryMeta {
   return out;
 }
 
-/** The chapter list a work page (and /navigate, when fetched) gives. */
-function chapterList(page: Ao3WorkPage, nav?: Ao3Navigate): ChapterInfo[] {
+/**
+ * The chapter list a work page (and /navigate, when fetched) gives. The chapter menu of a chapter
+ * page shortens long titles, so a shortened entry takes the title from the chapter's own heading
+ * when the page shows it, else from `known` (chapter id → full title, learnt from /navigate and
+ * downloads), else stays flagged `abbreviated` (the library keeps a full title it has).
+ */
+function chapterList(page: Ao3WorkPage, nav?: Ao3Navigate, known?: ReadonlyMap<string, string>): ChapterInfo[] {
   if (nav?.chapters.length)
     return nav.chapters.map((c) => ({ number: c.number, title: c.title, remoteId: c.id, ...(c.published ? { published: c.published } : {}) }));
-  if (page.chapterIndex.length) return page.chapterIndex.map((c) => ({ number: c.number, title: c.title, remoteId: c.id }));
+  if (page.chapterIndex.length)
+    return page.chapterIndex.map((c) => {
+      const shown = page.chapters.find((x) => x.id === c.id && x.number === c.number)?.title;
+      const full = shown || (c.abbreviated ? known?.get(c.id) : undefined);
+      return { number: c.number, title: full || c.title, remoteId: c.id, ...(c.abbreviated && !full ? { abbreviated: true } : {}) };
+    });
   // The full-work view, or a work with a single chapter so far: the chapters on the page.
   const list = page.chapters.map((c) => ({ number: c.number, title: c.title || page.meta.title, ...(c.id ? { remoteId: c.id } : {}) }));
   if (list.length === 1 && page.meta.chapters === 1 && page.meta.published) (list[0] as ChapterInfo).published = page.meta.published;
   return list.length ? list : [{ number: 1, title: page.meta.title }];
 }
 
-/** A work page as a site-neutral StoryInfo. */
-export function ao3Info(page: Ao3WorkPage, nav?: Ao3Navigate): StoryInfo {
+/** A work page as a site-neutral StoryInfo. `known`: full chapter titles by chapter id. */
+export function ao3Info(page: Ao3WorkPage, nav?: Ao3Navigate, known?: ReadonlyMap<string, string>): StoryInfo {
   const meta = ao3Meta(page.meta);
-  const list = chapterList(page, nav);
+  const list = chapterList(page, nav, known);
   return {
     ...meta,
     // The chapter index is the truth about how many chapters can be opened.

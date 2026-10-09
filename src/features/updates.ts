@@ -9,9 +9,9 @@ import { kv } from '../db/kv';
 import { getAccountAuthors, getAccountStories } from '../ffn/api';
 import type { StorySummary, UserRef } from '../ffn/types';
 import { bridge } from '../net/bridge';
-import type { SourceId, StoryKey } from '../sources/keys';
+import { SOURCE_IDS, type SourceId, type StoryKey } from '../sources/keys';
 import { getSource } from '../sources/registry';
-import type { Source } from '../sources/types';
+import type { Source, UpdateResult } from '../sources/types';
 import {
   libraryStore,
   newChapterCount,
@@ -41,11 +41,57 @@ interface CheckState {
 export const checkStore = createStore<CheckState>({ running: false, done: 0, total: 0 });
 export const useCheckState = () => useStore(checkStore);
 
-/** Stories worth checking: followed, favourited-and-incomplete, saved or downloaded, not complete. */
+/**
+ * Stories worth checking: followed, favourited-and-incomplete, saved or downloaded, not complete,
+ * and not gone from their site. The ones checked longest ago come first, so a check that's cut
+ * short (the background window ends) picks up where the last one stopped.
+ */
 export function storiesToCheck(): LibraryStory[] {
-  return Object.values(libraryStore.get().stories).filter(
-    (s) => s.notify !== false && !s.complete && (s.followed || s.inLibrary || s.downloaded || (s.lastReadAt && s.favorited)),
-  );
+  return Object.values(libraryStore.get().stories)
+    .filter((s) => s.notify !== false && !s.complete && !s.gone && (s.followed || s.inLibrary || s.downloaded || (s.lastReadAt && s.favorited)))
+    .sort((a, b) => (a.lastCheckedAt ?? 0) - (b.lastCheckedAt ?? 0));
+}
+
+/** How long the background task may spend asking sites (iOS gives it a short window). */
+export const BACKGROUND_BUDGET_MS = 25_000;
+/** Downloads refreshed only because the site's version changed, per check (oldest copies first). */
+export const MAX_QUIET_REDOWNLOADS = 3;
+
+const isAbort = (e: unknown) => (e as Error)?.name === 'AbortError';
+
+/** Sites with stories to check that can be checked (on, readable). */
+function checkableSources(): SourceId[] {
+  return [...new Set(storiesToCheck().map((s) => s.source))].filter((id) => getSource(id).enabled() && !getSource(id).comingSoon);
+}
+
+/** When a site's stories were last all checked (before per-site stamps: the last check at all). */
+export function lastCheckOf(id: SourceId, st = settingsStore.get()): number {
+  return st.lastUpdateCheckBySource?.[id] ?? st.lastUpdateCheck ?? 0;
+}
+
+/**
+ * Sites whose stories are due a check (the check interval, or `share` of it, has passed since that
+ * site was last checked). Each site has its own clock, so a check that could only reach AO3
+ * (FanFiction.net's hidden browser wasn't up) never puts off FanFiction.net's.
+ */
+export function dueSources(now = Date.now(), share = 1): SourceId[] {
+  const st = settingsStore.get();
+  const interval = Math.max(30, st.checkIntervalHours * 60) * 60_000 * share;
+  return checkableSources().filter((id) => now - lastCheckOf(id, st) >= interval);
+}
+
+/**
+ * Records which sites this check covered (every one of their stories got an answer, an error
+ * included: a site that's down isn't asked again at once). `lastUpdateCheck` stays "everything
+ * was checked by then", what the screens show: the oldest stamp among sites with stories to check.
+ */
+function stampChecked(covered: SourceId[], now: number) {
+  const st = settingsStore.get();
+  const by = { ...st.lastUpdateCheckBySource };
+  for (const id of covered) by[id] = now;
+  const sites = checkableSources();
+  const oldest = sites.length ? Math.min(...sites.map((id) => by[id] ?? st.lastUpdateCheck ?? 0)) : covered.length ? now : (st.lastUpdateCheck ?? 0);
+  updateSettings({ lastUpdateCheckBySource: by, ...(oldest > (st.lastUpdateCheck ?? 0) ? { lastUpdateCheck: oldest } : {}) });
 }
 
 async function notify(updates: { story: LibraryStory; added: number }[]) {
@@ -79,13 +125,25 @@ async function notify(updates: { story: LibraryStory; added: number }[]) {
   }
 }
 
+export interface CheckOptions {
+  quiet?: boolean;
+  keys?: StoryKey[];
+  /** Only these sites (the background task skips FanFiction.net when its hidden browser isn't up). */
+  sources?: SourceId[];
+  /** Start no request after this time (ms since epoch): the background task's budget. */
+  deadline?: number;
+  /** Stops the check (the background window ended). */
+  signal?: AbortSignal;
+}
+
 /**
- * Checks library stories for new chapters. FanFiction.net: each story's page, 2 at a time. Sites
- * with a batched check (AO3: one search per 20 works) run alongside, through their own client.
- * `sources` limits the check to some sites (the background task skips FanFiction.net when its
- * hidden browser isn't up). Returns the stories that gained chapters.
+ * Checks library stories for new chapters, the ones checked longest ago first. FanFiction.net:
+ * each story's page, 2 at a time. Sites with a batched check (AO3: one search per 20 works) run
+ * alongside, through their own client, and each batch's answers are saved as they arrive.
+ * `sources` limits the check to some sites; `deadline` and `signal` cut it short (what was
+ * learnt is kept, and the rest is first in line next time). Returns the stories that gained chapters.
  */
-export async function checkForUpdates(opts: { quiet?: boolean; keys?: StoryKey[]; sources?: SourceId[] } = {}) {
+export async function checkForUpdates(opts: CheckOptions = {}) {
   // Nothing could be saved after a failed storage upgrade (see MigrationFailed).
   if (checkStore.get().running || !kv.writable) return [];
   const all = opts.keys ? opts.keys.map((key) => libraryStore.get().stories[key]).filter(Boolean) : storiesToCheck();
@@ -95,12 +153,16 @@ export async function checkForUpdates(opts: { quiet?: boolean; keys?: StoryKey[]
   const stale: LibraryStory[] = [];
   const failed = (e: unknown) => checkStore.set((c) => ({ ...c, lastError: (e as Error).message }));
   const tick = (n = 1) => checkStore.set((c) => ({ ...c, done: c.done + n }));
+  const stopped = () => !!opts.signal?.aborted || (opts.deadline != null && Date.now() > opts.deadline);
+  /** Stories that got an answer (an error included). */
+  const answered = new Set<StoryKey>();
 
   // One story page at a time per worker (FanFiction.net's bridge, two workers).
   const perStory = list.filter((s) => !getSource(s.source).checkUpdates);
   let i = 0;
   const worker = async () => {
     while (i < perStory.length) {
+      if (stopped()) return;
       const s = perStory[i++];
       try {
         const d = await fetchStory(s.key, { quiet: opts.quiet, priority: 'background' });
@@ -112,34 +174,70 @@ export async function checkForUpdates(opts: { quiet?: boolean; keys?: StoryKey[]
       } catch (e) {
         failed(e);
       }
+      answered.add(s.key);
       tick();
     }
+  };
+
+  /** One answer of a batched check, saved as it arrives. */
+  const apply = async (r: UpdateResult) => {
+    const before = libraryStore.get().stories[r.key];
+    if (!before) return;
+    // Not checked: it keeps its place at the front of the line.
+    if (r.error) {
+      if (!isAbort(r.error)) failed(r.error);
+      return;
+    }
+    const now = Date.now();
+    if (r.gone) {
+      // Not on the site any more: not asked about again (opening it clears this).
+      patchStory(r.key, { gone: true, lastCheckedAt: now });
+      return;
+    }
+    if (r.chapterIds) await applyChapterIds(r.key, r.chapterIds);
+    // Titles seen whole and in the current order (AO3's /navigate).
+    if (r.chapterTitles?.length) patchStory(r.key, { chapterTitles: [...r.chapterTitles] });
+    const seen = r.info ?? r.meta;
+    const back = before.gone ? { gone: false } : {};
+    if (seen) upsertStory(seen, { lastCheckedAt: now, ...back });
+    else patchStory(r.key, (s) => ({ lastCheckedAt: now, ...back, ...(r.chapters && r.chapters > s.chapters ? { chapters: r.chapters } : {}) }));
+    const after = libraryStore.get().stories[r.key] ?? before;
+    // News is a new chapter only; any other edit just makes a download stale.
+    if (r.changed && after.chapters > before.chapters) updated.push({ story: after, added: after.chapters - before.chapters });
+    else if (r.redownload && after.downloaded) stale.push(after);
   };
 
   // Batched checks, one site after another inside each site (its client paces them).
   const batched = async (source: Source) => {
     const stories = list.filter((s) => s.source === source.id);
     if (!stories.length) return;
-    try {
-      const results = await source.checkUpdates!(stories, { quiet: opts.quiet, priority: 'background' });
-      for (const r of results) {
-        const before = libraryStore.get().stories[r.key];
-        if (!before) continue;
-        if (r.error) failed(r.error);
-        if (r.chapterIds) await applyChapterIds(r.key, r.chapterIds);
-        const now = Date.now();
-        const seen = r.info ?? r.meta;
-        if (seen) upsertStory(seen, { lastCheckedAt: now });
-        else patchStory(r.key, (s) => ({ lastCheckedAt: now, ...(r.chapters && r.chapters > s.chapters ? { chapters: r.chapters } : {}) }));
-        const after = libraryStore.get().stories[r.key] ?? before;
-        // News is a new chapter only; any other edit just makes a download stale.
-        if (r.changed && after.chapters > before.chapters) updated.push({ story: after, added: after.chapters - before.chapters });
-        else if (r.redownload && after.downloaded) stale.push(after);
+    const handed = new Set<UpdateResult>();
+    const take = async (rs: UpdateResult[]) => {
+      for (const r of rs) {
+        handed.add(r);
+        await apply(r);
+        if (!answered.has(r.key)) {
+          answered.add(r.key);
+          tick();
+        }
       }
+    };
+    try {
+      const results = await source.checkUpdates!(stories, {
+        quiet: opts.quiet,
+        priority: 'background',
+        deadline: opts.deadline,
+        signal: opts.signal,
+        onResults: take,
+      });
+      // Anything the site didn't hand over as it arrived.
+      await take(results.filter((r) => !handed.has(r)));
     } catch (e) {
-      failed(e);
+      if (!isAbort(e)) failed(e);
     }
-    tick(stories.length);
+    // Works the check didn't reach still count towards the progress bar.
+    const left = stories.filter((s) => !answered.has(s.key)).length;
+    if (left) tick(left);
   };
 
   try {
@@ -147,25 +245,48 @@ export async function checkForUpdates(opts: { quiet?: boolean; keys?: StoryKey[]
     await Promise.all([worker(), worker(), ...sites.map(batched)]);
   } finally {
     checkStore.set((c) => ({ ...c, running: false }));
-    updateSettings({ lastUpdateCheck: Date.now() });
+    if (!opts.keys) {
+      // A site counts as checked when every one of its stories got an answer.
+      const scope = opts.sources ?? SOURCE_IDS;
+      stampChecked(
+        scope.filter((id) => list.every((s) => s.source !== id || answered.has(s.key))),
+        Date.now(),
+      );
+    }
   }
   await notify(updated);
   const grown = updated.map((u) => u.story);
-  await autoDownload(grown, stale);
+  if (!opts.signal?.aborted) await autoDownload(grown, stale, opts);
   return updated;
 }
 
-/** New chapters of downloaded stories (and stale whole-story downloads) are fetched quietly. */
-async function autoDownload(stories: LibraryStory[], stale: LibraryStory[] = []) {
+/**
+ * New chapters of downloaded stories (and stale whole-story downloads) are fetched quietly, in
+ * the background queue. Refreshes only because the site's version changed (AO3 edits) are a few
+ * per check, oldest copies first and not after the deadline: the rest stay stale and come up
+ * again at the next check.
+ */
+async function autoDownload(stories: LibraryStory[], stale: LibraryStory[] = [], o: { deadline?: number; signal?: AbortSignal } = {}) {
   const st = settingsStore.get();
   if (!st.autoDownloadUpdates) return;
-  const targets = [...stories.filter((s) => s.downloaded), ...stale.filter((s) => !stories.some((x) => x.key === s.key))];
-  if (!targets.length) return;
+  const grown = stories.filter((s) => s.downloaded);
+  const refresh = stale
+    .filter((s) => !stories.some((x) => x.key === s.key))
+    .sort((a, b) => (a.downloadedVersion ?? 0) - (b.downloadedVersion ?? 0))
+    .slice(0, MAX_QUIET_REDOWNLOADS);
+  if (!grown.length && !refresh.length) return;
   if (st.wifiOnly && Platform.OS !== 'web') {
     const net = await Network.getNetworkStateAsync().catch(() => null);
     if (net && net.type !== Network.NetworkStateType.WIFI) return;
   }
-  for (const s of targets) await downloadStory(s, { quiet: true });
+  for (const s of grown) {
+    if (o.signal?.aborted) return;
+    await downloadStory(s, { quiet: true, priority: 'background' });
+  }
+  for (const s of refresh) {
+    if (o.signal?.aborted || (o.deadline != null && Date.now() > o.deadline)) return;
+    await downloadStory(s, { quiet: true, priority: 'background' });
+  }
 }
 
 /** Pulls Follows / Favorites / followed & favourite authors from the FanFiction.net account into the library. */
@@ -219,12 +340,40 @@ export function snoozeStory(key: StoryKey, notify: boolean) {
 
 // --- Background task (best effort) --------------------------------------------------------
 
+/**
+ * The background task's check, of the sites that are due: FanFiction.net goes through its hidden
+ * browser, which only exists while the app process is alive; when it isn't up, only the sites the
+ * app reaches directly (AO3) are checked. iOS gives the task a short window, so it stops starting
+ * requests after BACKGROUND_BUDGET_MS, and at once when iOS says the window is over.
+ */
+export async function runBackgroundCheck() {
+  // Sites checked recently (the app was open) wait; iOS doesn't run the task on the dot, hence half
+  // the interval.
+  const sources = dueSources(Date.now(), 0.5).filter((id) => id !== 'ffn' || bridge.pageReady);
+  if (!sources.length) return;
+  const ctrl = new AbortController();
+  let sub: { remove: () => void } | undefined;
+  try {
+    sub = BackgroundTask.addExpirationListener?.(() => ctrl.abort());
+  } catch {
+    // Not available in this environment.
+  }
+  try {
+    await checkForUpdates({
+      quiet: true,
+      sources,
+      deadline: Date.now() + BACKGROUND_BUDGET_MS,
+      signal: ctrl.signal,
+    });
+  } finally {
+    sub?.remove();
+  }
+}
+
 if (Platform.OS !== 'web') {
   TaskManager.defineTask(UPDATE_TASK, async () => {
     try {
-      // FanFiction.net goes through its hidden browser, which only exists while the app process is
-      // alive; when it isn't up, only the sites the app reaches directly (AO3) are checked.
-      await checkForUpdates({ quiet: true, sources: bridge.pageReady ? undefined : ['ao3'] });
+      await runBackgroundCheck();
       return BackgroundTask.BackgroundTaskResult.Success;
     } catch {
       return BackgroundTask.BackgroundTaskResult.Failed;

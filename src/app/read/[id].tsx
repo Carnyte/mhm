@@ -19,8 +19,8 @@ import { ReaderWebView, type ReaderMessageEvent, type ReaderWebViewRef } from '.
 import { showActions, toast } from '../../components/Sheet';
 import { Empty, ErrorView, Loading } from '../../components/states';
 import { IconButton, T } from '../../components/ui';
-import { openReaderLink, openStory, readerMenu } from '../../features/actions';
-import { fetchChapter, fetchStory, getSavedChapter, prefetchChapter, renderChapter, saveChapter } from '../../features/chapters';
+import { openReaderLink, openStory, readerMenu, storyUrl } from '../../features/actions';
+import { fetchChapter, fetchStory, getSavedChapter, prefetchChapter, renderChapter, saveChapter, usableSavedChapter } from '../../features/chapters';
 import { keyFromParam, type StoryKey } from '../../sources/keys';
 import { infoFromLibrary } from '../../sources/meta';
 import { sourceOf } from '../../sources/registry';
@@ -43,22 +43,32 @@ interface Loaded {
 
 async function loadChapter(key: StoryKey, chapter: number): Promise<Loaded> {
   const lib = libraryStore.get().stories[key];
+  // Downloaded stories open instantly from disk; so does an AO3 chapter read or prefetched before
+  // (still the same chapter, and older than the work's last edit), instead of a second request.
+  const usable = await usableSavedChapter(key, chapter);
+  if (usable && lib) return { story: infoFromLibrary(lib), html: usable, offline: true };
   const saved = await getSavedChapter(key, chapter);
-  if (saved && lib?.downloaded) {
-    // Downloaded stories open instantly from disk.
-    return { story: infoFromLibrary(lib), html: saved, offline: true };
-  }
   try {
     const content = await fetchChapter(key, chapter);
     const html = renderChapter(content);
-    if (html) saveChapter(key, chapter, html).catch(() => {});
+    if (html) saveChapter(key, chapter, html, content.remoteId).catch(() => {});
     // FanFiction.net chapter pages carry the story's metadata; other sites' may not.
-    const story = content.story ?? (lib ? infoFromLibrary(lib) : await fetchStory(key));
+    const now = libraryStore.get().stories[key];
+    const story = content.story ?? (now ? infoFromLibrary(now) : await fetchStory(key));
     return { story, content, html, offline: false };
   } catch (e) {
-    if (saved && lib) return { story: infoFromLibrary(lib), html: saved, offline: true };
+    const now = libraryStore.get().stories[key];
+    // A saved copy is still this chapter unless the site just renumbered the chapters.
+    const still = now && (await getSavedChapter(key, chapter)) === saved;
+    if (saved && now && still) return { story: infoFromLibrary(now), html: saved, offline: true };
     throw e;
   }
+}
+
+/** Where to resume in a chapter (what the library has for it now: chapter renumbering moves it). */
+function resumeProgress(key: StoryKey | null, chapter: number): number {
+  const p = key ? libraryStore.get().stories[key]?.chapterProgress?.[chapter] : undefined;
+  return p != null && p < 0.995 ? p : 0;
 }
 
 export default function ReaderScreen() {
@@ -102,12 +112,13 @@ export default function ReaderScreen() {
   const listeningHere = listen.here && listen.chapter === chapter;
   const playerChapterRef = useRef(listen.chapter);
 
-  // Initial progress for this chapter (resume where you left off).
-  const startProgress = useMemo(() => {
-    const p = key ? libraryStore.get().stories[key]?.chapterProgress?.[chapter] : undefined;
-    return p != null && p < 0.995 ? p : 0;
+  // Initial progress for this chapter (resume where you left off), read again once it has loaded:
+  // loading it can renumber chapters (AO3), which moves the progress recorded for them.
+  const startProgress = useMemo(
+    () => resumeProgress(key, chapter),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, chapter, data?.story.key]);
+    [key, chapter, data],
+  );
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -153,8 +164,9 @@ export default function ReaderScreen() {
       .then((d) => {
         if (!alive) return;
         setRes({ key: loadKey, data: d });
-        progressRef.current = startProgress;
-        recordReading(d.story, chapter, startProgress);
+        const p = resumeProgress(key, chapter);
+        progressRef.current = p;
+        recordReading(d.story, chapter, p);
         // Prefetch the next chapter so it opens instantly (and is available offline).
         if (chapter < d.story.chapters) prefetchChapter(key, chapter + 1);
       })
@@ -360,7 +372,7 @@ export default function ReaderScreen() {
       {error ? (
         <View style={{ flex: 1, paddingTop: insets.top }}>
           <IconButton icon="chevron-back" label="Back" onPress={() => router.back()} color={fg} style={{ margin: 8 }} />
-          <ErrorView error={error} onRetry={reload} />
+          <ErrorView error={error} onRetry={reload} webUrl={storyUrl(key)} />
         </View>
       ) : !data ? (
         <View style={{ flex: 1, paddingTop: insets.top }}>

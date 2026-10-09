@@ -8,7 +8,12 @@ jest.mock('../src/db/kv', () => require('./helpers/memoryKv').kvModule());
 jest.mock('../src/net/http', () => require('./helpers/fakeAo3').httpModule());
 jest.mock('../src/components/Sheet', () => ({ toast: jest.fn(), showActions: jest.fn() }));
 jest.mock('expo-task-manager', () => ({ defineTask: jest.fn(), isTaskRegisteredAsync: jest.fn(async () => false) }));
-jest.mock('expo-background-task', () => ({ BackgroundTaskResult: { Success: 1, Failed: 2 }, registerTaskAsync: jest.fn(), unregisterTaskAsync: jest.fn() }));
+jest.mock('expo-background-task', () => ({
+  BackgroundTaskResult: { Success: 1, Failed: 2 },
+  registerTaskAsync: jest.fn(),
+  unregisterTaskAsync: jest.fn(),
+  addExpirationListener: jest.fn(() => ({ remove: jest.fn() })),
+}));
 jest.mock('expo-network', () => ({ getNetworkStateAsync: jest.fn(async () => ({ type: 'WIFI' })), NetworkStateType: { WIFI: 'WIFI' } }));
 jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(async () => ({ granted: true })),
@@ -41,13 +46,15 @@ jest.mock('../src/ffn/api', () => ({
   getAccountAuthors: jest.fn(),
 }));
 
+import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
-import { checkForUpdates } from '../src/features/updates';
+import { checkForUpdates, checkStore, dueSources, MAX_QUIET_REDOWNLOADS, runBackgroundCheck, storiesToCheck } from '../src/features/updates';
 import { downloadStory } from '../src/features/downloads';
 import { resetAo3Session } from '../src/sources/ao3/adapter';
 import { toKey } from '../src/sources/keys';
 import { libraryStore, type LibraryStory } from '../src/state/library';
-import { fixture, on, requests, resetFake } from './helpers/fakeAo3';
+import { settingsStore, updateSettings } from '../src/state/settings';
+import { fixture, navigatePage, on, requests, resetFake, route } from './helpers/fakeAo3';
 
 /** What AO3's search answers for these works: id → [chapters now, version stamp]. */
 let mockSite: Record<string, [number, number]> = {};
@@ -96,8 +103,17 @@ beforeEach(() => {
   mockSite = {};
   mockFfnFetched.length = 0;
   jest.clearAllMocks();
+  jest.restoreAllMocks();
+  updateSettings({ lastUpdateCheck: undefined, lastUpdateCheckBySource: undefined, autoDownloadUpdates: true });
+  checkStore.set({ running: false, done: 0, total: 0 });
   on(/\/works\/search\?/, searchAnswer);
 });
+
+const searches = () => requests.filter((r) => r.url.includes('/works/search'));
+const navigates = () => requests.filter((r) => r.url.includes('/navigate'));
+const ids = (n: number, from = 1000) => Array.from({ length: n }, (_, i) => String(from + i));
+const stories = () => libraryStore.get().stories;
+const searched = (r: { url: string }) => (new URL(r.url).searchParams.get('work_search[query]') ?? '').replace(/^id:\(|\)$/g, '').split(' OR ');
 
 describe('AO3 update checks', () => {
   it('checks 45 works with 3 searches of at most 20 ids, in the background queue', async () => {
@@ -164,5 +180,177 @@ describe('AO3 update checks', () => {
     await checkForUpdates({ quiet: true, sources: ['ao3'] });
     expect(mockFfnFetched).toEqual([]);
     expect(requests).toHaveLength(1);
+  });
+});
+
+describe('AO3 trouble stops the run (policy.1)', () => {
+  it('sends no more searches after a 5xx, and leaves the works unchecked', async () => {
+    const all = ids(45);
+    seed(all.map((id) => work(id)));
+    on(/\/works\/search\?/, { status: 502, text: 'Bad gateway' });
+    await checkForUpdates({ quiet: true });
+    expect(requests).toHaveLength(1);
+    expect(all.every((id) => stories()[toKey('ao3', id)].lastCheckedAt === undefined)).toBe(true);
+    expect(checkStore.get().lastError).toMatch(/busy or down/);
+  });
+
+  it('stops after a Cloudflare challenge', async () => {
+    seed(ids(45).map((id) => work(id)));
+    on(/\/works\/search\?/, { status: 403, headers: { 'cf-mitigated': 'challenge' }, text: '<title>Just a moment...</title>' });
+    await checkForUpdates({ quiet: true });
+    expect(requests).toHaveLength(1);
+  });
+
+  it('stops asking /navigate when AO3 fails there', async () => {
+    seed(ids(30).map((id) => work(id))); // none in the search results
+    on(/\/navigate$/, { status: 503, text: 'Service unavailable' });
+    await checkForUpdates({ quiet: true });
+    expect(searches()).toHaveLength(2);
+    expect(navigates()).toHaveLength(1);
+  });
+});
+
+describe('budgeted background checks (policy.2)', () => {
+  it('checks the works checked longest ago first', () => {
+    seed([work('1', { lastCheckedAt: 300 }), work('2'), work('3', { lastCheckedAt: 100 })]);
+    expect(storiesToCheck().map((s) => s.remoteId)).toEqual(['2', '3', '1']);
+  });
+
+  it('keeps every batch that answered when the run is cut short, and starts with the rest next time', async () => {
+    const all = ids(60);
+    for (const id of all) mockSite[id] = [4, 200];
+    seed(all.map((id) => work(id)));
+    const ctrl = new AbortController();
+    let n = 0;
+    route((url) => {
+      if (!url.includes('/works/search') || ++n < 3) return undefined;
+      // The iOS window ends while the third search is out.
+      ctrl.abort();
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    });
+    await checkForUpdates({ quiet: true, signal: ctrl.signal });
+    const checked = all.filter((id) => stories()[toKey('ao3', id)].lastCheckedAt);
+    expect(checked).toEqual(all.slice(0, 40));
+    expect(stories()[toKey('ao3', all[0])].chapters).toBe(4);
+    expect(checkStore.get().lastError).toBeUndefined();
+
+    requests.length = 0;
+    await checkForUpdates({ quiet: true });
+    expect(searched(searches()[0]).sort()).toEqual(all.slice(40).sort());
+  });
+
+  it('starts no search after its 25 s budget', async () => {
+    seed(ids(100).map((id) => work(id)));
+    let now = 1_800_000_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    route((url) => {
+      if (url.includes('/works/search')) now += 9_000; // a slow AO3
+      return undefined;
+    });
+    await runBackgroundCheck();
+    // 0 s, 9 + 5 s, 18 + 5 s; the next would start after 27 + 5 s.
+    expect(searches()).toHaveLength(3);
+    expect(searches().every((r) => r.priority === 'background')).toBe(true);
+  });
+
+  it('stops when iOS says the background window is over', async () => {
+    const all = ids(100);
+    for (const id of all) mockSite[id] = [3, 100];
+    seed(all.map((id) => work(id)));
+    let expire: (() => void) | undefined;
+    (BackgroundTask.addExpirationListener as jest.Mock).mockImplementation((fn: () => void) => {
+      expire = fn;
+      return { remove: jest.fn() };
+    });
+    route((url) => {
+      if (url.includes('/works/search') && searches().length === 2) expire?.();
+      return undefined;
+    });
+    await runBackgroundCheck();
+    expect(searches()).toHaveLength(2);
+    expect(Object.values(stories()).filter((s) => s.lastCheckedAt)).toHaveLength(40);
+  });
+});
+
+describe('quiet re-downloads (policy.3)', () => {
+  it('go through the background queue, a few version-only refreshes per check, oldest copies first', async () => {
+    const all = ids(5);
+    for (const id of all) mockSite[id] = [3, 900];
+    seed(all.map((id, i) => work(id, { downloaded: true, downloadedVersion: 500 - i * 10 })));
+    await checkForUpdates({ quiet: true });
+    const calls = (downloadStory as jest.Mock).mock.calls;
+    expect(calls).toHaveLength(MAX_QUIET_REDOWNLOADS);
+    expect(calls.map((c) => c[0].remoteId)).toEqual(['1004', '1003', '1002']);
+    for (const c of calls) expect(c[1]).toEqual({ quiet: true, priority: 'background' });
+  });
+});
+
+describe('per-site check times (flows.3, policy.4)', () => {
+  const ffn = (id: string): LibraryStory => ({ ...work(id), key: toKey('ffn', id), source: 'ffn', remoteId: id, chapters: 2 });
+
+  it('the background task checks only the sites that are due', async () => {
+    mockSite = { '5': [3, 100] };
+    seed([work('5')]);
+    updateSettings({ checkIntervalHours: 6, lastUpdateCheckBySource: { ao3: Date.now() - 3600_000 } });
+    await runBackgroundCheck();
+    expect(requests).toHaveLength(0);
+    updateSettings({ lastUpdateCheckBySource: { ao3: Date.now() - 4 * 3600_000 } });
+    await runBackgroundCheck();
+    expect(searches()).toHaveLength(1);
+  });
+
+  it('an AO3-only check doesn’t put off FanFiction.net’s', async () => {
+    seed([ffn('7')]);
+    await checkForUpdates({ quiet: true, sources: ['ao3'] });
+    expect(requests).toHaveLength(0);
+    const st = settingsStore.get();
+    expect(st.lastUpdateCheck).toBeUndefined();
+    expect(st.lastUpdateCheckBySource?.ffn).toBeUndefined();
+    expect(dueSources()).toEqual(['ffn']);
+  });
+
+  it('stamps the sites it checked; "last check" is when every site had been checked', async () => {
+    mockSite = { '5': [3, 100] };
+    seed([work('5'), ffn('7')]);
+    await checkForUpdates({ quiet: true, sources: ['ao3'] });
+    expect(settingsStore.get().lastUpdateCheckBySource?.ao3).toBeGreaterThan(0);
+    expect(dueSources()).toEqual(['ffn']);
+    expect(settingsStore.get().lastUpdateCheck).toBeUndefined();
+    await checkForUpdates({ quiet: true });
+    expect(dueSources()).toEqual([]);
+    expect(settingsStore.get().lastUpdateCheck).toBeGreaterThan(0);
+  });
+});
+
+describe('gone and restricted works (policy.7)', () => {
+  it('marks a deleted work and leaves it out of later checks', async () => {
+    seed([work('1'), work('2')]);
+    mockSite = { '1': [3, 100] };
+    on(/\/works\/2\/navigate$/, { status: 404, text: 'gone' });
+    await checkForUpdates({ quiet: true });
+    expect(stories()['ao3:2'].gone).toBe(true);
+    requests.length = 0;
+    await checkForUpdates({ quiet: true });
+    expect(requests.map((r) => r.url.replace('https://archiveofourown.org', '').split('?')[0])).toEqual(['/works/search']);
+    expect(searched(requests[0])).toEqual(['1']);
+  });
+
+  it('doesn’t probe a restricted work while logged out', async () => {
+    seed([work('1'), work('3', { restricted: true })]);
+    mockSite = { '1': [3, 100] };
+    await checkForUpdates({ quiet: true });
+    expect(navigates()).toHaveLength(0);
+    expect(stories()['ao3:3'].lastCheckedAt).toBeGreaterThan(0);
+  });
+});
+
+describe('a work that lost chapters (flows.2)', () => {
+  it('gets its current chapter ids from /navigate, which moves reading state', async () => {
+    mockSite = { '3171550': [2, 200] };
+    seed([work('3171550', { chapters: 3, chapterIds: ['1001', '1002', '1003'], chapterTitles: ['One', 'Two', 'Three'], lastChapter: 3, readChapters: [1, 3] })]);
+    on(/\/works\/3171550\/navigate$/, navigatePage({ ids: ['1001', '1003'], titles: ['One', 'Three'] }));
+    await checkForUpdates({ quiet: true });
+    expect(navigates()).toHaveLength(1);
+    expect(stories()['ao3:3171550']).toMatchObject({ chapters: 2, chapterIds: ['1001', '1003'], chapterTitles: ['One', 'Three'], lastChapter: 2, readChapters: [1, 2] });
   });
 });

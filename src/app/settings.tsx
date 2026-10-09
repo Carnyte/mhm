@@ -20,7 +20,7 @@ import { bridge } from '../net/bridge';
 import { clearImageCache } from '../net/images';
 import { clearHistory, exportBackup, importBackup, useLibrary } from '../state/library';
 import { useBridgeStatus, useSession } from '../state/session';
-import { updateReader, updateSettings, updateSource, useSettings } from '../state/settings';
+import { setFandomHidden, updateReader, updateSettings, updateSource, useSettings } from '../state/settings';
 import { useTheme } from '../theme';
 import { formatBytes, relativeMs } from '../utils/format';
 
@@ -118,6 +118,22 @@ export default function SettingsScreen() {
             title="Ask before showing adult works"
             subtitle="Mature, Explicit and Not Rated works"
             right={<Switch value={ao3.askAdult !== false} onValueChange={(v) => updateSource('ao3', { askAdult: v })} />}
+          />
+        )}
+        {ao3.enabled && (
+          <Row
+            title="Hidden AO3 fandoms"
+            value={ao3.hiddenFandoms?.length ? String(ao3.hiddenFandoms.length) : 'None'}
+            onPress={() =>
+              ao3.hiddenFandoms?.length
+                ? pickOption(
+                    'Tap a fandom to unhide it',
+                    ao3.hiddenFandoms.map((f) => ({ value: f, label: f })),
+                    '',
+                    (v) => setFandomHidden('ao3', v, false),
+                  )
+                : toast('Long-press an AO3 work and choose “Hide” to hide its fandom from AO3 lists')
+            }
           />
         )}
         {ao3.enabled && (

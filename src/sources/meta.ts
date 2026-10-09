@@ -4,7 +4,7 @@
 
 import type { LibraryAuthor, LibraryStory } from '../state/library';
 import { sourceOf } from './registry';
-import type { AuthorRef, StoryInfo, StoryMeta } from './types';
+import type { AuthorRef, ChapterInfo, StoryInfo, StoryMeta } from './types';
 
 /** A site-neutral story (from an adapter); library records have no `url`. */
 export function isStoryMeta(s: object): s is StoryMeta {
@@ -67,8 +67,29 @@ export function libraryMetaFromMeta(m: StoryMeta | StoryInfo): Partial<LibrarySt
 }
 
 /**
+ * A chapter list with the full titles the library already has wherever the site shortened one
+ * (AO3's chapter menu cuts long titles to 51 characters and "..."): a stored title is kept when
+ * it's the same chapter (same id, or same number when ids are unknown) and starts with the
+ * shortened one. Lists without shortened titles (every FanFiction.net list) come back as they are.
+ */
+export function withKnownTitles(list: ChapterInfo[], lib: Pick<LibraryStory, 'chapterTitles' | 'chapterIds'> | undefined): ChapterInfo[] {
+  if (!lib?.chapterTitles?.length || !list.some((c) => c.abbreviated)) return list;
+  const titles = lib.chapterTitles;
+  const ids = lib.chapterIds;
+  return list.map((c) => {
+    if (!c.abbreviated) return c;
+    const at = c.remoteId && ids?.length ? ids.indexOf(c.remoteId) : c.number - 1;
+    const known = at >= 0 ? titles[at] : undefined;
+    const stem = c.title.replace(/\.\.\.$/, '').trimEnd();
+    if (!known || known.length <= stem.length || !known.startsWith(stem)) return c;
+    const { abbreviated: _short, ...rest } = c;
+    return { ...rest, title: known };
+  });
+}
+
+/**
  * A library record as a story page, for showing it without the site. Chapter titles the library
- * hasn't seen are "Chapter N".
+ * hasn't seen (none stored, or chapters an update check found since) are "Chapter N".
  */
 export function infoFromLibrary(lib: LibraryStory): StoryInfo {
   const out: StoryInfo = {
@@ -91,9 +112,9 @@ export function infoFromLibrary(lib: LibraryStory): StoryInfo {
     published: lib.published,
     complete: lib.complete,
     coverUrl: lib.coverUrl,
-    chapterList: (lib.chapterTitles ?? Array.from({ length: lib.chapters }, (_, i) => `Chapter ${i + 1}`)).map((title, i) => ({
+    chapterList: Array.from({ length: Math.max(lib.chapters || 0, lib.chapterTitles?.length ?? 0) }, (_, i) => ({
       number: i + 1,
-      title,
+      title: lib.chapterTitles?.[i] ?? `Chapter ${i + 1}`,
       ...(lib.chapterIds?.[i] ? { remoteId: lib.chapterIds[i] } : {}),
     })),
   };

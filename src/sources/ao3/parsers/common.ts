@@ -107,14 +107,35 @@ export function authorFromHref(href: string | undefined, name: string): AuthorRe
   return { source: 'ao3', id: authorId(dec(m[1]), m[2] ? dec(m[2]) : undefined), name };
 }
 
-/** The creators named in a byline (a[rel=author]); "Anonymous" bylines have none. */
+/**
+ * The creators named in a byline (a[rel=author]); "Anonymous" bylines have none.
+ *
+ * An imported work its creator never claimed (Open Doors archives) reads "Jane Writer [archived
+ * by <a rel=author>open_doors</a>]": only the archivist is linked, but the work is Jane Writer's.
+ * She's named, with no id (she has no AO3 page), and the archivist is left out.
+ */
 export function parseByline(el: El | null): { authors: AuthorRef[]; anonymous: boolean } {
   if (!el) return { authors: [], anonymous: false };
   const authors: AuthorRef[] = [];
-  for (const a of el.querySelectorAll('a[rel=author]')) {
-    const ref = authorFromHref(a.getAttribute('href'), text(a));
-    if (ref && !authors.some((x) => x.id === ref.id)) authors.push(ref);
-  }
+  const add = (ref: AuthorRef) => {
+    if (!authors.some((x) => x.id === ref.id && (ref.id || x.name === ref.name))) authors.push(ref);
+  };
+  // The text since the previous link: "Jane Writer [archived by " right before an archivist's link.
+  let before = '';
+  const walk = (n: El) => {
+    for (const c of n.childNodes) {
+      if (c.nodeType === 3) before += c.rawText;
+      else if (c.tagName === 'A') {
+        if (c.getAttribute('rel') === 'author') {
+          const external = before.match(/^[\s,\]]*(?:by\s+)?([\s\S]*?)\s*\[archived by\s*$/i)?.[1].replace(/\s+/g, ' ').trim();
+          const ref = external ? { source: 'ao3' as const, id: '', name: external } : authorFromHref(c.getAttribute('href'), text(c));
+          if (ref) add(ref);
+        }
+        before = '';
+      } else if (c.nodeType === 1) walk(c);
+    }
+  };
+  walk(el);
   return { authors, anonymous: !authors.length && /\bAnonymous\b/.test(text(el)) };
 }
 

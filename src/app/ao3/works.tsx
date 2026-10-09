@@ -15,7 +15,7 @@ import { listTagWorks, searchWorks, type Ao3Page } from '../../sources/ao3/adapt
 import { AO3_COMPLETE, AO3_RATINGS, AO3_SEARCH_SORTS, AO3_SORTS } from '../../sources/ao3/constants';
 import { countFilters, type Ao3Filters, type Ao3Search } from '../../sources/ao3/urls';
 import type { StoryMeta } from '../../sources/types';
-import { togglePinnedFandom, useSettings } from '../../state/settings';
+import { hasHiddenFandom, hiddenFandomsOf, togglePinnedFandom, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
 
 function parse<T>(json: string | undefined): T | undefined {
@@ -36,7 +36,8 @@ export default function Ao3Works() {
   const [search, setSearch] = useState<Ao3Search>(() => parse<Ao3Search>(params.q) ?? {});
   const [showFilters, setShowFilters] = useState(false);
   const pinned = useSettings((s) => !!tag && s.pinnedFandoms.some((p) => p.source === 'ao3' && p.path === tag));
-  const excluded = useSettings((s) => s.excludedFandoms);
+  // AO3's own hidden fandoms, by exact name (a crossover is hidden when any of its fandoms is).
+  const hidden = useSettings((s) => hiddenFandomsOf('ao3', s));
 
   const current: Ao3Filters | Ao3Search = isSearch ? search : filters;
   const update = (patch: Partial<Ao3Filters & Ao3Search>) => (isSearch ? setSearch((s) => ({ ...s, ...patch })) : setFilters((f) => ({ ...f, ...patch })));
@@ -50,10 +51,7 @@ export default function Ao3Works() {
     },
     (s) => s.key,
   );
-  const items = useMemo(
-    () => (excluded.length ? list.items.filter((s) => !(s.fandoms ?? []).some((f) => excluded.some((e) => f.includes(e)))) : list.items),
-    [list.items, excluded],
-  );
+  const items = useMemo(() => (hidden.length ? list.items.filter((s) => !hasHiddenFandom(s.fandoms, hidden)) : list.items), [list.items, hidden]);
 
   const sorts = isSearch ? AO3_SEARCH_SORTS : AO3_SORTS;
   const sort = current.sort ?? sorts[0].value;
@@ -138,7 +136,7 @@ export default function Ao3Works() {
           list.loadingMore ? (
             <Loading />
           ) : list.error && items.length ? (
-            <ErrorView error={list.error} onRetry={list.loadMore} />
+            <ErrorView error={list.error} onRetry={list.retry} />
           ) : (
             <View style={{ height: 24 }} />
           )

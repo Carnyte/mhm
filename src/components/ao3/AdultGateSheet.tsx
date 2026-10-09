@@ -1,45 +1,31 @@
-// FicShelf's own adult-content gate for AO3: before a Mature, Explicit or Not Rated work is shown
-// the first time, the reader is asked, as AO3's site asks. (Requests always skip AO3's own notice
-// with view_adult=true, so this is the one question.) "Always show adult works" turns the
-// question off in Settings → Sources. A work you agreed to see stays agreed: for the session, and
-// for good once it's in your library.
+// The adult-content gate's sheet for AO3 (the rules are in src/features/adultGate.ts): the story
+// page and the reader show it instead of the work while the reader hasn't agreed yet.
 
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { StoryKey } from '../../sources/keys';
-import { isAdultRating } from '../../sources/ao3/constants';
-import { libraryStore, patchStory, useLibraryStory } from '../../state/library';
-import { updateSource, useSettings } from '../../state/settings';
+import { agreeToAdult, alwaysShowAdult, needsAdultGate, type GatedStory } from '../../features/adultGate';
+import { useLibraryStory } from '../../state/library';
+import { useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
 import { Button, T } from '../ui';
 
-const agreed = new Set<StoryKey>();
-
-export interface GatedStory {
-  key: StoryKey;
-  source: string;
-  rating?: string;
-  mature?: boolean;
-}
+export type { GatedStory } from '../../features/adultGate';
 
 /** Whether a story needs the reader's go-ahead first, and the answers. */
 export function useAdultGate(story: GatedStory | undefined) {
   const ask = useSettings((s) => s.sources.ao3?.askAdult !== false);
   const lib = useLibraryStory(story?.key);
   const [, bump] = useState(0);
-  const adult = !!story && story.source === 'ao3' && (story.mature ?? isAdultRating(story.rating));
-  const blocked = adult && ask && !agreed.has(story!.key) && !lib?.ao3?.adultOk;
+  const blocked = needsAdultGate(story, { ask, adultOk: !!lib?.ao3?.adultOk });
   const confirm = useCallback(() => {
     if (!story) return;
-    agreed.add(story.key);
-    if (libraryStore.get().stories[story.key]) patchStory(story.key, (s) => ({ ao3: { ...s.ao3, adultOk: true } }));
+    agreeToAdult(story.key);
     bump((n) => n + 1);
   }, [story]);
   const alwaysShow = useCallback(() => {
-    if (story) agreed.add(story.key);
-    updateSource('ao3', { askAdult: false });
+    alwaysShowAdult(story?.key);
   }, [story]);
   return { blocked, confirm, alwaysShow };
 }

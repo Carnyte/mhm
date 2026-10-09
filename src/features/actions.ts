@@ -10,8 +10,9 @@ import { disabledMessage, getSource, resolveLink, sourceOf, type ResolvedLink } 
 import type { ChapterContent, StoryInfo } from '../sources/types';
 import { getUi, uiOf } from '../sources/ui';
 import { keyOf, libraryStore, markAllRead, setInLibrary, toggleInCollection, type AnyStory } from '../state/library';
-import { settingsStore, updateSettings } from '../state/settings';
+import { setFandomHidden } from '../state/settings';
 import * as player from '../audio/player';
+import { afterAdultGate, type GatedStory } from './adultGate';
 import { downloadStory, removeDownload } from './downloads';
 
 export function openStory(key: StoryKey) {
@@ -151,10 +152,12 @@ export function storyMenuActions(story: AnyStory): SheetAction[] {
     {
       label: 'Listen (audiobook)',
       icon: 'headset-outline',
-      onPress: () => {
-        player.start(lib ?? story, { chapter: lib?.lastChapter });
-        router.push('/listen');
-      },
+      // Speaking a work shows its text too (/listen): the adult gate asks first, as the reader does.
+      onPress: () =>
+        afterAdultGate(gatedStory(story), () => {
+          player.start(lib ?? story, { chapter: lib?.lastChapter });
+          router.push('/listen');
+        }),
     },
     {
       label: lib?.inLibrary ? 'Remove from library' : 'Add to library',
@@ -173,23 +176,45 @@ export function storyMenuActions(story: AnyStory): SheetAction[] {
   const author = story.author;
   const authorRoute = author && ui.authorRoute(author);
   if (author && authorRoute) actions.push({ label: `More by ${author.name}`, icon: 'person-outline', onPress: () => router.push(authorRoute) });
-  if (story.fandom) {
-    const fandom = story.fandom;
-    actions.push({
-      label: `Hide “${fandom}” in lists & search`,
-      icon: 'eye-off-outline',
-      onPress: () => {
-        const cur = settingsStore.get().excludedFandoms;
-        if (!cur.includes(fandom)) updateSettings({ excludedFandoms: [...cur, fandom] });
-        toast(`Hiding ${fandom}. Undo in Settings`, 'success');
-      },
-    });
-  }
+  actions.push(...hideFandomActions(story));
   actions.push(
     { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
     { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
   );
   return actions;
+}
+
+/** What the adult gate needs to know about any story (a library record knows its rating best). */
+export function gatedStory(story: AnyStory): GatedStory {
+  const key = keyOf(story);
+  const lib = libraryStore.get().stories[key];
+  return { key, source: splitKey(key).source, rating: lib?.rating ?? story.rating, mature: lib?.mature ?? (story as { mature?: boolean }).mature };
+}
+
+/**
+ * "Hide this fandom" for a story card. Each site hides its own fandoms (an FFN "Harry Potter"
+ * doesn't hide AO3's "Harry Potter - J. K. Rowling"). AO3 works name their fandoms one by one
+ * (a crossover has several): one entry, or a choice between them.
+ */
+function hideFandomActions(story: AnyStory): SheetAction[] {
+  const source = splitKey(keyOf(story)).source;
+  const hide = (fandom: string) => () => {
+    setFandomHidden(source, fandom, true);
+    toast(`Hiding ${fandom}. Undo in Settings`, 'success');
+  };
+  if (source === 'ffn') return story.fandom ? [{ label: `Hide “${story.fandom}” in lists & search`, icon: 'eye-off-outline', onPress: hide(story.fandom) }] : [];
+  const fandoms = (story as { fandoms?: string[] }).fandoms ?? [];
+  if (fandoms.length === 1) return [{ label: `Hide “${fandoms[0]}” in lists & search`, icon: 'eye-off-outline', onPress: hide(fandoms[0]) }];
+  if (fandoms.length > 1) {
+    return [
+      {
+        label: 'Hide a fandom in lists & search…',
+        icon: 'eye-off-outline',
+        onPress: () => showActions(fandoms.map((f) => ({ label: f, icon: 'eye-off-outline' as const, onPress: hide(f) })), 'Hide which fandom?'),
+      },
+    ];
+  }
+  return [];
 }
 
 export function storyMenu(story: AnyStory) {

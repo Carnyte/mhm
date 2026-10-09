@@ -12,8 +12,8 @@
 //  - fandom lists and the media page are cached for a week.
 
 import { httpCache } from '../../db/kv';
-import { detectAo3Block } from '../../net/blocks';
-import { httpText, isAbortError, type HttpResponse } from '../../net/http';
+import { detectAo3Block, SourceBlockedError } from '../../net/blocks';
+import { HttpTimeoutError, httpText, isAbortError, NetworkError, RateLimitedError, type HttpResponse } from '../../net/http';
 import type { FetchOpts } from '../types';
 import { FANDOM_CACHE_MS } from './constants';
 import { parseListing, type Ao3Listing } from './parsers/listing';
@@ -50,9 +50,27 @@ export class Ao3RestrictedError extends Error {
 }
 
 export class Ao3NotFoundError extends Error {
-  constructor(public url: string) {
-    super('AO3 says this page doesn’t exist. The work may have been deleted or hidden by its creator.');
+  constructor(
+    public url: string,
+    message = 'AO3 says this page doesn’t exist. The work may have been deleted or hidden by its creator.',
+  ) {
+    super(message);
     this.name = 'Ao3NotFoundError';
+  }
+}
+
+/**
+ * The work is there but has no chapter with that number any more (its creator deleted chapters).
+ * `chapterIds` are the work's current ids, so the library can move reading state along.
+ */
+export class Ao3ChapterGoneError extends Ao3NotFoundError {
+  constructor(
+    workId: string,
+    public chapter: number,
+    public chapterIds?: string[],
+  ) {
+    super(workUrl(workId), `This work has no chapter ${chapter} on AO3 any more. Its creator may have deleted chapters; the chapter list is up to date now.`);
+    this.name = 'Ao3ChapterGoneError';
   }
 }
 
@@ -69,6 +87,21 @@ export class Ao3UnavailableError extends Error {
     super(`AO3 is busy or down for maintenance right now (error ${status}). Try again in a few minutes.`);
     this.name = 'Ao3UnavailableError';
   }
+}
+
+/**
+ * AO3 is down, overloaded, challenging the app or out of reach. Whatever was going to be asked
+ * next waits: update checks stop for the run, and a failed download doesn't fall back to the
+ * full-work page (the heaviest page AO3 renders).
+ */
+export function isAo3Trouble(e: unknown): boolean {
+  return (
+    e instanceof RateLimitedError ||
+    e instanceof Ao3UnavailableError ||
+    e instanceof SourceBlockedError ||
+    e instanceof HttpTimeoutError ||
+    e instanceof NetworkError
+  );
 }
 
 const AO3_HOST = /^https:\/\/(?:download\.)?archiveofourown\.org(?=[/?#]|$)/i;

@@ -11,7 +11,7 @@ import { useMiniPlayerInset } from '../components/miniPlayerLayout';
 import { SheetHost } from '../components/Sheet';
 import { WhatsNewSheet } from '../components/WhatsNewSheet';
 import { migrationStatus } from '../db/kv';
-import { checkForUpdates, configureBackgroundChecks } from '../features/updates';
+import { checkForUpdates, configureBackgroundChecks, dueSources } from '../features/updates';
 import { bridge } from '../net/bridge';
 import { BridgeHost } from '../net/BridgeHost';
 import { normalizeKey } from '../sources/keys';
@@ -52,13 +52,16 @@ function useAutoChecks() {
     let last = 0;
     const maybeCheck = async () => {
       const st = settingsStore.get();
-      if (!st.checkOnLaunch) return;
-      const since = Date.now() - (st.lastUpdateCheck ?? 0);
-      if (since < Math.max(30, st.checkIntervalHours * 60) * 60_000 || Date.now() - last < 60_000) return;
+      if (!st.checkOnLaunch || Date.now() - last < 60_000) return;
+      // Each site is due on its own clock: a check that could only reach AO3 doesn't put off
+      // FanFiction.net's.
+      const due = dueSources();
+      if (!due.length) return;
       last = Date.now();
       // FanFiction.net needs its hidden browser; AO3 is checked even when that never comes up.
-      const ready = await bridge.waitReady(30000);
-      checkForUpdates({ quiet: true, sources: ready ? undefined : ['ao3'] }).catch(() => {});
+      const ready = !due.includes('ffn') || (await bridge.waitReady(30000));
+      const sources = ready ? due : due.filter((id) => id !== 'ffn');
+      if (sources.length) checkForUpdates({ quiet: true, sources }).catch(() => {});
     };
     maybeCheck();
     const sub = AppState.addEventListener('change', (s) => s === 'active' && maybeCheck());

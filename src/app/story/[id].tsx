@@ -13,7 +13,8 @@ import { SourceBadge } from '../../components/SourceBadge';
 import { StatsGrid } from '../../components/StatsGrid';
 import { TagGroups } from '../../components/TagGroups';
 import { Badge, Button, Chip, IconButton, ProgressBar, T } from '../../components/ui';
-import { openReader, openStory, storyPageMenu } from '../../features/actions';
+import { openReader, openStory, storyPageMenu, storyUrl } from '../../features/actions';
+import { afterAdultGate } from '../../features/adultGate';
 import { fetchStory } from '../../features/chapters';
 import { cancelDownload, downloadStory, removeDownload, useDownloadJob } from '../../features/downloads';
 import { useQuery } from '../../hooks/useQuery';
@@ -85,7 +86,7 @@ export default function StoryScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg }}>
         <Stack.Screen options={{ title: '' }} />
-        {q.error ? <ErrorView error={q.error} onRetry={q.refresh} /> : <Loading label="Loading story…" />}
+        {q.error ? <ErrorView error={q.error} onRetry={q.refresh} webUrl={storyUrl(key)} /> : <Loading label="Loading story…" />}
       </View>
     );
   }
@@ -173,6 +174,7 @@ export default function StoryScreen() {
               {!!rating && <Badge label={rating.label} color={rating.adult ? c.danger : c.primary} textColor={c.dark && !rating.adult ? c.primaryText : '#fff'} />}
               <Badge label={story.complete ? 'Complete' : 'In progress'} color={story.complete ? c.success : c.warning} />
               {story.restricted && <Badge label="Locked" color={c.textMuted} />}
+              {lib?.gone && !q.data && <Badge label={`Not on ${sourceOf(key).name} any more`} color={c.danger} />}
               {fresh > 0 && <Badge label={`${fresh} new`} color={c.accent} />}
               <SourceBadge source={story.source} />
             </View>
@@ -205,10 +207,12 @@ export default function StoryScreen() {
             title="Listen"
             icon="headset-outline"
             kind="secondary"
-            onPress={() => {
-              player.start(story, { chapter: started ? resumeChapter : 1 });
-              router.push('/listen');
-            }}
+            onPress={() =>
+              afterAdultGate(story, () => {
+                player.start(story, { chapter: started ? resumeChapter : 1 });
+                router.push('/listen');
+              })
+            }
           />
           {slots.endorse && <IconButton icon={slots.endorse.icon} label={slots.endorse.label} onPress={slots.endorse.onPress} />}
           {slots.follow && <IconButton icon={slots.follow.icon} label={slots.follow.label} onPress={slots.follow.onPress} />}
