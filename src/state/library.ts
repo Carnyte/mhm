@@ -58,6 +58,8 @@ export interface LibraryStory {
   chapterTitles?: string[];
   /** FanFiction.net only: the id its review form needs. */
   ffn?: { storyTextId?: number };
+  /** FanFiction.net only: the numeric id, kept for an older build installed again. Read `key`. */
+  id?: number;
 
   inLibrary: boolean;
   followed?: boolean;
@@ -204,7 +206,8 @@ export function useLibraryStory(key: StoryKey | null | undefined): LibraryStory 
 
 function persistStory(s: LibraryStory | undefined, key: StoryKey) {
   if (!s) kv.delete(`story:${key}`).catch(() => {});
-  else kv.set(`story:${key}`, s).catch(() => {});
+  // FanFiction.net records carry their numeric id too, so an older build installed again can read them.
+  else kv.set(`story:${key}`, s.source === 'ffn' ? { ...s, id: Number(s.remoteId) } : s).catch(() => {});
 }
 
 /** Whether a story record is worth keeping (otherwise it is dropped to keep storage small). */

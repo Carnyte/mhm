@@ -10,7 +10,9 @@ import { runMigrations, SCHEMA_SQL, schemaVersion, type MigrationEnv } from '../
 import {
   authorV1toV2,
   bookmarksV2,
+  bytesNeededToConvert,
   collectionsV2,
+  databaseBytes,
   drainLegacy,
   mergeStory,
   migrateV2,
@@ -59,11 +61,13 @@ const totals = (db: NodeDb, table: 'chapters' | 'chapter_text') =>
     `SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(CAST(html AS BLOB))), 0) AS bytes, COALESCE(SUM(LENGTH(html)), 0) AS chars FROM ${table}`,
   )!;
 const v2Of = (s: V1Story) => storyV1toV2(s as never);
+const GB = 1024 ** 3;
 
 /** What v1 → v2 must produce for a story: every field kept, only the renamed ones moved. */
 function expectedV2(s: V1Story) {
   const { id, reviews, favs, follows, storyTextId, ...rest } = s;
-  return { ...rest, key: `ffn:${id}`, source: 'ffn', remoteId: String(id), stats: { reviews, favs, follows }, ...(storyTextId ? { ffn: { storyTextId } } : {}) };
+  // The numeric id stays on FanFiction.net records for an older build installed again.
+  return { ...rest, id, key: `ffn:${id}`, source: 'ffn', remoteId: String(id), stats: { reviews, favs, follows }, ...(storyTextId ? { ffn: { storyTextId } } : {}) };
 }
 
 describe('pure transforms', () => {
@@ -71,7 +75,7 @@ describe('pure transforms', () => {
     for (const s of v1Stories) {
       const v2 = v2Of(s);
       expect(v2).toEqual(expectedV2(s));
-      expect(v2).not.toHaveProperty('id');
+      expect(v2.id).toBe(s.id); // kept for an older build installed again
       expect(normalizeStory(v2)).toEqual(v2); // idempotent
     }
   });
@@ -288,17 +292,47 @@ describe('when a check fails', () => {
     expect(runMigrations(db)).toMatchObject({ ok: true, migrated: true });
   });
 
-  it('an unreadable row fails the migration instead of being dropped', () => {
+  it('sets aside rows that name no story instead of failing or dropping them (review)', () => {
     const db = v1Db();
     db.runSync("INSERT INTO kv (key, value) VALUES ('story:99', '{broken')");
+    db.runSync("INSERT INTO kv (key, value) VALUES ('story:0', ?)", JSON.stringify({ id: 0, title: 'Zero' }));
+    db.runSync("INSERT INTO kv (key, value) VALUES ('author:7', 'not json')");
+    const r = migrateV2(db);
+    expect(r).toMatchObject({ ok: true, counts: { stories: 8, setAside: 3 } });
+    expect(db.getFirstSync<{ value: string }>("SELECT value FROM kv WHERE key = 'unreadable:story:99'")?.value).toBe('{broken');
+    expect(get(db, 'unreadable:story:0')).toEqual({ id: 0, title: 'Zero' });
+    expect(db.getFirstSync<{ value: string }>("SELECT value FROM kv WHERE key = 'unreadable:author:7'")?.value).toBe('not json');
+    expect(legacyRows(db)).toEqual([]);
+    for (const s of v1Stories) expect(get(db, `story:ffn:${s.id}`)).toEqual(expectedV2(s));
+    // A bad row an older build writes later doesn't jam the launch-time merge either.
+    db.runSync("INSERT INTO kv (key, value) VALUES ('story:0', '{}')");
+    expect(runMigrations(db)).toMatchObject({ ok: true, drained: { setAside: 1 } });
+    expect(legacyRows(db)).toEqual([]);
+  });
+});
+
+describe('free space (review)', () => {
+  it('stops before changing anything when there is not enough room to convert', () => {
+    const db = v1Db();
     const before = kvDump(db);
-    expect(migrateV2(db)).toMatchObject({ ok: false });
+    const r = runMigrations(db, { freeBytes: () => 1024, snapshot: () => { throw new Error('no copy expected'); } });
+    expect(r).toMatchObject({ ok: false, lowSpace: true });
+    expect(r.error).toMatch(/Not enough free space/);
     expect(kvDump(db)).toEqual(before);
+    expect(schemaVersion(db)).toBe(1);
+    expect(runMigrations(db, { freeBytes: () => 10 * GB })).toMatchObject({ ok: true, migrated: true });
+  });
+
+  it('asks for room for the conversion and the copy before taking the copy', () => {
+    const db = v1Db();
+    const need = bytesNeededToConvert(db) + databaseBytes(db) + 50 * 1024 * 1024;
+    const snapshot = jest.fn();
+    expect(runMigrations(db, { freeBytes: () => need - 1, snapshot })).toMatchObject({ ok: true, snapshot: false });
+    expect(snapshot).not.toHaveBeenCalled();
   });
 });
 
 describe('pre-upgrade copy', () => {
-  const GB = 1024 ** 3;
 
   it('is taken before anything changes when there is room', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ficshelf-'));

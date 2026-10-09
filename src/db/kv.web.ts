@@ -30,12 +30,19 @@ function read(key: string): string | null {
   return ls()?.getItem(key) ?? mem.get(key) ?? null;
 }
 
-function write(key: string, value: string) {
+/** False when the value only made it into memory (storage full or unavailable). */
+function write(key: string, value: string): boolean {
   try {
-    ls()?.setItem(key, value);
+    const s = ls();
+    if (s) {
+      s.setItem(key, value);
+      return true;
+    }
   } catch {
-    mem.set(key, value);
+    // fall through to memory
   }
+  mem.set(key, value);
+  return false;
 }
 
 function remove(key: string) {
@@ -57,13 +64,19 @@ const readJson = (k: string): unknown => {
   const v = read(NS + k);
   return v ? JSON.parse(v) : undefined;
 };
-const writeJson = (k: string, v: unknown) => write(NS + k, JSON.stringify(v));
+const writeJson = (k: string, v: unknown): boolean => write(NS + k, JSON.stringify(v));
 
 let migration: MigrationResult | null = null;
 
 /** The same conversion as the SQLite one, without the transaction (this store is for development). */
 function migrate(): MigrationResult {
   if (migration) return migration;
+  // The old entry goes only once its copy is stored for good (not just held in memory).
+  let failed = 0;
+  const kept = (ok: boolean, oldKey: string) => {
+    if (ok) remove(oldKey);
+    else failed++;
+  };
   try {
     const first = readJson('schemaVersion') == null;
     for (const k of keys()) {
@@ -72,9 +85,8 @@ function migrate(): MigrationResult {
         const legacy = normalizeStory(JSON.parse(read(k)!), normalizeKey(m[1]) ?? undefined);
         if (legacy) {
           const cur = normalizeStory(readJson(`story:${legacy.key}`), legacy.key);
-          writeJson(`story:${legacy.key}`, cur ? mergeStory(cur, legacy) : legacy);
+          kept(writeJson(`story:${legacy.key}`, cur ? mergeStory(cur, legacy) : legacy), k);
         }
-        remove(k);
         continue;
       }
       m = k.match(/^ficshelf:author:(\d+)$/);
@@ -82,16 +94,12 @@ function migrate(): MigrationResult {
         const legacy = normalizeAuthor(JSON.parse(read(k)!), authorKeyFromKv(m[1]) ?? undefined);
         if (legacy) {
           const cur = normalizeAuthor(readJson(`author:${legacy.key}`), legacy.key);
-          writeJson(`author:${legacy.key}`, cur ? mergeAuthor(cur, legacy) : legacy);
+          kept(writeJson(`author:${legacy.key}`, cur ? mergeAuthor(cur, legacy) : legacy), k);
         }
-        remove(k);
         continue;
       }
       m = k.match(/^ficshelf:ch:(\d+):(\d+)$/);
-      if (m) {
-        write(`${CH}ffn:${m[1]}:${m[2]}`, read(k)!);
-        remove(k);
-      }
+      if (m) kept(write(`${CH}ffn:${m[1]}:${m[2]}`, read(k)!), k);
     }
     if (first) {
       const blobs: [string, (x: unknown) => unknown][] = [
@@ -103,11 +111,13 @@ function migrate(): MigrationResult {
       ];
       for (const [k, convert] of blobs) {
         const raw = readJson(k);
-        if (raw !== undefined) writeJson(k, convert(raw));
+        if (raw !== undefined && !writeJson(k, convert(raw))) failed++;
       }
-      writeJson('schemaVersion', 2);
+      if (!failed) writeJson('schemaVersion', 2);
     }
-    migration = { ok: true, version: 2, migrated: first };
+    migration = failed
+      ? { ok: false, version: 1, error: `Browser storage is full: ${failed} item(s) couldn’t be upgraded. Nothing was removed.` }
+      : { ok: true, version: 2, migrated: first };
   } catch (e) {
     migration = { ok: false, version: 1, error: (e as Error).message };
   }

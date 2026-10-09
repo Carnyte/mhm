@@ -16,15 +16,24 @@ export const SNAPSHOT_NAME = 'ficshelf-pre-v2.db';
 const SNAPSHOT_KEEP_MS = 30 * 86_400_000;
 
 let db: SQLiteDatabase | null = null;
-let migration: MigrationResult = { ok: true, version: 0 };
+// Read-only until the database has been prepared and the migrations have reported success.
+let migration: MigrationResult = { ok: false, version: 0, error: 'The storage upgrade didn’t finish.' };
 
 function snapshotFile(): File {
   return new File(Paths.document, 'SQLite', SNAPSHOT_NAME);
 }
 
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 function migrate(d: SQLiteDatabase) {
   // Read-only until the migrations have reported back.
   migration = { ok: false, version: 0, error: 'The storage upgrade didn’t finish.' };
+  try {
+    d.execSync('PRAGMA journal_mode = WAL;' + SCHEMA_SQL);
+  } catch (e) {
+    migration = { ok: false, version: 0, error: `The database couldn’t be prepared: ${message(e)}` };
+    return;
+  }
   migration = runMigrations(d, {
     freeBytes: () => Paths.availableDiskSpace,
     snapshot: () => {
@@ -37,6 +46,28 @@ function migrate(d: SQLiteDatabase) {
     },
   });
   if (migration.ok) expireSnapshot(d);
+  if (migration.migrated) reclaimSpace(d);
+}
+
+/**
+ * After the conversion the old chapter pages sit unused in the file and the log holds a copy of
+ * the new ones. Write the log back and shrink it now, then compact the file shortly after launch
+ * (that takes a while on a big library, so it isn't done while the app is starting).
+ */
+function reclaimSpace(d: SQLiteDatabase) {
+  try {
+    d.execSync('PRAGMA wal_checkpoint(TRUNCATE);');
+  } catch {
+    // The log is written back eventually anyway.
+  }
+  const t = setTimeout(() => {
+    Promise.resolve()
+      .then(() => d.execAsync('VACUUM; PRAGMA wal_checkpoint(TRUNCATE);'))
+      .catch(() => {
+        // Not enough room to compact: the space is reused as new chapters are saved.
+      });
+  }, 5000);
+  (t as { unref?: () => void }).unref?.(); // don't keep a test process alive for it
 }
 
 function expireSnapshot(d: SQLiteDatabase) {
@@ -52,7 +83,6 @@ function expireSnapshot(d: SQLiteDatabase) {
 function open(): SQLiteDatabase {
   if (!db) {
     db = openDatabaseSync(DB_NAME);
-    db.execSync('PRAGMA journal_mode = WAL;' + SCHEMA_SQL);
     migrate(db);
   }
   return db;

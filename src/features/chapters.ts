@@ -17,7 +17,8 @@ export function saveChapter(key: StoryKey, chapter: number, html: string): Promi
 }
 
 /** The story's page for one chapter, from the site: metadata, chapter list and the chapter's text. */
-export function fetchChapter(key: StoryKey, chapter: number, opts: { quiet?: boolean } = {}): Promise<StoryDetail> {
+export async function fetchChapter(key: StoryKey, chapter: number, opts: { quiet?: boolean } = {}): Promise<StoryDetail> {
+  // async, so a key this can't fetch yet rejects (and shows an error) instead of throwing.
   return getStory(ffnId(key), chapter, opts);
 }
 

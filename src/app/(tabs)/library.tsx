@@ -14,6 +14,7 @@ import { newChapterCount, storyProgress, unreadCount, useLibrary, type LibrarySt
 import { useSession } from '../../state/session';
 import { useTheme } from '../../theme';
 import { errorMessage, relativeMs } from '../../utils/format';
+import { compareKeys } from '../../sources/keys';
 
 type Shelf = 'reading' | 'saved' | 'follows' | 'favorites' | 'downloads' | 'authors';
 type Sort = 'lastRead' | 'updated' | 'title' | 'unread' | 'progress' | 'added';
@@ -85,7 +86,7 @@ export default function LibraryScreen() {
       unread: (a, b) => unreadCount(b) - unreadCount(a),
       progress: (a, b) => storyProgress(b) - storyProgress(a),
     };
-    return [...out].sort(by[sort]);
+    return [...out].sort((a, b) => by[sort](a, b) || compareKeys(a.key, b.key));
   }, [shelfStories, fandom, status, filter, sort]);
 
   const authors = useMemo(() => Object.values(authorsMap).sort((a, b) => a.name.localeCompare(b.name)), [authorsMap]);

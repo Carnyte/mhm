@@ -1,6 +1,6 @@
 // Story keys: building, splitting and reading every legacy form of a story reference.
 
-import { authorKey, isStoryKey, keyFromParam, normalizeKey, sourceOfKey, splitKey, toKey } from '../src/sources/keys';
+import { authorKey, isStoryKey, keyFromParam, normalizeKey, sourceOfKey, splitKey, toKey, compareKeys } from '../src/sources/keys';
 
 describe('story keys', () => {
   it('build and split', () => {
@@ -59,5 +59,13 @@ describe('story keys', () => {
     expect(authorKey({ source: 'ffn', id: 501 })).toBe('ffn:501');
     expect(authorKey({ source: 'ao3', id: 'quill/Quill' })).toBe('ao3:quill/Quill');
     expect(authorKey({ source: 'wp', id: 'username' })).toBe('wp:username');
+  });
+});
+
+describe('compareKeys (review)', () => {
+  it('orders by source, then numerically by id, like the old order by FanFiction.net id', () => {
+    const keys = ['ffn:10', 'ao3:5', 'ffn:9', 'ffn:100', 'local:b', 'local:a'] as const;
+    expect([...keys].sort(compareKeys)).toEqual(['ao3:5', 'ffn:9', 'ffn:10', 'ffn:100', 'local:a', 'local:b']);
+    expect(compareKeys('ffn:1', 'ffn:1')).toBe(0);
   });
 });

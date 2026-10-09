@@ -71,6 +71,8 @@ export function normalizeStory(raw: unknown, key?: StoryKey): LibraryStory | nul
     remoteId,
     stats,
     ffn,
+    // An older build installed again keys stories by this, so FanFiction.net records keep it.
+    id: source === 'ffn' ? Number(remoteId) : undefined,
   }) as unknown as LibraryStory;
 }
 
@@ -282,14 +284,32 @@ const subset = (a: unknown, b: unknown) => numbers(a).every((n) => numbers(b).in
  */
 export function moveLegacy(db: SyncDb, opts: { blobs: boolean; beforeVerify?: (db: SyncDb) => void }): MigrationCounts {
   const checks: (() => void)[] = [];
+  // A row that names no story or author (`story:0`, a damaged record) can't be converted. It is
+  // kept under `unreadable:<key>` rather than lost, and doesn't stop the rest.
+  let setAside = 0;
+  const putAside = (row: { key: string; value: string }) => {
+    db.runSync('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', `unreadable:${row.key}`, row.value);
+    setAside++;
+    checks.push(() => check(db.getFirstSync('SELECT 1 AS x FROM kv WHERE key = ?', `unreadable:${row.key}`) != null, `${row.key} set aside`));
+  };
+  const parse = (value: string): unknown => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  };
 
   // Stories: merged into the v2 row when there is one.
   const storyRows = db.getAllSync<{ key: string; value: string }>(`SELECT key, value FROM kv WHERE ${LEGACY_STORY}`);
   const stories = new Map<string, { story: LibraryStory; from: LibraryStory[] }>();
   for (const row of storyRows) {
     // The row key names the story; the record's own id is the fallback.
-    const legacy = normalizeStory(JSON.parse(row.value), normalizeKey(row.key.slice(6)) ?? undefined);
-    if (!legacy) throw new MigrationError(`Unreadable story row ${row.key}`);
+    const legacy = normalizeStory(parse(row.value), normalizeKey(row.key.slice(6)) ?? undefined);
+    if (!legacy) {
+      putAside(row);
+      continue;
+    }
     const target = `story:${legacy.key}`;
     const prev = stories.get(target);
     if (prev) {
@@ -320,8 +340,11 @@ export function moveLegacy(db: SyncDb, opts: { blobs: boolean; beforeVerify?: (d
   const authorRows = db.getAllSync<{ key: string; value: string }>(`SELECT key, value FROM kv WHERE ${LEGACY_AUTHOR}`);
   const authors = new Map<string, SavedAuthor>();
   for (const row of authorRows) {
-    const legacy = normalizeAuthor(JSON.parse(row.value), authorKeyFromKv(row.key.slice(7)) ?? undefined);
-    if (!legacy) throw new MigrationError(`Unreadable author row ${row.key}`);
+    const legacy = normalizeAuthor(parse(row.value), authorKeyFromKv(row.key.slice(7)) ?? undefined);
+    if (!legacy) {
+      putAside(row);
+      continue;
+    }
     const target = `author:${legacy.key}`;
     const prev = authors.get(target) ?? normalizeAuthor(readJson(db, target), legacy.key);
     authors.set(target, prev ? mergeAuthor(prev, legacy) : legacy);
@@ -345,6 +368,7 @@ export function moveLegacy(db: SyncDb, opts: { blobs: boolean; beforeVerify?: (d
   }
 
   const counts: MigrationCounts = { stories: storyRows.length, authors: authorRows.length, chapters: before.n, chapterBytes: before.b };
+  if (setAside) counts.setAside = setAside;
 
   if (opts.blobs) {
     // Each blob is rewritten, read back, and checked for entries the conversion lost.
@@ -396,21 +420,34 @@ export function databaseBytes(db: SyncDb): number {
   return count * size;
 }
 
-const SNAPSHOT_HEADROOM = 50 * 1024 * 1024;
+const MB = 1024 * 1024;
+const SNAPSHOT_HEADROOM = 50 * MB;
+const CONVERT_HEADROOM = 20 * MB;
 
-/** Copies the database before converting it, when there's room for the copy and then some. */
-function takeSnapshot(db: SyncDb, env: MigrationEnv): boolean {
-  if (!env.snapshot || !env.freeBytes) return false;
+/**
+ * Free bytes the conversion needs: the chapters are copied inside one transaction, so the log
+ * holds a copy of them, and the file grows by as much when the log is written back.
+ */
+export function bytesNeededToConvert(db: SyncDb): number {
+  return 2 * databaseBytes(db) + CONVERT_HEADROOM;
+}
+
+function freeBytes(env: MigrationEnv): number | undefined {
+  try {
+    const n = env.freeBytes?.();
+    return typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Copies the database before converting it, when there's room for the copy and the conversion. */
+function takeSnapshot(db: SyncDb, env: MigrationEnv, free: number | undefined): boolean {
+  if (!env.snapshot || free == null) return false;
   // A new install has nothing to keep a copy of.
   const rows = db.getFirstSync<{ n: number }>('SELECT (SELECT COUNT(*) FROM kv) + (SELECT COUNT(*) FROM chapters) AS n');
   if (!rows?.n) return false;
-  let free = 0;
-  try {
-    free = env.freeBytes();
-  } catch {
-    return false;
-  }
-  if (!(free > 2 * databaseBytes(db) + SNAPSHOT_HEADROOM)) return false;
+  if (!(free > bytesNeededToConvert(db) + databaseBytes(db) + SNAPSHOT_HEADROOM)) return false;
   try {
     env.snapshot();
     return true;
@@ -422,7 +459,18 @@ function takeSnapshot(db: SyncDb, env: MigrationEnv): boolean {
 
 /** The one-time v1 → v2 conversion. On any error nothing has changed. */
 export function migrateV2(db: SyncDb, env: MigrationEnv = {}): MigrationResult {
-  const snapshot = takeSnapshot(db, env);
+  const free = freeBytes(env);
+  const need = bytesNeededToConvert(db);
+  if (free != null && free < need) {
+    // Running out of space halfway would roll back anyway; say so up front instead.
+    return {
+      ok: false,
+      version: 1,
+      lowSpace: true,
+      error: `Not enough free space to upgrade your library safely: it needs about ${Math.ceil(need / MB)} MB and ${Math.floor(free / MB)} MB are free. Free up some space, then tap Retry. Nothing has been changed.`,
+    };
+  }
+  const snapshot = takeSnapshot(db, env, free);
   try {
     let counts!: MigrationCounts;
     db.withTransactionSync(() => {

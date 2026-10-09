@@ -90,3 +90,17 @@ export function keyFromParam(p: string | string[] | undefined): StoryKey | null 
 export function authorKey(a: { source: SourceId; id: string | number }): string {
   return `${a.source}:${a.id}`;
 }
+
+/**
+ * Orders keys by source, then by id (numerically where both are numbers): a stable tie-breaker
+ * for lists sorted by date or title, matching the old order by FanFiction.net id.
+ */
+export function compareKeys(a: StoryKey, b: StoryKey): number {
+  const x = splitKey(a);
+  const y = splitKey(b);
+  if (x.source !== y.source) return x.source < y.source ? -1 : 1;
+  const nx = Number(x.remoteId);
+  const ny = Number(y.remoteId);
+  if (Number.isFinite(nx) && Number.isFinite(ny) && nx !== ny) return nx - ny;
+  return x.remoteId < y.remoteId ? -1 : x.remoteId > y.remoteId ? 1 : 0;
+}

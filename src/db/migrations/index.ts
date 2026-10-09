@@ -28,6 +28,8 @@ export interface MigrationCounts {
   authors: number;
   chapters: number;
   chapterBytes: number;
+  /** Rows that named no story or author, kept under `unreadable:<key>`. */
+  setAside?: number;
   bookmarks?: number;
   collections?: number;
   positions?: number;
@@ -44,6 +46,8 @@ export interface MigrationResult {
   counts?: MigrationCounts;
   /** Rows an older build wrote, merged on this launch. */
   drained?: MigrationCounts;
+  /** Failed before changing anything because the device is short of space. */
+  lowSpace?: boolean;
   error?: string;
 }
 

@@ -9,6 +9,7 @@ import { storyProgress, useLibrary } from '../../state/library';
 import { togglePinnedFandom, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
 import { useState } from 'react';
+import { compareKeys } from '../../sources/keys';
 
 type Mode = 'stories' | 'crossovers' | 'communities' | 'forums' | 'betas';
 
@@ -20,7 +21,7 @@ export default function BrowseScreen() {
   const recent = useLibrary((s) =>
     Object.values(s.stories)
       .filter((x) => x.lastReadAt)
-      .sort((a, b) => (b.lastReadAt ?? 0) - (a.lastReadAt ?? 0))
+      .sort((a, b) => (b.lastReadAt ?? 0) - (a.lastReadAt ?? 0) || compareKeys(a.key, b.key))
       .slice(0, 8),
   );
 

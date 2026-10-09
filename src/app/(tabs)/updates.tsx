@@ -14,6 +14,7 @@ import { acknowledgeUpdates, newChapterCount, useLibrary } from '../../state/lib
 import { useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
 import { relativeMs } from '../../utils/format';
+import { compareKeys } from '../../sources/keys';
 
 export default function UpdatesScreen() {
   const c = useTheme();
@@ -24,7 +25,7 @@ export default function UpdatesScreen() {
     () =>
       Object.values(storiesMap)
         .filter((s) => newChapterCount(s) > 0)
-        .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)),
+        .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0) || compareKeys(a.key, b.key)),
     [storiesMap],
   );
   const watching = useMemo(() => storiesToCheck().length, [storiesMap]); // eslint-disable-line react-hooks/exhaustive-deps

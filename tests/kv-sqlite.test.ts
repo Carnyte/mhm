@@ -5,6 +5,7 @@
 
 import { openNodeDb, kvDump, type NodeDb } from './helpers/sqliteNode';
 import { seedV1Database } from './fixtures/v1-library';
+import { SCHEMA_SQL } from '../src/db/migrations';
 
 let mockDb: NodeDb;
 const mockBackups: string[] = [];
@@ -120,10 +121,10 @@ describe('opening a v1 database', () => {
     return expect(chapterStore.list('ffn:1001')).resolves.toEqual([1, 2, 3]);
   });
 
-  it('skips the copy when the phone is short of space', () => {
+  it('skips the copy when there is room to convert but not for a copy too', () => {
     const db = openNodeDb();
     seedV1Database(db);
-    mockDisk.free = 1024;
+    mockDisk.free = 30 * 1024 * 1024;
     try {
       const { migrationStatus } = loadKv(db);
       expect(migrationStatus()).toMatchObject({ ok: true, snapshot: false });
@@ -133,14 +134,21 @@ describe('opening a v1 database', () => {
     }
   });
 
-  it('after a failed migration, writes nothing and leaves v1 exactly as it was', async () => {
+  it('after a failed migration (here: no room to convert), writes nothing and leaves v1 exactly as it was', async () => {
     const db = openNodeDb();
     seedV1Database(db);
-    db.runSync("INSERT INTO kv (key, value) VALUES ('story:4242', '{not json')");
+    db.execSync(SCHEMA_SQL);
     const before = kvDump(db);
-    const { kv, chapterStore, migrationStatus } = loadKv(db);
-    expect(migrationStatus()).toMatchObject({ ok: false, version: 1 });
-    expect(migrationStatus().error).toBeTruthy();
+    mockDisk.free = 1024;
+    let mod!: KvModule;
+    try {
+      mod = loadKv(db);
+      expect(mod.migrationStatus()).toMatchObject({ ok: false, version: 1, lowSpace: true });
+    } finally {
+      mockDisk.free = 10 * 1024 ** 3;
+    }
+    const { kv, chapterStore, migrationStatus } = mod;
+    expect(migrationStatus().error).toMatch(/Not enough free space/);
     expect(kv.writable).toBe(false);
     await kv.set('story:1001', { wiped: true });
     await kv.delete('bookmarks');
@@ -150,5 +158,29 @@ describe('opening a v1 database', () => {
     expect(kvDump(db)).toEqual(before);
     expect(db.getFirstSync('SELECT COUNT(*) AS n FROM chapters')).toEqual({ n: 4 });
     expect(db.getFirstSync('SELECT COUNT(*) AS n FROM chapter_text')).toEqual({ n: 0 });
+  });
+
+  it('stays read-only when the database can’t even be prepared (review)', async () => {
+    const db = openNodeDb();
+    seedV1Database(db);
+    const before = kvDump(db);
+    const exec = db.execSync.bind(db);
+    let fail = true;
+    db.execSync = (sql: string) => {
+      if (fail && sql.includes('CREATE TABLE')) {
+        fail = false;
+        throw new Error('disk I/O error');
+      }
+      exec(sql);
+    };
+    const { kv, migrationStatus, retryMigration } = loadKv(db);
+    expect(migrationStatus()).toMatchObject({ ok: false });
+    expect(migrationStatus().error).toMatch(/couldn’t be prepared: disk I\/O error/);
+    expect(kv.writable).toBe(false);
+    await kv.set('story:1001', { wiped: true });
+    expect(kvDump(db)).toEqual(before);
+    // Retry prepares it and converts.
+    expect(retryMigration()).toMatchObject({ ok: true, migrated: true });
+    expect(kv.writable).toBe(true);
   });
 });

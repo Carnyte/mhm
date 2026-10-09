@@ -78,7 +78,8 @@ describe('upsertStory and keep()', () => {
     const lib = loadLibrary();
     lib.upsertStory(summary(1), { inLibrary: true });
     expect(mockMem.get('story:ffn:1')).toMatchObject({ key: 'ffn:1', source: 'ffn', remoteId: '1', stats: { reviews: 1, favs: 2, follows: 3 } });
-    expect(mockMem.get('story:ffn:1')).not.toHaveProperty('id');
+    // FanFiction.net records also carry the numeric id, for an older build installed again.
+    expect(mockMem.get('story:ffn:1')).toHaveProperty('id', 1);
     lib.upsertStory(summary(1), { inLibrary: false });
     expect(lib.libraryStore.get().stories['ffn:1']).toBeUndefined();
     expect(mockMem.has('story:ffn:1')).toBe(false);
