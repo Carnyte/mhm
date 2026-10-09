@@ -20,7 +20,8 @@ import type { StoryDetail, StorySummary, UserRef } from '../ffn/types';
 import { libraryMetaFromFfn } from '../sources/ffn/map';
 import { authorKey, normalizeKey, splitKey, toKey, type SourceId, type StoryKey } from '../sources/keys';
 import { isStoryMeta, libraryMetaFromMeta } from '../sources/meta';
-import type { StoryMeta, StoryStats } from '../sources/types';
+import { remapBookmarks, type ChapterRemap } from '../sources/remap';
+import type { SeriesRef, StoryMeta, StoryStats, Tag } from '../sources/types';
 import { createStore, useStore } from './store';
 
 export type { StoryStats } from '../sources/types';
@@ -57,8 +58,34 @@ export interface LibraryStory {
   complete: boolean;
   coverUrl?: string;
   chapterTitles?: string[];
+  /**
+   * The site's id of each chapter (AO3 chapter ids), index = chapter number - 1. Written only
+   * through applyChapterIds (src/features/chapterIds.ts), which moves reading state along when
+   * chapters are reordered or deleted.
+   */
+  chapterIds?: string[];
+  /** Further creators (AO3 co-authors). */
+  coAuthors?: LibraryAuthor[];
+  fandoms?: string[];
+  tags?: Tag[];
+  /** Chapters the author plans; null when unknown ("15/?"). */
+  plannedChapters?: number | null;
+  series?: SeriesRef[];
+  /** Only visible to logged-in users of the site (AO3). */
+  restricted?: boolean;
+  /** Rated Mature / Explicit / Not Rated (AO3 asks before showing those). */
+  mature?: boolean;
   /** FanFiction.net only: the id its review form needs. */
   ffn?: { storyTextId?: number };
+  /** The site's version stamp when the story was last seen (StoryMeta.version). */
+  version?: number;
+  /** The version the downloaded copy is of: when the site's differs, the copy is stale. */
+  downloadedVersion?: number;
+  /** AO3 only. */
+  ao3?: {
+    /** The reader agreed to see this adult work. */
+    adultOk?: boolean;
+  };
   /** FanFiction.net only: the numeric id, kept for an older build installed again. Read `key`. */
   id?: number;
 
@@ -238,6 +265,7 @@ const META_FIELDS = [
   'updated',
   'published',
   'complete',
+  'version',
 ] as const;
 
 function metaFrom(src: AnyStory): Partial<LibraryStory> {
@@ -264,9 +292,12 @@ export function upsertStory(src: AnyStory, patch: Partial<LibraryStory> = {}, op
     const { source, remoteId } = splitKey(key);
     const defaults = { key, source, remoteId, stats: {}, genres: [] as string[], summary: '', inLibrary: false, addedAt: Date.now() };
     const meta = metaFrom(src);
+    // Chapter ids change only through applyChapterIds, which moves reading state with them.
+    if (prev?.chapterIds?.length) delete meta.chapterIds;
     const next = { ...defaults, ...(prev ?? {}), ...meta, ...patch } as LibraryStory;
     // Per-site data is merged, not replaced, by partial updates.
     if (prev?.ffn && meta.ffn) next.ffn = { ...prev.ffn, ...meta.ffn, ...patch.ffn };
+    if (prev?.ao3 && (meta.ao3 || patch.ao3)) next.ao3 = { ...prev.ao3, ...meta.ao3, ...patch.ao3 };
     result = next;
     if (!keep(next)) {
       const { [key]: _drop, ...rest } = st.stories;
@@ -469,6 +500,13 @@ export function addBookmark(b: Omit<Bookmark, 'id' | 'createdAt' | 'storyId'>) {
 
 export function removeBookmark(id: string) {
   libraryStore.set((st) => ({ ...st, bookmarks: st.bookmarks.filter((b) => b.id !== id) }));
+  persistBookmarks();
+}
+
+/** Moves one story's bookmarks after its chapters were reordered or deleted (see applyChapterIds). */
+export function remapStoryBookmarks(key: StoryKey, r: ChapterRemap) {
+  if (!r.changed || !libraryStore.get().bookmarks.some((b) => b.storyKey === key)) return;
+  libraryStore.set((st) => ({ ...st, bookmarks: remapBookmarks(st.bookmarks, key, r) }));
   persistBookmarks();
 }
 

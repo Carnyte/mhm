@@ -197,6 +197,21 @@ export const chapterStore = {
   },
 };
 
+const HC = NS + 'http:';
+
+export const httpCache = {
+  async get(key: string): Promise<{ body: string; fetchedAt: number } | undefined> {
+    const v = read(HC + key);
+    return v ? (JSON.parse(v) as { body: string; fetchedAt: number }) : undefined;
+  },
+  async put(key: string, body: string) {
+    write(HC + key, JSON.stringify({ body, fetchedAt: Date.now() }));
+  },
+  async clear() {
+    for (const k of keys()) if (k.startsWith(HC)) remove(k);
+  },
+};
+
 export function migrationStatus(): MigrationResult {
   return migrate();
 }

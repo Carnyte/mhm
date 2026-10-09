@@ -1,5 +1,5 @@
-// The source registry: which site a key or a link belongs to. FanFiction.net is the only readable
-// site; AO3 and Wattpad links are recognised and come back as `disabled` ("coming soon").
+// The source registry: which site a key or a link belongs to. FanFiction.net and AO3 are readable
+// (AO3 can be switched off); Wattpad links are recognised and come back as `disabled` ("coming soon").
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 jest.mock('../src/db/kv', () => require('./helpers/memoryKv').kvModule());
@@ -26,9 +26,9 @@ describe('sources', () => {
     expect(getSource('local').name).toBe('Imported file');
   });
 
-  it('has FanFiction.net as the only enabled site, whatever Settings says about the others', () => {
-    expect(enabledSources().map((s) => s.id)).toEqual(['ffn']);
-    updateSettings({ sources: { ...settingsStore.get().sources, ao3: { enabled: true }, wp: { enabled: true } } });
+  it('has FanFiction.net and AO3 on by default; Wattpad stays off whatever Settings says', () => {
+    expect(enabledSources().map((s) => s.id)).toEqual(['ffn', 'ao3']);
+    updateSettings({ sources: { ...settingsStore.get().sources, ao3: { enabled: false }, wp: { enabled: true } } });
     expect(enabledSources().map((s) => s.id)).toEqual(['ffn']);
   });
 
@@ -40,14 +40,17 @@ describe('sources', () => {
   });
 
   it('rejects (with a "coming soon" error) stories from sites that aren’t readable yet', async () => {
-    await expect(getSource('ao3').getStory('5')).rejects.toThrow(ComingSoonError);
+    await expect(getSource('wp').getStory('5')).rejects.toThrow(ComingSoonError);
     await expect(getSource('wp').getChapter('5', { number: 1, title: '' })).rejects.toThrow('Wattpad support is coming soon');
-    expect(comingSoonMessage('ao3')).toBe('AO3 support is coming soon');
+    expect(comingSoonMessage('wp')).toBe('Wattpad support is coming soon');
     expect(disabledMessage('wp')).toBe('Wattpad support is coming soon');
+    expect(getSource('ao3').comingSoon).toBeFalsy();
+    expect(disabledMessage('ao3')).toBe('AO3 is switched off. Turn it on in Settings → Sources.');
   });
 
   it('gives each site its reader base URL', () => {
     expect(getSource('ffn').reader).toEqual({ baseUrl: 'https://www.fanfiction.net/' });
+    expect(getSource('ao3').reader).toEqual({ baseUrl: 'https://archiveofourown.org/' });
     expect(getSource('local').reader.baseUrl).toBe('about:blank');
     expect(getSource('local').reader.csp).toMatch(/default-src 'none'/);
   });
@@ -77,16 +80,21 @@ describe('resolveLink', () => {
   });
 
   it.each([
-    'https://archiveofourown.org/works/94201446',
-    'https://archiveofourown.org/works/3171550/chapters/6887378#workskin',
-    'archiveofourown.org/works/1',
-    'http://www.ao3.org/works/12345',
-    'https://archiveofourown.com/series/2069526',
-    'https://archiveofourown.org/tags/Harry%20Potter%20-%20J*d*%20K*d*%20Rowling/works',
-    'https://archiveofourown.org/users/someone/pseuds/other',
-    'https://archiveofourown.org/',
-  ])('%s is AO3, which is coming soon', (input) => {
-    expect(resolveLink(input)).toEqual({ kind: 'disabled', source: 'ao3' });
+    ['https://archiveofourown.org/works/94201446', { source: 'ao3', kind: 'story', id: '94201446' }],
+    ['https://archiveofourown.org/works/3171550/chapters/6887378#workskin', { source: 'ao3', kind: 'story', id: '3171550', chapterRemoteId: '6887378' }],
+    ['archiveofourown.org/works/1', { source: 'ao3', kind: 'story', id: '1' }],
+    ['http://www.ao3.org/works/12345', { source: 'ao3', kind: 'story', id: '12345' }],
+    ['https://archiveofourown.com/series/2069526', { source: 'ao3', kind: 'route', href: { pathname: '/ao3/series/[id]', params: { id: '2069526' } } }],
+    ['https://archiveofourown.org/tags/Harry%20Potter%20-%20J*d*%20K*d*%20Rowling/works', { source: 'ao3', kind: 'route', href: { pathname: '/ao3/works', params: { tag: 'Harry Potter - J. K. Rowling' } } }],
+    ['https://archiveofourown.org/users/someone/pseuds/other', { source: 'ao3', kind: 'author', id: 'someone/other' }],
+    ['https://archiveofourown.org/', { source: 'ao3', kind: 'web' }],
+  ])('%s opens in the app as AO3', (input, hit) => {
+    expect(resolveLink(input)).toMatchObject(hit);
+  });
+
+  it('says AO3 is switched off when it is', () => {
+    updateSettings({ sources: { ...settingsStore.get().sources, ao3: { enabled: false } } });
+    expect(resolveLink('https://archiveofourown.org/works/94201446')).toEqual({ kind: 'disabled', source: 'ao3' });
   });
 
   it.each([
@@ -100,7 +108,7 @@ describe('resolveLink', () => {
   });
 
   it('prefers the site named in the host over a stray "fanfiction.net" in the link', () => {
-    expect(resolveLink('https://archiveofourown.org/works/5?ref=fanfiction.net')).toEqual({ kind: 'disabled', source: 'ao3' });
+    expect(resolveLink('https://archiveofourown.org/works/5?ref=fanfiction.net')).toMatchObject({ source: 'ao3', kind: 'story', id: '5' });
   });
 
   it.each(['', '   ', 'hello world', 'https://example.com/s/123', 'https://notarchiveofourown.org/works/1', 'https://wattpad.com.evil.net/story/1'])(
@@ -113,14 +121,14 @@ describe('resolveLink', () => {
 
 describe('links as written in pages (review)', () => {
   it('reads "//host/…" as that host, not as a FanFiction.net path', () => {
-    expect(resolveLink('//archiveofourown.org/works/1')).toEqual({ kind: 'disabled', source: 'ao3' });
+    expect(resolveLink('//archiveofourown.org/works/1')).toMatchObject({ source: 'ao3', kind: 'story', id: '1' });
     expect(resolveLink('//www.wattpad.com/story/123-x')).toEqual({ kind: 'disabled', source: 'wp' });
     expect(resolveLink('//www.fanfiction.net/s/5/1')).toMatchObject({ source: 'ffn', kind: 'story', id: '5' });
     expect(resolveLink('//example.com/x')).toBeNull();
   });
 
   it('resolves relative links against the story’s site', () => {
-    expect(resolveLink('/works/123', 'https://archiveofourown.org/')).toEqual({ kind: 'disabled', source: 'ao3' });
+    expect(resolveLink('/works/123', 'https://archiveofourown.org/')).toMatchObject({ source: 'ao3', kind: 'story', id: '123' });
     expect(resolveLink('/s/123/1', 'https://www.fanfiction.net/')).toMatchObject({ source: 'ffn', kind: 'story', id: '123' });
     // Without a base a bare path is still FanFiction.net's, as before.
     expect(resolveLink('/s/123/1')).toMatchObject({ source: 'ffn', kind: 'story', id: '123' });

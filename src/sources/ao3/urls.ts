@@ -1,5 +1,7 @@
-// AO3 (Archive of Our Own) URLs: building them, and recognising pasted links. Link parsing only
-// for now, so a pasted AO3 link can say "coming soon" instead of opening the browser.
+// AO3 (Archive of Our Own) URLs: building every request the app makes, and recognising pasted
+// links. Work and chapter pages always carry view_adult=true (FicShelf asks before showing adult
+// works itself, see the adult gate), so AO3's own notice never stands between the reader and the
+// text.
 //
 // Mirrors: ao3.org and archiveofourown.com / .net redirect to archiveofourown.org, and
 // archive.transformativeworks.org is the OTW's own alias. Links on any of them name the same work.
@@ -55,6 +57,180 @@ export function seriesPath(id: string): string {
   return `/series/${id}`;
 }
 
+/** A work or chapter page, with AO3's adult-content notice skipped (the app asks first itself). */
+export function workPageUrl(id: string, chapterId?: string): string {
+  return `${workUrl(id, chapterId)}?view_adult=true`;
+}
+
+/** Every chapter on one page (the download fallback). */
+export function fullWorkUrl(id: string): string {
+  return `${workUrl(id)}?view_full_work=true&view_adult=true`;
+}
+
+/** The chapter index with dates; not counted as a visit to the work. */
+export function navigateUrl(id: string): string {
+  return `${workUrl(id)}/navigate`;
+}
+
+export function mediaUrl(): string {
+  return `${AO3_ORIGIN}/media`;
+}
+
+/** Every fandom of a medium ("TV Shows"), A–Z. */
+export function mediumFandomsUrl(medium: string): string {
+  return `${AO3_ORIGIN}/media/${escapeTag(medium)}/fandoms`;
+}
+
+export function autocompleteUrl(kind: 'fandom' | 'character' | 'relationship' | 'freeform', term: string): string {
+  return `${AO3_ORIGIN}/autocomplete/${kind}?term=${encodeURIComponent(term)}`;
+}
+
+export function seriesUrl(id: string, page = 1): string {
+  return AO3_ORIGIN + seriesPath(id) + (page > 1 ? `?page=${page}` : '');
+}
+
+/** The listing filters of tag and creator pages (AO3's form#work-filters). */
+export interface Ao3Filters {
+  sort?: string;
+  /** Include one rating (AO3's filter takes one). */
+  rating?: number;
+  warnings?: number[];
+  categories?: number[];
+  excludeRatings?: number[];
+  excludeWarnings?: number[];
+  excludeCategories?: number[];
+  /** Facet tag ids by group (characters, relationships, additional tags, fandoms). */
+  include?: Partial<Record<'fandom' | 'character' | 'relationship' | 'freeform', string[]>>;
+  exclude?: Partial<Record<'fandom' | 'character' | 'relationship' | 'freeform', string[]>>;
+  /** '' any, 'T' only, 'F' none. */
+  crossover?: '' | 'T' | 'F';
+  complete?: '' | 'T' | 'F';
+  wordsFrom?: number;
+  wordsTo?: number;
+  /** "Search within results". */
+  query?: string;
+  language?: string;
+}
+
+/** The fields of AO3's work search (/works/search). */
+export interface Ao3Search {
+  query?: string;
+  title?: string;
+  creators?: string;
+  /** Comma-separated tag names. */
+  fandoms?: string;
+  characters?: string;
+  relationships?: string;
+  freeforms?: string;
+  rating?: number;
+  warnings?: number[];
+  categories?: number[];
+  complete?: '' | 'T' | 'F';
+  crossover?: '' | 'T' | 'F';
+  singleChapter?: boolean;
+  /** AO3's range syntax: "<1000", ">50000", "1000-5000". */
+  wordCount?: string;
+  language?: string;
+  /** "<7 days", "2 weeks ago"… */
+  revisedAt?: string;
+  sort?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+const nonEmpty = (v: unknown) => v != null && v !== '' && !(Array.isArray(v) && !v.length);
+
+/** A tag name as AO3's filter form sends it (escaped, not percent-encoded: URLSearchParams does that). */
+function tagParam(name: string): string {
+  let s = name;
+  for (const [ch, esc] of TAG_ESCAPES) s = s.split(ch).join(esc);
+  return s;
+}
+
+/** How many filters are set (the "Filters (n)" chip). */
+export function countFilters(f: Ao3Filters | Ao3Search): number {
+  return Object.entries(f).filter(
+    ([k, v]) =>
+      k !== 'sort' &&
+      k !== 'sortDirection' &&
+      (k === 'include' || k === 'exclude' ? Object.values(v ?? {}).some((x) => nonEmpty(x)) : nonEmpty(v) && v !== false),
+  ).length;
+}
+
+/**
+ * A tag's works (or a creator's), one page. Without filters it's the plain listing
+ * (/tags/T/works); with filters it's what AO3's filter form submits (/works?tag_id=…).
+ */
+export function worksListUrl(target: { tag: string } | { user: string; pseud?: string }, f: Ao3Filters = {}, page = 1): string {
+  const filtered = countFilters(f) > 0 || (f.sort && f.sort !== 'revised_at');
+  if (!filtered) {
+    const base =
+      'tag' in target
+        ? tagWorksPath(target.tag)
+        : target.pseud
+          ? `/users/${encodeURIComponent(target.user)}/pseuds/${encodeURIComponent(target.pseud)}/works`
+          : `/users/${encodeURIComponent(target.user)}/works`;
+    return AO3_ORIGIN + base + (page > 1 ? `?page=${page}` : '');
+  }
+  const q = new URLSearchParams();
+  q.append('commit', 'Sort and Filter');
+  const add = (k: string, v: unknown) => nonEmpty(v) && q.append(k, String(v));
+  const each = (k: string, list?: (string | number)[]) => list?.forEach((v) => q.append(k, String(v)));
+  add('work_search[sort_column]', f.sort);
+  add('include_work_search[rating_ids][]', f.rating);
+  each('include_work_search[archive_warning_ids][]', f.warnings);
+  each('include_work_search[category_ids][]', f.categories);
+  for (const [g, ids] of Object.entries(f.include ?? {})) each(`include_work_search[${g}_ids][]`, ids);
+  each('exclude_work_search[rating_ids][]', f.excludeRatings);
+  each('exclude_work_search[archive_warning_ids][]', f.excludeWarnings);
+  each('exclude_work_search[category_ids][]', f.excludeCategories);
+  for (const [g, ids] of Object.entries(f.exclude ?? {})) each(`exclude_work_search[${g}_ids][]`, ids);
+  add('work_search[crossover]', f.crossover);
+  add('work_search[complete]', f.complete);
+  add('work_search[words_from]', f.wordsFrom);
+  add('work_search[words_to]', f.wordsTo);
+  add('work_search[query]', f.query);
+  add('work_search[language_id]', f.language);
+  if ('tag' in target) q.append('tag_id', tagParam(target.tag));
+  else {
+    q.append('user_id', target.user);
+    if (target.pseud) q.append('pseud_id', target.pseud);
+  }
+  if (page > 1) q.append('page', String(page));
+  return `${AO3_ORIGIN}/works?${q.toString()}`;
+}
+
+/** One page of work search results. */
+export function searchUrl(s: Ao3Search, page = 1): string {
+  const q = new URLSearchParams();
+  q.append('commit', 'Search');
+  const add = (k: string, v: unknown) => nonEmpty(v) && q.append(`work_search[${k}]`, String(v));
+  add('query', s.query);
+  add('title', s.title);
+  add('creators', s.creators);
+  add('fandom_names', s.fandoms);
+  add('character_names', s.characters);
+  add('relationship_names', s.relationships);
+  add('freeform_names', s.freeforms);
+  add('rating_ids', s.rating);
+  s.warnings?.forEach((id) => q.append('work_search[archive_warning_ids][]', String(id)));
+  s.categories?.forEach((id) => q.append('work_search[category_ids][]', String(id)));
+  add('complete', s.complete);
+  add('crossover', s.crossover);
+  if (s.singleChapter) add('single_chapter', 1);
+  add('word_count', s.wordCount);
+  add('language_id', s.language);
+  add('revised_at', s.revisedAt);
+  add('sort_column', s.sort);
+  add('sort_direction', s.sortDirection ?? (s.sort && s.sort !== '_score' ? 'desc' : undefined));
+  if (page > 1) q.append('page', String(page));
+  return `${AO3_ORIGIN}/works/search?${q.toString()}`;
+}
+
+/** Up to 20 works by id, newest change first: one request answers an update check for all of them. */
+export function idSearchUrl(ids: string[]): string {
+  return searchUrl({ query: `id:(${ids.join(' OR ')})`, sort: 'revised_at', sortDirection: 'desc' });
+}
+
 /** An AO3 author id: 'user/pseud' (a user's default pseud is their user name). */
 export function authorId(user: string, pseud?: string): string {
   return `${user}/${pseud || user}`;
@@ -108,7 +284,13 @@ export function parseAo3Url(input: string): Ao3Link | null {
   return { kind: 'other', path: path + (m[2] ?? '') };
 }
 
-/** An AO3 link as a LinkHit (the routes are the AO3 screens that arrive with AO3 reading). */
+/** The user and pseud of an AO3 author id ('user/pseud'). */
+export function splitAuthorId(id: string): { user: string; pseud?: string } {
+  const [user, pseud] = id.split('/');
+  return pseud && pseud !== user ? { user, pseud } : { user };
+}
+
+/** An AO3 link as a LinkHit (works open in the app, tags and series on their AO3 screens). */
 export function parseAo3Link(input: string): LinkHit | null {
   const l = parseAo3Url(input);
   if (!l) return null;

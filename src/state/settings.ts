@@ -43,6 +43,8 @@ export interface ReaderSettings {
   ttsPauses: 'off' | 'natural' | 'long';
   /** Start chapters after the author's front matter (summary, disclaimer, notes). */
   ttsSkipNotes: boolean;
+  /** Show authors' notes (AO3) collapsed to a one-line bar; tap to open. */
+  collapseNotes: boolean;
 }
 
 /** A fandom pinned to Browse. `path` is the site's own listing path. */
@@ -55,6 +57,8 @@ export interface PinnedFandom {
 /** Per-site switches (Settings → Sources). */
 export interface SourceSettings {
   enabled: boolean;
+  /** AO3: ask before opening a Mature, Explicit or Not Rated work the first time. */
+  askAdult?: boolean;
 }
 
 export interface AppSettings {
@@ -75,6 +79,13 @@ export interface AppSettings {
   reader: ReaderSettings;
   lastUpdateCheck?: number;
   onboarded?: boolean;
+  /** The site whose Browse home / search form is showing (when more than one is on). */
+  browseSource?: SourceId;
+  searchScope?: SourceId;
+  /** The newest "What's new" sheet the user has seen (see WHATS_NEW_VERSION). */
+  whatsNewSeen?: number;
+  /** Format of these settings; see migrateSettings. */
+  settingsVersion?: number;
 }
 
 export const DEFAULT_READER: ReaderSettings = {
@@ -103,15 +114,23 @@ export const DEFAULT_READER: ReaderSettings = {
   ttsReadTitles: true,
   ttsPauses: 'natural',
   ttsSkipNotes: true,
+  collapseNotes: false,
 };
 
-/** FanFiction.net is on; the other sites are switched on as they arrive. */
+/** FanFiction.net and AO3 are on; Wattpad arrives later. */
 export const DEFAULT_SOURCES: Record<SourceId, SourceSettings> = {
   ffn: { enabled: true },
-  ao3: { enabled: false },
+  ao3: { enabled: true, askAdult: true },
   wp: { enabled: false },
   local: { enabled: true },
 };
+
+/**
+ * 2: AO3 became readable and on by default. Settings saved before held `ao3: {enabled: false}`
+ * only because that was the default (there was no switch for it), so it's turned on once;
+ * from then on the switch in Settings → Sources is the user's choice and is kept.
+ */
+export const SETTINGS_VERSION = 2;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   appearance: 'system',
@@ -128,20 +147,27 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pinnedFandoms: [],
   sources: DEFAULT_SOURCES,
   reader: DEFAULT_READER,
+  settingsVersion: SETTINGS_VERSION,
 };
+
+/** Saved settings (any older format) completed with the defaults and brought up to date. */
+export function migrateSettings(saved: Partial<AppSettings> | undefined): AppSettings {
+  const sources = { ...DEFAULT_SOURCES };
+  for (const id of SOURCE_IDS) sources[id] = { ...DEFAULT_SOURCES[id], ...saved?.sources?.[id] };
+  if (saved && (saved.settingsVersion ?? 1) < 2) sources.ao3 = { ...sources.ao3, enabled: true };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    pinnedFandoms: normalizePins(saved?.pinnedFandoms),
+    sources,
+    reader: { ...DEFAULT_READER, ...(saved?.reader ?? {}) },
+    settingsVersion: SETTINGS_VERSION,
+  };
+}
 
 function load(): AppSettings {
   try {
-    const saved = kv.getSync<Partial<AppSettings>>('settings');
-    const sources = { ...DEFAULT_SOURCES };
-    for (const id of SOURCE_IDS) sources[id] = { ...DEFAULT_SOURCES[id], ...saved?.sources?.[id] };
-    return {
-      ...DEFAULT_SETTINGS,
-      ...saved,
-      pinnedFandoms: normalizePins(saved?.pinnedFandoms),
-      sources,
-      reader: { ...DEFAULT_READER, ...(saved?.reader ?? {}) },
-    };
+    return migrateSettings(kv.getSync<Partial<AppSettings>>('settings'));
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -163,6 +189,10 @@ export function updateSettings(patch: Partial<AppSettings>) {
 
 export function updateReader(patch: Partial<ReaderSettings>) {
   settingsStore.set((s) => ({ ...s, reader: { ...s.reader, ...patch } }));
+}
+
+export function updateSource(id: SourceId, patch: Partial<SourceSettings>) {
+  settingsStore.set((s) => ({ ...s, sources: { ...s.sources, [id]: { ...s.sources[id], ...patch } } }));
 }
 
 export function togglePinnedFandom(f: PinnedFandom) {

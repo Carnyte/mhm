@@ -5,20 +5,22 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as player from '../../audio/player';
+import { AdultGateSheet, useAdultGate } from '../../components/ao3/AdultGateSheet';
 import { Cover } from '../../components/Cover';
 import { showActions, toast } from '../../components/Sheet';
 import { Empty, ErrorView, Loading } from '../../components/states';
 import { SourceBadge } from '../../components/SourceBadge';
 import { StatsGrid } from '../../components/StatsGrid';
+import { TagGroups } from '../../components/TagGroups';
 import { Badge, Button, Chip, IconButton, ProgressBar, T } from '../../components/ui';
-import { openReader, storyPageMenu } from '../../features/actions';
+import { openReader, openStory, storyPageMenu } from '../../features/actions';
 import { fetchStory } from '../../features/chapters';
 import { cancelDownload, downloadStory, removeDownload, useDownloadJob } from '../../features/downloads';
 import { useQuery } from '../../hooks/useQuery';
-import { keyFromParam } from '../../sources/keys';
+import { keyFromParam, toKey } from '../../sources/keys';
 import { infoFromLibrary } from '../../sources/meta';
 import { sourceOf } from '../../sources/registry';
-import type { StoryInfo } from '../../sources/types';
+import type { AuthorRef, StoryInfo } from '../../sources/types';
 import { uiOf } from '../../sources/ui';
 import {
   acknowledgeUpdates,
@@ -30,7 +32,13 @@ import {
   useLibraryStory,
 } from '../../state/library';
 import { useTheme } from '../../theme';
-import { relativeTime } from '../../utils/format';
+import { formatDate, relativeTime } from '../../utils/format';
+
+/** "A", "A and B", "A, B and C". */
+function names(list: AuthorRef[]): string {
+  const n = list.map((a) => a.name);
+  return n.length <= 1 ? (n[0] ?? 'Unknown') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+}
 
 export default function StoryScreen() {
   const c = useTheme();
@@ -61,6 +69,8 @@ export default function StoryScreen() {
     if (!lib || sourceOf(lib.key).comingSoon) return undefined;
     return infoFromLibrary(lib);
   }, [q.data, lib]);
+  // AO3: ask before showing an adult work the first time (Settings → Sources).
+  const gate = useAdultGate(story);
 
   if (!key) {
     return (
@@ -80,6 +90,15 @@ export default function StoryScreen() {
     );
   }
 
+  if (gate.blocked) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <Stack.Screen options={{ title: '' }} />
+        <AdultGateSheet rating={story.rating} onContinue={gate.confirm} onAlways={gate.alwaysShow} />
+      </View>
+    );
+  }
+
   const read = new Set(lib?.readChapters ?? []);
   const downloaded = new Set(lib?.downloadedChapters ?? []);
   const resumeChapter = lib?.lastChapter ?? 1;
@@ -89,8 +108,16 @@ export default function StoryScreen() {
   // What the story's site adds: its buttons, stats, menu entries and where links go.
   const ui = uiOf(key);
   const slots = ui.storyActions(story);
-  const authorRoute = story.author ? ui.authorRoute(story.author) : null;
+  const authors = [story.author, ...(story.coAuthors ?? [])].filter((a): a is AuthorRef => !!a);
+  const authorRoutes = authors.map((a) => ({ a, route: ui.authorRoute(a) })).filter((x) => x.route);
+  const openAuthors = () => {
+    if (authorRoutes.length === 1) router.push(authorRoutes[0].route!);
+    else if (authorRoutes.length > 1) showActions(authorRoutes.map(({ a, route }) => ({ label: a.name, icon: 'person-outline', onPress: () => router.push(route!) })), 'Creators');
+  };
   const fandomRoute = ui.fandomRoute(story);
+  const rating = ui.ratingBadge ? ui.ratingBadge(story) : story.rating ? { label: story.rating, adult: story.rating === 'M' } : null;
+  const warningLine = ui.warningLine?.(story);
+  const tagGroups = ui.tagGroups?.(story) ?? [];
 
   const moreMenu = () => showActions(storyPageMenu(story), story.title);
 
@@ -124,9 +151,9 @@ export default function StoryScreen() {
             <T size={21} weight="800" selectable>
               {story.title}
             </T>
-            <Pressable onPress={() => authorRoute && router.push(authorRoute)} accessibilityRole="link">
+            <Pressable onPress={openAuthors} disabled={!authorRoutes.length} accessibilityRole="link">
               <T size={15} style={{ color: c.accent, marginTop: 4 }}>
-                by {story.author?.name ?? 'Unknown'}
+                by {names(authors)}
               </T>
             </Pressable>
             {!!story.fandom && (
@@ -137,14 +164,35 @@ export default function StoryScreen() {
                 </T>
               </Pressable>
             )}
+            {!!warningLine && (
+              <T size={13} style={{ color: c.danger, marginTop: 4 }}>
+                {warningLine}
+              </T>
+            )}
             <View style={styles.badges}>
-              {!!story.rating && <Badge label={story.rating} color={story.rating === 'M' ? c.danger : c.primary} textColor={c.dark && story.rating !== 'M' ? c.primaryText : '#fff'} />}
+              {!!rating && <Badge label={rating.label} color={rating.adult ? c.danger : c.primary} textColor={c.dark && !rating.adult ? c.primaryText : '#fff'} />}
               <Badge label={story.complete ? 'Complete' : 'In progress'} color={story.complete ? c.success : c.warning} />
+              {story.restricted && <Badge label="Locked" color={c.textMuted} />}
               {fresh > 0 && <Badge label={`${fresh} new`} color={c.accent} />}
               <SourceBadge source={story.source} />
             </View>
           </View>
         </View>
+
+        {(story.series ?? []).map((sr) => {
+          const route = ui.seriesRoute?.(sr);
+          return (
+            <View key={sr.id} style={[styles.series, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <IconButton icon="chevron-back" label="Previous work in the series" size={18} disabled={!sr.prevId} onPress={() => sr.prevId && openStory(toKey(story.source, sr.prevId))} />
+              <Pressable style={{ flex: 1 }} disabled={!route} onPress={() => route && router.push(route)} accessibilityRole="link">
+                <T size={13} numberOfLines={1} center>
+                  Part {sr.part} of <T size={13} weight="600" style={{ color: c.accent }}>{sr.title}</T>
+                </T>
+              </Pressable>
+              <IconButton icon="chevron-forward" label="Next work in the series" size={18} disabled={!sr.nextId} onPress={() => sr.nextId && openStory(toKey(story.source, sr.nextId))} />
+            </View>
+          );
+        })}
 
         <View style={styles.actions}>
           <Button
@@ -178,7 +226,7 @@ export default function StoryScreen() {
           <T size={15} selectable style={{ lineHeight: 22 }}>
             {story.summary}
           </T>
-          {!!story.characters && (
+          {!!story.characters && !tagGroups.length && (
             <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, alignItems: 'flex-start' }}>
               <Ionicons name="people-outline" size={15} color={c.textMuted} style={{ marginTop: 2 }} />
               <T muted size={13} style={{ flex: 1 }}>
@@ -195,6 +243,8 @@ export default function StoryScreen() {
             </View>
           )}
         </View>
+
+        <TagGroups groups={tagGroups} route={ui.tagRoute} />
 
         <StatsGrid cells={ui.statCells(story)} />
 
@@ -260,6 +310,11 @@ export default function StoryScreen() {
                   {ch.title}
                 </T>
                 {isCurrent && p != null && p < 0.97 && <T size={11} style={{ color: c.accent }}>{Math.round(p * 100)}%</T>}
+                {!!ch.published && (
+                  <T faint size={11}>
+                    {formatDate(ch.published)}
+                  </T>
+                )}
                 {downloaded.has(ch.number) && <Ionicons name="cloud-done-outline" size={14} color={c.textFaint} />}
                 {isRead && <Ionicons name="checkmark" size={16} color={c.success} />}
               </Pressable>
@@ -282,6 +337,7 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
   actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 8 },
   box: { marginHorizontal: 16, marginTop: 8, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  series: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   chapterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 12, marginBottom: 6 },
   chapters: { marginHorizontal: 16, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   chapterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },

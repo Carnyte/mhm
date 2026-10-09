@@ -9,6 +9,7 @@ import { MigrationFailed } from '../components/MigrationFailed';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { useMiniPlayerInset } from '../components/miniPlayerLayout';
 import { SheetHost } from '../components/Sheet';
+import { WhatsNewSheet } from '../components/WhatsNewSheet';
 import { migrationStatus } from '../db/kv';
 import { checkForUpdates, configureBackgroundChecks } from '../features/updates';
 import { bridge } from '../net/bridge';
@@ -55,7 +56,9 @@ function useAutoChecks() {
       const since = Date.now() - (st.lastUpdateCheck ?? 0);
       if (since < Math.max(30, st.checkIntervalHours * 60) * 60_000 || Date.now() - last < 60_000) return;
       last = Date.now();
-      if (await bridge.waitReady(30000)) checkForUpdates({ quiet: true }).catch(() => {});
+      // FanFiction.net needs its hidden browser; AO3 is checked even when that never comes up.
+      const ready = await bridge.waitReady(30000);
+      checkForUpdates({ quiet: true, sources: ready ? undefined : ['ao3'] }).catch(() => {});
     };
     maybeCheck();
     const sub = AppState.addEventListener('change', (s) => s === 'active' && maybeCheck());
@@ -119,11 +122,16 @@ export default function RootLayout() {
             <Stack.Screen name="messages/compose" options={{ presentation: 'modal', title: 'New message' }} />
             <Stack.Screen name="open" options={{ presentation: 'modal', title: 'Open link' }} />
             <Stack.Screen name="listen" options={{ title: 'Now listening' }} />
+            <Stack.Screen name="ao3/works" options={{ title: 'AO3' }} />
+            <Stack.Screen name="ao3/fandoms/[medium]" options={{ title: 'Fandoms' }} />
+            <Stack.Screen name="ao3/series/[id]" options={{ title: 'Series' }} />
+            <Stack.Screen name="ao3/user/[name]" options={{ title: 'Creator' }} />
           </Stack>
           <BridgeHost />
           <MiniPlayer />
           <BridgeBanner />
           <SheetHost />
+          <WhatsNewSheet />
         </View>
       </ThemeProvider>
     </SafeAreaProvider>

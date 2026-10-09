@@ -1,12 +1,16 @@
 // Offline downloads: fetches every chapter from the story's site and stores the HTML in SQLite.
+// Sites that offer the whole story at once (AO3's official download) use their downloadAll, so
+// a long work costs one request; others are fetched chapter by chapter, paced by their transport.
 
 import { toast } from '../components/Sheet';
 import { chapterStore } from '../db/kv';
-import type { StoryKey } from '../sources/keys';
-import type { StoryInfo } from '../sources/types';
+import { splitKey, type StoryKey } from '../sources/keys';
+import { sourceOf } from '../sources/registry';
+import type { Source, StoryInfo } from '../sources/types';
 import { keyOf, libraryStore, patchStory, upsertStory, type AnyStory } from '../state/library';
 import { createStore, useStore } from '../state/store';
 import { errorMessage } from '../utils/format';
+import { applyChapterIds, chapterIdsOf } from './chapterIds';
 import { fetchChapter, renderChapter } from './chapters';
 
 export interface DownloadJob {
@@ -36,10 +40,15 @@ function setJob(key: StoryKey, job: DownloadJob | null) {
   });
 }
 
-/** Downloads all missing chapters. `onlyNew` only fetches chapters not saved yet (update sync). */
-export async function downloadStory(story: AnyStory, opts: { quiet?: boolean } = {}) {
+/**
+ * Downloads all missing chapters (sites with a whole-story download: the whole story when the
+ * saved copy is stale). `force` refreshes a whole-story download even when it looks current.
+ */
+export async function downloadStory(story: AnyStory, opts: { quiet?: boolean; force?: boolean } = {}) {
   const key = keyOf(story);
   if (downloadsStore.get()[key]) return;
+  const src = sourceOf(key);
+  if (src.downloadAll) return downloadWhole(story, src, opts);
   const have = new Set(await chapterStore.list(key));
   setJob(key, { key, title: story.title, done: 0, total: story.chapters || 1 });
   try {
@@ -69,6 +78,58 @@ export async function downloadStory(story: AnyStory, opts: { quiet?: boolean } =
   } catch (e) {
     patchStory(key, { downloadedChapters: await chapterStore.list(key) });
     if (!opts.quiet) toast(`Download stopped: ${errorMessage(e)}`, 'error');
+  } finally {
+    setJob(key, null);
+  }
+}
+
+const cancelled = () => Object.assign(new Error('The download was cancelled.'), { name: 'AbortError' });
+
+/** The whole story in as few requests as the site allows, each chapter saved as it arrives. */
+async function downloadWhole(story: AnyStory, src: Source, opts: { quiet?: boolean; force?: boolean }) {
+  const key = keyOf(story);
+  const title = story.title;
+  setJob(key, { key, title, done: 0, total: story.chapters || 1 });
+  let total = story.chapters || 1;
+  let done = 0;
+  try {
+    const lib = libraryStore.get().stories[key];
+    const have = new Set(await chapterStore.list(key));
+    const complete = !!lib?.downloaded && lib.chapters > 0 && Array.from({ length: lib.chapters }, (_, i) => have.has(i + 1)).every(Boolean);
+    // A complete copy of the current version isn't downloaded again.
+    const knownVersion = complete && !opts.force ? lib?.downloadedVersion : undefined;
+    const info: StoryInfo = await src.downloadAll!(
+      splitKey(key).remoteId,
+      async (c) => {
+        if (!downloadsStore.get()[key]) throw cancelled();
+        const html = renderChapter(c);
+        if (html) await chapterStore.put(key, c.number, html, c.remoteId);
+        done++;
+        setJob(key, { key, title, done, total });
+      },
+      {
+        quiet: opts.quiet,
+        knownVersion,
+        onInfo: async (i) => {
+          total = i.chapters || 1;
+          upsertStory(i, { inLibrary: true });
+          // Chapters that moved take their saved text and progress along before new text lands.
+          await applyChapterIds(key, chapterIdsOf(i));
+          setJob(key, { key, title, done, total });
+        },
+      },
+    );
+    const upToDate = knownVersion != null && info.version === knownVersion;
+    upsertStory(info, {
+      downloaded: true,
+      inLibrary: true,
+      downloadedChapters: await chapterStore.list(key),
+      ...(info.version && !upToDate ? { downloadedVersion: info.version } : {}),
+    });
+    if (!opts.quiet) toast(upToDate ? `“${title}” is already up to date` : `Downloaded “${title}”`, 'success');
+  } catch (e) {
+    patchStory(key, { downloadedChapters: await chapterStore.list(key) });
+    if (!opts.quiet && (e as Error).name !== 'AbortError') toast(`Download stopped: ${errorMessage(e)}`, 'error');
   } finally {
     setJob(key, null);
   }

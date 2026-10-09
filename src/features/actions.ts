@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { Linking, Share } from 'react-native';
 import { showActions, toast, type SheetAction } from '../components/Sheet';
 import { splitKey, toKey, type SourceId, type StoryKey } from '../sources/keys';
-import { disabledMessage, resolveLink, sourceOf, type ResolvedLink } from '../sources/registry';
+import { disabledMessage, getSource, resolveLink, sourceOf, type ResolvedLink } from '../sources/registry';
 import type { ChapterContent, StoryInfo } from '../sources/types';
 import { getUi, uiOf } from '../sources/ui';
 import { keyOf, libraryStore, markAllRead, setInLibrary, toggleInCollection, type AnyStory } from '../state/library';
@@ -72,6 +72,17 @@ export function openLinkHit(hit: ResolvedLink, opts: { replace?: boolean } = {})
     case 'route':
       go(hit.href);
       return true;
+    case 'part': {
+      // A chapter link that names no story (AO3's /chapters/ID): the site says which story it is.
+      const src = getSource(hit.source);
+      if (src.resolvePart) {
+        src
+          .resolvePart(hit.partId)
+          .then((h) => openLinkHit(h, opts))
+          .catch(() => hit.url && openWeb(hit.source, hit.url, opts));
+      } else if (hit.url) openWeb(hit.source, hit.url, opts);
+      return true;
+    }
     default:
       if (hit.url) openWeb(hit.source, hit.url, opts);
       return true;
@@ -88,6 +99,9 @@ export function openReaderLink(href: string, base?: string) {
   if (!hit) return;
   if (hit.kind === 'disabled') toast(disabledMessage(hit.source));
   else if (hit.kind === 'story') openStory(toKey(hit.source, hit.id));
+  // Other sites' tags, series, creators and chapter links open on their screens (FanFiction.net's
+  // pages keep opening in the in-app browser, as before).
+  else if (hit.kind === 'part' || (hit.source !== 'ffn' && (hit.kind === 'route' || hit.kind === 'author'))) openLinkHit(hit);
   else if (hit.url) openWeb(hit.source, hit.url);
 }
 

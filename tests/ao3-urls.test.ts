@@ -1,7 +1,25 @@
-// AO3 link parsing (works, chapters, series, tags, users, collections; the mirror domains) and
-// tag escaping. Link parsing only for now: the reading loop arrives in the AO3 phase.
+// AO3 link parsing (works, chapters, series, tags, users, collections; the mirror domains), tag
+// escaping, and the URLs of every request the app makes to AO3.
 
-import { authorId, escapeTag, parseAo3Link, parseAo3Url, tagWorksPath, unescapeTag, workUrl } from '../src/sources/ao3/urls';
+import {
+  authorId,
+  countFilters,
+  escapeTag,
+  fullWorkUrl,
+  idSearchUrl,
+  mediumFandomsUrl,
+  navigateUrl,
+  parseAo3Link,
+  parseAo3Url,
+  searchUrl,
+  seriesUrl,
+  splitAuthorId,
+  tagWorksPath,
+  unescapeTag,
+  workPageUrl,
+  workUrl,
+  worksListUrl,
+} from '../src/sources/ao3/urls';
 
 describe('AO3 links', () => {
   it.each([
@@ -92,5 +110,63 @@ describe('review fixes', () => {
   it('keeps "+" in tag names', () => {
     expect(parseAo3Url('https://archiveofourown.org/tags/Romeo%20+%20Juliet%20(1996)/works')).toEqual({ kind: 'tag', tag: 'Romeo + Juliet (1996)' });
     expect(parseAo3Url('https://archiveofourown.org/tags/C++/works')).toEqual({ kind: 'tag', tag: 'C++' });
+  });
+});
+
+describe('AO3 request URLs', () => {
+  const A = 'https://archiveofourown.org';
+
+  it('asks for work and chapter pages with view_adult=true', () => {
+    expect(workPageUrl('5')).toBe(`${A}/works/5?view_adult=true`);
+    expect(workPageUrl('5', '9')).toBe(`${A}/works/5/chapters/9?view_adult=true`);
+    expect(fullWorkUrl('5')).toBe(`${A}/works/5?view_full_work=true&view_adult=true`);
+    expect(navigateUrl('5')).toBe(`${A}/works/5/navigate`);
+  });
+
+  it('builds media, series and listing URLs', () => {
+    expect(mediumFandomsUrl('Anime & Manga')).toBe(`${A}/media/Anime%20*a*%20Manga/fandoms`);
+    expect(mediumFandomsUrl('Cartoons & Comics & Graphic Novels')).toBe(`${A}/media/Cartoons%20*a*%20Comics%20*a*%20Graphic%20Novels/fandoms`);
+    expect(seriesUrl('3')).toBe(`${A}/series/3`);
+    expect(seriesUrl('3', 2)).toBe(`${A}/series/3?page=2`);
+    expect(worksListUrl({ tag: 'F/F' })).toBe(`${A}/tags/F*s*F/works`);
+    expect(worksListUrl({ user: 'some one' }, {}, 2)).toBe(`${A}/users/some%20one/works?page=2`);
+    expect(worksListUrl({ user: 'u', pseud: 'Pen Name' })).toBe(`${A}/users/u/pseuds/Pen%20Name/works`);
+  });
+
+  it('sends filtered creator listings through AO3’s filter form', () => {
+    const u = new URL(worksListUrl({ user: 'u', pseud: 'P' }, { excludeWarnings: [19, 20], crossover: 'F', wordsFrom: 1000, exclude: { freeform: ['77'] } }, 3));
+    expect(u.pathname).toBe('/works');
+    expect(u.searchParams.get('user_id')).toBe('u');
+    expect(u.searchParams.get('pseud_id')).toBe('P');
+    expect(u.searchParams.getAll('exclude_work_search[archive_warning_ids][]')).toEqual(['19', '20']);
+    expect(u.searchParams.getAll('exclude_work_search[freeform_ids][]')).toEqual(['77']);
+    expect(u.searchParams.get('work_search[crossover]')).toBe('F');
+    expect(u.searchParams.get('work_search[words_from]')).toBe('1000');
+    expect(u.searchParams.get('page')).toBe('3');
+  });
+
+  it('batches update checks into one id search', () => {
+    const u = new URL(idSearchUrl(['1', '22', '333']));
+    expect(u.pathname).toBe('/works/search');
+    expect(u.searchParams.get('work_search[query]')).toBe('id:(1 OR 22 OR 333)');
+    expect(u.searchParams.get('work_search[sort_column]')).toBe('revised_at');
+    expect(u.searchParams.get('work_search[sort_direction]')).toBe('desc');
+  });
+
+  it('leaves out empty search fields', () => {
+    const u = new URL(searchUrl({ query: '', title: 'x', warnings: [], complete: '' }));
+    expect([...u.searchParams.keys()]).toEqual(['commit', 'work_search[title]']);
+  });
+
+  it('counts the filters that are set', () => {
+    expect(countFilters({})).toBe(0);
+    expect(countFilters({ sort: 'hits' })).toBe(0);
+    expect(countFilters({ rating: 11, warnings: [], include: { character: ['1'] }, complete: '' })).toBe(2);
+    expect(countFilters({ singleChapter: false, title: 'x' })).toBe(1);
+  });
+
+  it('splits author ids', () => {
+    expect(splitAuthorId('user/user')).toEqual({ user: 'user' });
+    expect(splitAuthorId('user/Pen Name')).toEqual({ user: 'user', pseud: 'Pen Name' });
   });
 });

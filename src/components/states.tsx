@@ -3,13 +3,14 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, View } from 'react-native';
 import { LoginRequiredError, NeedsWebError } from '../ffn/api';
 import { FfnPageError } from '../ffn/parsers/story';
 import { SourceBlockedError } from '../net/blocks';
 import { bridge, BridgeError } from '../net/bridge';
 import { HttpTimeoutError, NetworkError, RateLimitedError } from '../net/httpCore';
 import { SOURCE_NAMES } from '../sources/keys';
+import { Ao3AdultNoticeError, Ao3NotFoundError, Ao3RestrictedError, Ao3UnavailableError } from '../sources/ao3/api';
 import { ComingSoonError } from '../sources/registry';
 import { useTheme } from '../theme';
 import { errorMessage } from '../utils/format';
@@ -84,12 +85,29 @@ export function ErrorView({ error, onRetry }: { error: unknown; onRetry?: () => 
       />
     );
   }
+  if (error instanceof Ao3RestrictedError) {
+    // Logging in to AO3 comes in a later version; until then the work opens on AO3's site.
+    return (
+      <Empty
+        icon="lock-closed-outline"
+        title="Log in to AO3 to read this"
+        message="This work's creator made it visible only to people logged in to AO3. FicShelf can't log in to AO3 yet, so open it on AO3's site."
+        action={{ label: 'Open on AO3', onPress: () => Linking.openURL(error.url).catch(() => {}) }}
+      />
+    );
+  }
+  if (error instanceof Ao3NotFoundError) {
+    return <Empty icon="help-circle-outline" title="Not on AO3" message={error.message} action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined} />;
+  }
+  if (error instanceof Ao3UnavailableError || error instanceof Ao3AdultNoticeError) {
+    return <Empty icon="cloud-offline-outline" title={error instanceof Ao3UnavailableError ? 'AO3 is busy' : 'AO3 asked to confirm'} message={error.message} action={onRetry ? { label: 'Try again', onPress: onRetry } : undefined} />;
+  }
   if (error instanceof ComingSoonError) {
     return (
       <Empty
         icon="time-outline"
         title={error.message}
-        message={`This version of FicShelf can't open ${SOURCE_NAMES[error.source]} stories yet. FanFiction.net stories work as before.`}
+        message={`This version of FicShelf can't open ${SOURCE_NAMES[error.source]} stories yet. FanFiction.net and AO3 stories work.`}
       />
     );
   }
@@ -118,7 +136,7 @@ export function ErrorView({ error, onRetry }: { error: unknown; onRetry?: () => 
   );
 }
 
-/** An inline message card (e.g. "AO3 support is coming soon" under a pasted link). */
+/** An inline message card (e.g. "Wattpad support is coming soon" under a pasted link). */
 export function Notice({ icon = 'information-circle-outline', title, message }: { icon?: IconName; title: string; message?: string }) {
   const c = useTheme();
   return (

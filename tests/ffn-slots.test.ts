@@ -230,7 +230,8 @@ describe('links', () => {
       [{ pathname: '/list', params: { path: '/anime/Naruto/' } }],
       [{ pathname: '/web', params: { path: '/account/settings.php' } }],
     ]);
-    expect(openLinkHit(resolveLink('https://archiveofourown.org/works/1')!)).toBe(false);
+    push.mockClear();
+    expect(openLinkHit(resolveLink('https://www.wattpad.com/story/1-x')!)).toBe(false);
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -246,20 +247,26 @@ describe('links', () => {
   });
 
   it('inside a chapter: links to sites that aren’t readable yet say so; others do nothing', () => {
-    openReaderLink('https://archiveofourown.org/works/1');
-    expect(toast).toHaveBeenLastCalledWith('AO3 support is coming soon');
+    openReaderLink('https://www.wattpad.com/story/1-x');
+    expect(toast).toHaveBeenLastCalledWith('Wattpad support is coming soon');
     openReaderLink('https://example.com/');
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it('inside a chapter: AO3 works open in the app', () => {
+    openReaderLink('https://archiveofourown.org/works/1');
+    openReaderLink('/works/2/chapters/3', 'https://archiveofourown.org/');
+    expect(push.mock.calls).toEqual([[{ pathname: '/story/[id]', params: { id: 'ao3:1' } }], [{ pathname: '/story/[id]', params: { id: 'ao3:2' } }]]);
   });
 });
 
 describe('other sites', () => {
   it('get plain slots until they’re readable', () => {
-    expect(uiOf('ao3:5')).toBe(basicUi);
+    expect(uiOf('wp:5')).toBe(basicUi);
     expect(getUi('wp')).toBe(basicUi);
-    const ao3 = { ...story, key: 'ao3:5' as const, source: 'ao3' as const, remoteId: '5' };
-    expect(storyPageMenu(ao3).map((a) => a.label)).toEqual(['Share', 'Copy link', 'Add to collection…', 'Mark all chapters read', 'Mark all unread']);
-    expect(readerMenu(ao3, 1, { bookmark: () => {} }).map((a) => a.label)).toEqual(['Bookmark this spot', 'Share', 'Story details']);
-    expect(basicUi.readerActions(ao3, 1, {}).end).toEqual([]);
+    const wp = { ...story, key: 'wp:5' as const, source: 'wp' as const, remoteId: '5' };
+    expect(storyPageMenu(wp).map((a) => a.label)).toEqual(['Share', 'Copy link', 'Add to collection…', 'Mark all chapters read', 'Mark all unread']);
+    expect(readerMenu(wp, 1, { bookmark: () => {} }).map((a) => a.label)).toEqual(['Bookmark this spot', 'Share', 'Story details']);
+    expect(basicUi.readerActions(wp, 1, {}).end).toEqual([]);
   });
 });

@@ -48,6 +48,11 @@ const SKIP_TAGS = new Set(['script', 'style', 'noscript', 'template']);
  */
 const DROP_TAGS = new Set(['script', 'style', 'noscript', 'template', 'xmp', 'noembed', 'noframes', 'plaintext', 'iframe', 'object', 'embed']);
 
+/** `<aside class="fs-notes" data-pos="before">`: the author's notes the app put before the text. */
+function isNotesBefore(el: Element): boolean {
+  return el.name === 'aside' && (el.attribs.class ?? '').split(/\s+/).includes('fs-notes') && el.attribs['data-pos'] === 'before';
+}
+
 function isBlock(n: AnyNode): n is Element {
   return isTag(n) && BLOCK_TAGS.has(n.name);
 }
@@ -238,6 +243,8 @@ export function segmentChapter(html: string): SegmentedChapter {
   /** A scene separator ("* * *", <hr>, …) was passed since the last spoken block. */
   let sceneBreak = false;
   const blockInfo: BlockInfo[] = [];
+  /** Where the author's notes aside at the very top (`.fs-notes[data-pos=before]`) ends. */
+  let notesEnd: number | undefined;
 
   const addBlock = (text: string): number | null => {
     const raw = clean(text);
@@ -298,12 +305,15 @@ export function segmentChapter(html: string): SegmentedChapter {
         flushRun(parent, run, out);
         run = [];
         if (child.name === 'hr') sceneBreak = true;
+        // The site's notes before the text (AO3), set apart by the app: an exact boundary.
+        const notes = block === 0 && notesEnd === undefined && isNotesBefore(child);
         if (!LEAF_BLOCK_TAGS.has(child.name) && hasBlockChild(child)) {
           walk(child);
         } else {
           const b = addBlock(nodeText(child));
           if (b != null) child.attribs['data-tts'] = String(b);
         }
+        if (notes) notesEnd = block;
         out.push(child);
       } else if (isTag(child) && hasBlockChild(child)) {
         // Inline wrapper around blocks (e.g. <span><p>…</p></span>): look inside.
@@ -322,7 +332,8 @@ export function segmentChapter(html: string): SegmentedChapter {
 
   dropUnsafe(doc);
   walk(doc);
-  const notes = frontMatterBlocks(blockInfo);
+  // Exact notes boundary when the chapter has one (never the whole chapter); else the heuristic.
+  const notes = notesEnd !== undefined && notesEnd > 0 && notesEnd < block ? notesEnd : frontMatterBlocks(blockInfo);
   return {
     segments,
     frontMatter: notes ? segments.filter((x) => x.block < notes).length : 0,

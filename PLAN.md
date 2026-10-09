@@ -3,7 +3,8 @@
 The official FanFiction.Net iOS app (FictionPress, App Store id 1192753879) has had
 no meaningful update in about two years. This repo rebuilds it as a modern Expo /
 React Native app (iOS first, Android also works) that talks to the **live**
-www.fanfiction.net site and supports logging in with your real account.
+www.fanfiction.net site and supports logging in with your real account. It now also
+reads Archive of Our Own (AO3, section 2.12).
 
 > FicShelf is an unofficial client. It is not affiliated with FanFiction.Net or
 > FictionPress. Rename it in `app.json` if you like.
@@ -264,13 +265,48 @@ your session · ⏳ not built (reason given).
 - ✅ iPad support (adjustable reading column width, sheets and cards scale to tablet widths)
 - ✅ Accessibility labels on controls, Dynamic Type for app text
 - ✅ About / disclaimer / version
+- ✅ Settings → Sources: AO3 on / off, "Ask before showing adult works", fold authors' notes
+- ✅ One-time "What's new" sheet (AO3)
+
+### 2.12 Archive of Our Own (AO3), without logging in
+- ✅ AO3 on by default, also for existing installs (switch in Settings → Sources)
+- ✅ Site chips on Browse and Search (FanFiction.net · AO3); FanFiction.net's screens unchanged
+- ✅ Browse: 11 media → a medium's fandoms (A–Z, filter, sort, counts; cached 7 days) → a tag's works
+- ✅ Tag works: sort, rating, complete chips; filter sheet with warnings, categories (include /
+  exclude), crossovers, length, language, search within results, and the page's top fandoms,
+  characters, relationships and additional tags (include / exclude); 20 a page, up to page 5000
+- ✅ Pin AO3 fandoms to Browse; popular fandoms from /media
+- ✅ Search: any field, title, creators, fandoms (AO3 suggestions, debounced, from 2 letters),
+  characters, relationships, additional tags, rating, warnings, categories, complete, crossovers,
+  single chapter, length, language, sort; recent AO3 searches
+- ✅ Pasted links: works, chapters (/chapters/ID through AO3's redirect), tags, series, creators,
+  mirrors (ao3.org, archiveofourown.com/.net, archive.transformativeworks.org); a typed number asks
+  which site
+- ✅ Story page: tag groups, warnings line, rating badge, series row (part N, previous / next work),
+  co-creators, Anonymous, orphan_account, AO3 stats, chapter list with ids and dates (/navigate)
+- ✅ Series and creator screens (works, filters; profile, series and bookmarks open on AO3)
+- ✅ Reader: per-chapter requests with view_adult=true, sanitized text, notes and end notes as
+  foldable boxes, work skins stripped, links resolved against AO3 and opened in the app
+- ✅ In-app adult-content gate for Mature / Explicit / Not Rated works ("Always show" setting)
+- ✅ Restricted works: lock in listings, login redirect detected, "Log in to AO3 to read this" +
+  Open on AO3; the download host is never used for them
+- ✅ Library, collections, bookmarks, Continue reading (keys 'ao3:<id>', no collision with FFN ids)
+- ✅ Offline: AO3's official HTML download (link copied from the work page), one request, split
+  into chapters with their notes, chapter ids stored; full-work page as fallback; re-downloaded only
+  when `updated_at` changes
+- ✅ Audiobook, with the notes boxes as the exact "skip notes" boundary
+- ✅ Updates: one id search per 20 works (background, 5 s apart), /navigate for the rest; alerts only
+  for new chapters; edits refresh downloads quietly; reordered chapters move progress, downloads,
+  bookmarks and the listening position
+- ⏳ Later: AO3 login (restricted works, kudos, comments, subscriptions, AO3 bookmarks, Marked for
+  Later), creator's style toggle, offline images
 
 ---
 
 ## 3. Code map
 
 ```
-src/app/               Expo Router screens (tabs + stacks)
+src/app/               Expo Router screens (tabs + stacks); src/app/ao3/ for AO3
 src/net/bridge*.tsx    WebView bridge (native) + dev proxy bridge (web)
 src/net/challenge.ts   Cloudflare challenge detection
 src/ffn/urls.ts        URL builders for every page type / filter
@@ -278,6 +314,9 @@ src/ffn/constants.ts   categories, genres, ratings, languages, lengths …
 src/ffn/parsers/       HTML → typed models (story, lists, search, reviews, profile …)
 src/ffn/forms.ts       generic form parsing + "form replay"
 src/ffn/api.ts         typed client (calls bridge + parsers)
+src/sources/           site layer: keys, Source contract, registry, slots; ffn/ and ao3/ adapters
+src/sources/ao3/       AO3: api (polite native requests), adapter, parsers/, urls, constants, ui slots
+src/net/http*.ts       polite HTTP client for AO3 (per-host queue, gaps, Retry-After); blocks.ts
 src/db/                SQLite (library, chapters, history, bookmarks, collections, drafts)
 src/state/             settings store, auth/session store
 src/reader/            reader HTML template + in-reader JS
@@ -285,7 +324,9 @@ src/features/          updates checker, downloads, shared story actions
 src/audio/             audiobook player: segmentation, TTS engine, background audio / lock screen, voices
 src/components/        UI kit
 tests/                 Jest tests + synthetic HTML fixtures (no real story text)
-scripts/live-check.ts  runs the bridge JS + parsers against the live site (Playwright)
+scripts/live-check.ts  runs the bridge JS + parsers against the live site (Playwright);
+                       `--source ao3` checks the AO3 parsers with 5 plain requests
+scripts/synthesize-fixture.ts  saved AO3 page → test fixture with the authors' words replaced
 scripts/dev-proxy.ts   lets the web build use a real Chromium session (for screenshots)
 ```
 
@@ -293,7 +334,8 @@ scripts/dev-proxy.ts   lets the web build use a real Chromium session (for scree
 
 ```bash
 npm install
-npm test               # parser + url tests
+npm test               # unit tests (554)
+npm run lint           # eslint + check-keys
 npm run typecheck
 npx expo run:ios       # local dev build (needs Xcode), or:
 npx eas-cli@latest build -p ios --profile development
@@ -304,5 +346,6 @@ use a **development build**, not Expo Go.
 
 ## 5. Verification done
 
-See the **Verification** section of `README.md`: 39 unit tests, a 17-check live-site run of the
-real parsers, typecheck, lint, iOS bundle export, expo-doctor, and live-data screenshots.
+See the **Verification** section of `README.md`: 554 unit tests, a 17-check live run of the
+FanFiction.net parsers and a 5-check live run of the AO3 parsers, typecheck, lint, iOS bundle
+export, expo-doctor, and live-data screenshots.

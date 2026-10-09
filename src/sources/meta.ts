@@ -16,7 +16,9 @@ export function isStoryMeta(s: object): s is StoryMeta {
  * the FFN screens and an older build installed again read.
  */
 export function libraryAuthor(source: StoryMeta['source'], a: AuthorRef | undefined): LibraryAuthor | undefined {
-  if (!a?.id) return undefined;
+  // No id: FanFiction.net's "no author link" is dropped; another site's named byline (AO3's
+  // "Anonymous") is kept for the name.
+  if (!a || (!a.id && (source === 'ffn' || !a.name))) return undefined;
   const out: LibraryAuthor = { id: source === 'ffn' && /^\d+$/.test(a.id) ? Number(a.id) : a.id, name: a.name };
   if (a.avatarUrl) out.avatarUrl = a.avatarUrl;
   return out;
@@ -46,8 +48,20 @@ export function libraryMetaFromMeta(m: StoryMeta | StoryInfo): Partial<LibrarySt
   const author = libraryAuthor(m.source, m.author);
   if (author) out.author = author;
   if (m.coverUrl) out.coverUrl = m.coverUrl;
+  if (m.coAuthors?.length) out.coAuthors = m.coAuthors.map((a) => libraryAuthor(m.source, a)).filter((a): a is LibraryAuthor => !!a);
+  if (m.fandoms?.length) out.fandoms = m.fandoms;
+  if (m.tags?.length) out.tags = m.tags;
+  if (m.plannedChapters !== undefined) out.plannedChapters = m.plannedChapters;
+  if (m.restricted !== undefined) out.restricted = m.restricted;
+  if (m.mature !== undefined) out.mature = m.mature;
+  if (m.version) out.version = m.version;
   const info = m as Partial<StoryInfo>;
-  if (info.chapterList?.length) out.chapterTitles = info.chapterList.map((c) => c.title);
+  if (info.chapterList?.length) {
+    out.chapterTitles = info.chapterList.map((c) => c.title);
+    const ids = info.chapterList.map((c) => c.remoteId);
+    if (ids.every(Boolean)) out.chapterIds = ids as string[];
+  }
+  if (info.series) out.series = info.series;
   if (info.ffn?.storyTextId) out.ffn = { storyTextId: info.ffn.storyTextId };
   return out;
 }
@@ -77,9 +91,22 @@ export function infoFromLibrary(lib: LibraryStory): StoryInfo {
     published: lib.published,
     complete: lib.complete,
     coverUrl: lib.coverUrl,
-    chapterList: (lib.chapterTitles ?? Array.from({ length: lib.chapters }, (_, i) => `Chapter ${i + 1}`)).map((title, i) => ({ number: i + 1, title })),
+    chapterList: (lib.chapterTitles ?? Array.from({ length: lib.chapters }, (_, i) => `Chapter ${i + 1}`)).map((title, i) => ({
+      number: i + 1,
+      title,
+      ...(lib.chapterIds?.[i] ? { remoteId: lib.chapterIds[i] } : {}),
+    })),
   };
-  if (lib.author) out.author = { source: lib.source, id: String(lib.author.id), name: lib.author.name, ...(lib.author.avatarUrl ? { avatarUrl: lib.author.avatarUrl } : {}) };
+  const author = (a: LibraryAuthor): AuthorRef => ({ source: lib.source, id: String(a.id), name: a.name, ...(a.avatarUrl ? { avatarUrl: a.avatarUrl } : {}) });
+  if (lib.author) out.author = author(lib.author);
+  if (lib.coAuthors?.length) out.coAuthors = lib.coAuthors.map(author);
+  if (lib.fandoms?.length) out.fandoms = lib.fandoms;
+  if (lib.tags?.length) out.tags = lib.tags;
+  if (lib.plannedChapters !== undefined) out.plannedChapters = lib.plannedChapters;
+  if (lib.series) out.series = lib.series;
+  if (lib.restricted !== undefined) out.restricted = lib.restricted;
+  if (lib.mature !== undefined) out.mature = lib.mature;
+  if (lib.version) out.version = lib.version;
   if (lib.ffn) out.ffn = { storyTextId: lib.ffn.storyTextId, breadcrumbs: [] };
   return out;
 }

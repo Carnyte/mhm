@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "ficshelf",
     "userInterfaceStyle": "automatic",
-    "description": "Unofficial reader for FanFiction.net: browse, search, read, follow, favorite, review and read offline.",
+    "description": "Unofficial reader for FanFiction.net and Archive of Our Own: browse, search, read, follow, favorite, review, read offline and listen.",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ficshelf.reader",

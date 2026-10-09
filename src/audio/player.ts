@@ -7,7 +7,9 @@ import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 import { kv } from '../db/kv';
 import { normalizePositions, type Position } from '../db/migrations/v2';
+import { onChapterRemap } from '../features/chapterIds';
 import { loadChapter as loadChapterText, prefetchChapter } from '../features/chapters';
+import { remapPosition, type ChapterRemap } from '../sources/remap';
 import { loadImage } from '../net/images';
 import { SOURCE_NAMES, sourceOfKey, type StoryKey } from '../sources/keys';
 import { keyOf, libraryStore, recordReading, type AnyStory, type LibraryStory } from '../state/library';
@@ -61,6 +63,17 @@ function titleOffset(segments: Segment[]): number {
 export function listenPosition(key: StoryKey): Position | undefined {
   return positions[key];
 }
+
+/** Moves a story's listening position after its chapters were reordered or deleted. */
+function remapListenPosition(key: StoryKey, r: ChapterRemap) {
+  const p = positions[key];
+  if (!p || !r.changed) return;
+  const next = remapPosition(p, r);
+  const { [key]: _old, ...rest } = positions;
+  positions = next ? { ...rest, [key]: next } : rest;
+  kv.set('listenPositions', positions).catch(() => {});
+}
+onChapterRemap(remapListenPosition);
 
 // --- helpers --------------------------------------------------------------------------------
 

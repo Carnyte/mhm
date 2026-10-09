@@ -1,12 +1,17 @@
+// Browse: "Continue reading" across sites, then the chosen site's Browse home (FanFiction.net's
+// categories, AO3's media). The site chips only appear when more than one site is on.
+
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Ao3BrowseHome } from '../../components/ao3/Ao3BrowseHome';
 import { Cover } from '../../components/Cover';
+import { pickSource, SourceChips, useSourcesWith } from '../../components/SourceChips';
 import { IconButton, ProgressBar, Segmented, T } from '../../components/ui';
 import { openReader } from '../../features/actions';
 import { CATEGORIES } from '../../ffn/constants';
 import { storyProgress, useLibrary } from '../../state/library';
-import { togglePinnedFandom, useSettings } from '../../state/settings';
+import { togglePinnedFandom, updateSettings, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
 import { useState } from 'react';
 import { compareKeys } from '../../sources/keys';
@@ -15,9 +20,9 @@ type Mode = 'stories' | 'crossovers' | 'communities' | 'forums' | 'betas';
 
 export default function BrowseScreen() {
   const c = useTheme();
-  const [mode, setMode] = useState<Mode>('stories');
-  // This Browse home is FanFiction.net's, so it lists FanFiction.net pins.
-  const pinned = useSettings((s) => s.pinnedFandoms.filter((p) => p.source === 'ffn'));
+  const sources = useSourcesWith('browse');
+  const saved = useSettings((s) => s.browseSource);
+  const source = pickSource(saved, sources);
   const recent = useLibrary((s) =>
     Object.values(s.stories)
       .filter((x) => x.lastReadAt)
@@ -25,18 +30,11 @@ export default function BrowseScreen() {
       .slice(0, 8),
   );
 
-  const openCategory = (key: string) => {
-    if (mode === 'stories') router.push({ pathname: '/fandoms/[cat]', params: { cat: key } });
-    else if (mode === 'crossovers') router.push({ pathname: '/fandoms/[cat]', params: { cat: key, xover: '1' } });
-    else if (mode === 'betas') router.push({ pathname: '/betas/[cat]', params: { cat: key } });
-    else router.push({ pathname: '/groups/[kind]/[cat]', params: { kind: mode, cat: key } });
-  };
-
   return (
     <>
       <Stack.Screen
         options={{
-          headerRight: () => <IconButton icon="link-outline" label="Open a FanFiction.net link" onPress={() => router.push('/open')} style={{ marginRight: 12 }} />,
+          headerRight: () => <IconButton icon="link-outline" label="Open a link" onPress={() => router.push('/open')} style={{ marginRight: 12 }} />,
         }}
       />
       <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -72,92 +70,119 @@ export default function BrowseScreen() {
           </View>
         )}
 
-        <View style={{ paddingHorizontal: 12, marginTop: 16 }}>
-          <Segmented
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'stories', label: 'Stories' },
-              { value: 'crossovers', label: 'Crossovers' },
-              { value: 'communities', label: 'Groups' },
-              { value: 'forums', label: 'Forums' },
-              { value: 'betas', label: 'Betas' },
-            ]}
-          />
-        </View>
-
-        <View style={styles.grid}>
-          {CATEGORIES.map((cat) => (
-            <Pressable
-              key={cat.key}
-              onPress={() => openCategory(cat.key)}
-              style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
-              accessibilityRole="button"
-              accessibilityLabel={`${cat.label} ${mode}`}
-            >
-              <View style={[styles.tileIcon, { backgroundColor: c.primary + (c.dark ? '33' : '14') }]}>
-                <Ionicons name={cat.icon as never} size={22} color={c.primary} />
-              </View>
-              <T size={14} weight="600" numberOfLines={1}>
-                {cat.short}
-              </T>
-            </Pressable>
-          ))}
-          {(mode === 'communities' || mode === 'forums') && (
-            <Pressable
-              onPress={() => router.push({ pathname: '/groups/dir', params: { path: mode === 'forums' ? '/forums/general/0/' : '/communities/general/0/', title: 'General' } })}
-              style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
-            >
-              <View style={[styles.tileIcon, { backgroundColor: c.primary + '14' }]}>
-                <Ionicons name="globe-outline" size={22} color={c.primary} />
-              </View>
-              <T size={14} weight="600">
-                General
-              </T>
-            </Pressable>
-          )}
-        </View>
-
-        <Pressable
-          onPress={() => router.push('/justin')}
-          style={({ pressed }) => [styles.wide, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
-          accessibilityRole="button"
-        >
-          <Ionicons name="flash-outline" size={22} color={c.accent} />
-          <View style={{ flex: 1 }}>
-            <T size={16} weight="600">
-              Just In
-            </T>
-            <T muted size={13}>
-              The newest stories and updates across the site
-            </T>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
-        </Pressable>
-
-        {pinned.length > 0 && (
-          <View style={{ marginTop: 18 }}>
-            <T size={13} weight="600" muted style={styles.label}>
-              MY FANDOMS
-            </T>
-            {pinned.map((f) => (
-              <Pressable
-                key={`${f.source}:${f.path}`}
-                onPress={() => router.push({ pathname: '/list', params: { path: f.path, title: f.name } })}
-                onLongPress={() => togglePinnedFandom(f)}
-                style={({ pressed }) => [styles.pinRow, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
-                accessibilityHint="Long press to unpin"
-              >
-                <Ionicons name="star" size={16} color={c.warning} />
-                <T size={15} style={{ flex: 1 }} numberOfLines={1}>
-                  {f.name}
-                </T>
-                <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
-              </Pressable>
-            ))}
+        {sources.length > 1 && (
+          <View style={{ marginTop: 14 }}>
+            <SourceChips sources={sources} value={source} onChange={(id) => updateSettings({ browseSource: id })} />
           </View>
         )}
+
+        {source === 'ao3' ? <Ao3BrowseHome /> : <FfnBrowseHome />}
       </ScrollView>
+    </>
+  );
+}
+
+/** FanFiction.net's Browse home, as it always was. */
+function FfnBrowseHome() {
+  const c = useTheme();
+  const [mode, setMode] = useState<Mode>('stories');
+  // This Browse home is FanFiction.net's, so it lists FanFiction.net pins.
+  const pinned = useSettings((s) => s.pinnedFandoms.filter((p) => p.source === 'ffn'));
+
+  const openCategory = (key: string) => {
+    if (mode === 'stories') router.push({ pathname: '/fandoms/[cat]', params: { cat: key } });
+    else if (mode === 'crossovers') router.push({ pathname: '/fandoms/[cat]', params: { cat: key, xover: '1' } });
+    else if (mode === 'betas') router.push({ pathname: '/betas/[cat]', params: { cat: key } });
+    else router.push({ pathname: '/groups/[kind]/[cat]', params: { kind: mode, cat: key } });
+  };
+
+  return (
+    <>
+      <View style={{ paddingHorizontal: 12, marginTop: 16 }}>
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'stories', label: 'Stories' },
+            { value: 'crossovers', label: 'Crossovers' },
+            { value: 'communities', label: 'Groups' },
+            { value: 'forums', label: 'Forums' },
+            { value: 'betas', label: 'Betas' },
+          ]}
+        />
+      </View>
+
+      <View style={styles.grid}>
+        {CATEGORIES.map((cat) => (
+          <Pressable
+            key={cat.key}
+            onPress={() => openCategory(cat.key)}
+            style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
+            accessibilityRole="button"
+            accessibilityLabel={`${cat.label} ${mode}`}
+          >
+            <View style={[styles.tileIcon, { backgroundColor: c.primary + (c.dark ? '33' : '14') }]}>
+              <Ionicons name={cat.icon as never} size={22} color={c.primary} />
+            </View>
+            <T size={14} weight="600" numberOfLines={1}>
+              {cat.short}
+            </T>
+          </Pressable>
+        ))}
+        {(mode === 'communities' || mode === 'forums') && (
+          <Pressable
+            onPress={() => router.push({ pathname: '/groups/dir', params: { path: mode === 'forums' ? '/forums/general/0/' : '/communities/general/0/', title: 'General' } })}
+            style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
+          >
+            <View style={[styles.tileIcon, { backgroundColor: c.primary + '14' }]}>
+              <Ionicons name="globe-outline" size={22} color={c.primary} />
+            </View>
+            <T size={14} weight="600">
+              General
+            </T>
+          </Pressable>
+        )}
+      </View>
+
+      <Pressable
+        onPress={() => router.push('/justin')}
+        style={({ pressed }) => [styles.wide, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
+        accessibilityRole="button"
+      >
+        <Ionicons name="flash-outline" size={22} color={c.accent} />
+        <View style={{ flex: 1 }}>
+          <T size={16} weight="600">
+            Just In
+          </T>
+          <T muted size={13}>
+            The newest stories and updates across the site
+          </T>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
+      </Pressable>
+
+      {pinned.length > 0 && (
+        <View style={{ marginTop: 18 }}>
+          <T size={13} weight="600" muted style={styles.label}>
+            MY FANDOMS
+          </T>
+          {pinned.map((f) => (
+            <Pressable
+              key={`${f.source}:${f.path}`}
+              onPress={() => router.push({ pathname: '/list', params: { path: f.path, title: f.name } })}
+              onLongPress={() => togglePinnedFandom(f)}
+              style={({ pressed }) => [styles.pinRow, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
+              accessibilityHint="Long press to unpin"
+            >
+              <Ionicons name="star" size={16} color={c.warning} />
+              <T size={15} style={{ flex: 1 }} numberOfLines={1}>
+                {f.name}
+              </T>
+              <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+            </Pressable>
+          ))}
+        </View>
+      )}
     </>
   );
 }

@@ -335,6 +335,10 @@ after the update has run, your library won't show properly in it. Nothing is los
 in the older build is merged back when you install the newer one again. Before installing an
 update that changes the library format, use Settings → Back up library.
 
+The AO3 update needs no extra setup and no native rebuild beyond the usual one: AO3 is switched
+on when it starts (a "What's new" sheet says so; Settings → Sources turns it off), and it reaches
+archiveofourown.org directly, without the hidden browser FanFiction.net needs.
+
 ---
 
 ## Path C: TestFlight (paid Apple account)

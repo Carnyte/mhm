@@ -10,7 +10,8 @@ import { statsOf } from '../state/library';
 import { formatDate, formatFull, formatNumber, readingTime } from '../utils/format';
 import { ffnUi } from './ffn/ui';
 import { splitKey, type SourceId, type StoryKey } from './keys';
-import type { ChapterContent, RouteHref, StoryInfo } from './types';
+import type { ChapterContent, RouteHref, SeriesRef, StoryInfo } from './types';
+import { ao3Ui } from './ao3/ui';
 
 export interface StatCell {
   label: string;
@@ -43,6 +44,14 @@ export interface StoryActions {
   menu: SheetAction[];
 }
 
+/** A group of tags on the story page (AO3: Relationships, Characters, Additional tags). */
+export interface TagGroup {
+  label: string;
+  tags: string[];
+  /** Shown in full; other groups show a few and "+N more". */
+  open?: boolean;
+}
+
 export interface ReaderContext {
   /** The chapter as fetched (absent when it was opened from the device's copy). */
   content?: ChapterContent;
@@ -68,6 +77,16 @@ export interface SourceUi {
   webRoute(url: string): RouteHref | null;
   /** Where tapping the fandom on the story page goes. */
   fandomRoute(s: StoryInfo): RouteHref | null;
+  /** The story page's tag groups, under the summary (AO3). */
+  tagGroups?(s: StoryInfo): TagGroup[];
+  /** Where tapping a tag goes. */
+  tagRoute?(tag: string): RouteHref | null;
+  /** A warnings line under the title ("⚠ Major Character Death"), or null. */
+  warningLine?(s: StoryInfo): string | null;
+  /** The rating badge: short text, and whether it's an adult rating (shown in the warning colour). */
+  ratingBadge?(s: StoryInfo): { label: string; adult: boolean } | null;
+  /** A series' screen. */
+  seriesRoute?(series: SeriesRef): RouteHref | null;
 }
 
 /** Plain slots for a site this version can't read yet (a record from a newer build's backup). */
@@ -97,7 +116,7 @@ export const basicUi: SourceUi = {
 
 const UIS: Record<SourceId, SourceUi> = {
   ffn: ffnUi,
-  ao3: basicUi,
+  ao3: ao3Ui,
   wp: basicUi,
   local: basicUi,
 };

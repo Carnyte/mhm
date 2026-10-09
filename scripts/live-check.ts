@@ -1,6 +1,12 @@
 // Runs the app's bridge script + parsers against the LIVE www.fanfiction.net in Chromium.
 // Usage: npm run live-check   (needs Chromium; set CHROMIUM_PATH if not auto-detected;
 // on a headless Linux box run under `xvfb-run -a`).
+//
+// `npm run live-check -- --source ao3` checks the AO3 parsers against archiveofourown.org instead,
+// with plain fetch and a desktop Safari user agent (as the app's native client): 5 requests at
+// most, 3 s apart (a work page, its /navigate, an id search, a HEAD of the official download,
+// /media). Run it before a release; it's how markup changes on AO3 show up.
+//
 // Prints structure only (counts, ids, flags); no story text.
 
 import { parseFandomDirectory } from '../src/ffn/parsers/fandoms';
@@ -12,6 +18,12 @@ import { parseStoryPage } from '../src/ffn/parsers/story';
 import { parseStoryListPage } from '../src/ffn/parsers/storyList';
 import { parseForms, findForm } from '../src/ffn/forms';
 import { isChallengeResponse } from '../src/net/challenge';
+import { isAo3Block } from '../src/net/blocks';
+import { parseListing } from '../src/sources/ao3/parsers/listing';
+import { parseMedia } from '../src/sources/ao3/parsers/media';
+import { parseNavigate } from '../src/sources/ao3/parsers/navigate';
+import { parseWorkPage } from '../src/sources/ao3/parsers/work';
+import { AO3_ORIGIN, idSearchUrl, mediaUrl, navigateUrl, workPageUrl } from '../src/sources/ao3/urls';
 import {
   betaDirectoryPath,
   communityDirectoryPath,
@@ -191,7 +203,91 @@ async function main() {
   process.exit(failed.length ? 1 : 0);
 }
 
-main().catch((e) => {
+// --- AO3 --------------------------------------------------------------------------------------
+
+const SAFARI_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+const AO3_MAX_REQUESTS = 5;
+const AO3_GAP_MS = 3000;
+
+async function mainAo3() {
+  // A long multi-chapter work with a series and many chapters (also an FFN id: the collision case).
+  const workId = process.env.AO3_WORK ?? '3171550';
+  let sent = 0;
+  let last = 0;
+  const get = async (url: string, method: 'GET' | 'HEAD' = 'GET') => {
+    if (sent >= AO3_MAX_REQUESTS) throw new Error('request budget used up');
+    const wait = last + AO3_GAP_MS - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    sent++;
+    try {
+      const res = await fetch(url, { method, headers: { 'User-Agent': SAFARI_UA, Accept: 'text/html,application/xhtml+xml' } });
+      const text = method === 'HEAD' ? '' : await res.text();
+      const headers: Record<string, string> = {};
+      res.headers.forEach((v, k) => (headers[k] = v));
+      const r = { status: res.status, url: res.url, headers, text };
+      if (isAo3Block(r)) throw new Error(`Cloudflare challenge on ${url}`);
+      return r;
+    } finally {
+      last = Date.now();
+    }
+  };
+  const run = async (name: string, fn: () => Promise<[boolean, string]>) => {
+    try {
+      const [ok, detail] = await fn();
+      check(name, ok, detail);
+    } catch (e) {
+      check(name, false, String((e as Error).message));
+    }
+  };
+
+  let downloadHref: string | undefined;
+  await run('work page (view_adult)', async () => {
+    const r = await get(workPageUrl(workId));
+    const p = parseWorkPage(r.text);
+    if (p.kind !== 'work') return [false, `parsed as ${p.kind} (status ${r.status}, ${r.url})`];
+    downloadHref = p.downloads.html;
+    const m = p.meta;
+    const ok = m.id === workId && !!m.title && m.authors.length > 0 && m.words > 0 && m.chapters > 0 && !!m.rating && m.fandoms.length > 0 && p.chapters[0]?.html.length > 100;
+    return [
+      ok && (m.chapters === 1 || p.chapterIndex.length === m.chapters) && !!downloadHref,
+      `status=${r.status} final=${r.url.replace(AO3_ORIGIN, '')} chapters=${m.chapters}/${m.plannedChapters ?? '?'} index=${p.chapterIndex.length} words=${m.words} kudos=${m.kudos} hits=${m.hits} tags=${m.relationships.length}r/${m.characters.length}c/${m.freeforms.length}f series=${m.series.length} version=${m.updatedAt} download=${downloadHref ? 'yes' : 'no'} notes=${p.chapters[0]?.notes ? 'yes' : 'no'}`,
+    ];
+  });
+
+  await run('navigate (chapter ids + dates)', async () => {
+    const n = parseNavigate((await get(navigateUrl(workId))).text);
+    const ok = n.workId === workId && n.chapters.length > 0 && n.chapters.every((c) => /^\d+$/.test(c.id) && !!c.published);
+    return [ok, `${n.chapters.length} chapters, first=${n.chapters[0]?.id} last=${n.chapters.at(-1)?.id}`];
+  });
+
+  await run('id search (update check)', async () => {
+    const ids = [workId, '19893115'];
+    const l = parseListing((await get(idSearchUrl(ids))).text);
+    const found = l.works.map((w) => w.id);
+    const w = l.works.find((x) => x.id === workId);
+    return [ids.every((id) => found.includes(id)) && !!w?.updatedAt && w.chapters > 0, `found=${found.join(',')} total=${l.total} version=${w?.updatedAt} chapters=${w?.chapters}`];
+  });
+
+  await run('official download (HEAD)', async () => {
+    if (!downloadHref) return [false, 'no download link on the work page'];
+    const r = await get(AO3_ORIGIN + downloadHref, 'HEAD');
+    return [r.status === 200 && /download\.archiveofourown\.org/.test(r.url), `status=${r.status} final host=${new URL(r.url).host} type=${r.headers['content-type']} cache=${r.headers['cf-cache-status'] ?? '-'}`];
+  });
+
+  await run('media', async () => {
+    const media = parseMedia((await get(mediaUrl())).text);
+    return [media.length >= 10 && media.every((m) => m.top.length > 0), `${media.length} media, e.g. ${media[0]?.name} (${media[0]?.top.length} top fandoms)`];
+  });
+
+  const failed = results.filter((r) => !r.ok);
+  console.log(`\n${results.length - failed.length}/${results.length} AO3 live checks passed (${sent} requests)`);
+  process.exit(failed.length ? 1 : 0);
+}
+
+const sourceArg = process.argv.indexOf('--source');
+const target = sourceArg >= 0 ? process.argv[sourceArg + 1] : 'ffn';
+
+(target === 'ao3' ? mainAo3() : main()).catch((e) => {
   console.error(e);
   process.exit(1);
 });

@@ -65,6 +65,11 @@ body{font-family:var(--font);font-size:var(--size);line-height:var(--lh);}
 #text aside.fs-notes[data-pos=after]{margin:1.6em 0 0;}
 #text aside.fs-notes>:first-child{margin-top:0;}
 #text aside.fs-notes>:last-child{margin-bottom:0;}
+#text aside.fs-notes .fs-nt{display:block;width:100%;text-align:left;font:inherit;font-family:-apple-system,system-ui,sans-serif;font-size:.8em;font-weight:600;letter-spacing:.02em;color:var(--muted);background:none;border:0;padding:0 0 .5em;margin:0;}
+#text aside.fs-notes .fs-nt::after{content:' ▾';}
+#text aside.fs-notes.closed .fs-nt{padding:0;}
+#text aside.fs-notes.closed .fs-nt::after{content:' ▸';}
+#text aside.fs-notes.closed>:not(.fs-nt){display:none;}
 a{color:var(--link);}
 .hd{margin-bottom:1.4em;}
 .hd .story{font-size:.8em;color:var(--muted);font-family:-apple-system,system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase;}
@@ -89,7 +94,7 @@ ${p.hasNext ? '<button id="next">Next chapter →</button>' : '<div style="margi
 <div>${endButtons}<button class="alt" id="mark">Bookmark</button></div></div>
 </div>
 <script>${READER_JS}</script>
-<script>window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn })});</script>
+<script>window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn, collapseNotes: !!s.collapseNotes })});</script>
 </body></html>`;
 }
 
@@ -195,14 +200,24 @@ const READER_JS = String.raw`
       post({type:'tap',zone:'center'});
     }
   },{passive:true});
+  // Authors' notes (aside.fs-notes) open and close with a tap on their label.
+  function noteToggles(collapse){
+    var asides=document.querySelectorAll('#text aside.fs-notes');
+    for(var i=0;i<asides.length;i++){
+      var a=asides[i],b=document.createElement('button');b.type='button';b.className='fs-nt';
+      b.textContent=a.getAttribute('data-pos')==='after'?'End notes':'Author\u2019s notes';
+      a.insertBefore(b,a.firstChild);if(collapse)a.classList.add('closed');
+    }
+  }
   document.addEventListener('click',function(e){
+    var nt=e.target.closest&&e.target.closest('.fs-nt');if(nt){nt.parentNode.classList.toggle('closed');return;}
     var id=e.target&&e.target.id;
     if(id==='next')post({type:'next'});else if(id==='mark')post({type:'bookmark',p:progress()});
     var act=e.target.closest&&e.target.closest('#end [data-action]');if(act){post({type:'action',id:act.getAttribute('data-action')});return;}
     var a=e.target.closest&&e.target.closest('a[href]');if(a){e.preventDefault();post({type:'link',href:a.getAttribute('href')});}
   });
   window.__init=function(o){
-    paged=!!o.paged;tapToTurn=o.tapToTurn!==false;
+    paged=!!o.paged;tapToTurn=o.tapToTurn!==false;noteToggles(!!o.collapseNotes);
     var go=function(){window.__scrollTo(o.progress||0);setTimeout(function(){restoring=false;report();post({type:'ready'});},60);};
     if(document.readyState==='complete')go();else window.addEventListener('load',go);
   };

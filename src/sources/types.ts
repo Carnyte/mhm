@@ -93,6 +93,27 @@ export interface StoryMeta {
   restricted?: boolean;
   mature?: boolean;
   paywalled?: boolean;
+  /**
+   * The site's version stamp of the story (AO3's `updated_at`, Unix seconds). Any edit changes
+   * it, so it says when a saved copy is stale, never whether there's a new chapter.
+   */
+  version?: number;
+  /** AO3 only. */
+  ao3?: {
+    /** The official HTML download, exactly as the work page links it (never built by the app). */
+    downloadHtmlHref?: string;
+    /** The work takes comments from visitors who aren't logged in. */
+    guestComments?: boolean;
+  };
+}
+
+/** A work's place in a series, with the neighbouring works when the site names them. */
+export interface SeriesRef {
+  id: string;
+  title: string;
+  part: number;
+  prevId?: string;
+  nextId?: string;
 }
 
 /** A story page: metadata, chapter list and what only that site has. */
@@ -100,7 +121,7 @@ export interface StoryInfo extends StoryMeta {
   chapterList: ChapterInfo[];
   /** A larger cover for the enlarged view, when the site has one. */
   coverLargeUrl?: string;
-  series?: { id: string; title: string; part: number }[];
+  series?: SeriesRef[];
   /** FanFiction.net only. */
   ffn?: {
     /** The id FanFiction.net's review form takes for the story (set from chapter 1's page only). */
@@ -109,8 +130,6 @@ export interface StoryInfo extends StoryMeta {
     breadcrumbs?: Breadcrumb[];
     slug?: string;
   };
-  /** AO3 only (Phase 3). */
-  ao3?: { updatedAt?: number; downloadHtmlHref?: string; guestComments?: boolean };
   /** Wattpad only (Phase 4). */
   wp?: { lastPublishedPartId?: string; modifyDate?: number };
 }
@@ -136,6 +155,10 @@ export interface ChapterContent {
 export interface UpdateResult {
   key: StoryKey;
   info?: StoryInfo;
+  /** What a listing said about the story (AO3's batched search), when there's no full page. */
+  meta?: StoryMeta;
+  /** The chapter ids in order, when the check saw all of them (AO3's /navigate). */
+  chapterIds?: string[];
   chapters?: number;
   changed: boolean;
   /** The text changed without new chapters (AO3 edits): downloads should be refreshed. */
@@ -151,6 +174,16 @@ export interface FetchOpts {
   signal?: AbortSignal;
   /** User requests go ahead of background ones (update checks) and are spaced less. */
   priority?: 'user' | 'background';
+}
+
+export interface DownloadOpts extends FetchOpts {
+  /**
+   * The version of the copy already on the device (StoryMeta.version). When the site's version
+   * is the same, nothing is downloaded: the result's version equals it and no chapter arrives.
+   */
+  knownVersion?: number;
+  /** Called with the story page before any chapter arrives (chapter ids, the chapter count). */
+  onInfo?: (info: StoryInfo) => Promise<void> | void;
 }
 
 /** What a pasted link, a deep link or a link inside a chapter points to. */
@@ -211,7 +244,7 @@ export interface Source {
   getStory(remoteId: string, o?: FetchOpts): Promise<StoryInfo>;
   getChapter(remoteId: string, ch: ChapterInfo, o?: FetchOpts): Promise<ChapterContent>;
   /** Every chapter in as few requests as the site allows (AO3's official HTML download). */
-  downloadAll?(remoteId: string, onChapter: (c: ChapterContent) => Promise<void>, o?: FetchOpts): Promise<StoryInfo>;
+  downloadAll?(remoteId: string, onChapter: (c: ChapterContent) => Promise<void>, o?: DownloadOpts): Promise<StoryInfo>;
   checkUpdates?(stories: LibraryStory[], o?: FetchOpts): Promise<UpdateResult[]>;
   search?(q: SearchQuery, page: number, o?: FetchOpts): Promise<{ items: StoryMeta[]; lastPage: number; total?: string }>;
   session?: SourceSession;

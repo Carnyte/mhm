@@ -14,6 +14,7 @@ import * as player from '../../audio/player';
 import { usePlayer } from '../../audio/player';
 import { segmentChapter } from '../../audio/segments';
 import { DESKTOP_USER_AGENT } from '../../net/webviewConfig';
+import { AdultGateSheet, useAdultGate } from '../../components/ao3/AdultGateSheet';
 import { ReaderWebView, type ReaderMessageEvent, type ReaderWebViewRef } from '../../components/ReaderWebView';
 import { showActions, toast } from '../../components/Sheet';
 import { Empty, ErrorView, Loading } from '../../components/states';
@@ -335,6 +336,8 @@ export default function ReaderScreen() {
   };
 
   const story = data?.story;
+  // AO3: ask before showing an adult work the first time (the same question as the story page).
+  const gate = useAdultGate(story);
   const chapterWords = useMemo(() => (data ? countWords(htmlToText(data.html)) : 0), [data]);
   const left = Math.max(0, Math.round(chapterWords * (1 - progress)));
   const storyPct = story ? ((chapter - 1 + progress) / story.chapters) * 100 : 0;
@@ -362,6 +365,10 @@ export default function ReaderScreen() {
       ) : !data ? (
         <View style={{ flex: 1, paddingTop: insets.top }}>
           <Loading label={`Loading chapter ${chapter}…`} />
+        </View>
+      ) : gate.blocked ? (
+        <View style={{ flex: 1, paddingTop: insets.top + 56 }}>
+          <AdultGateSheet rating={data.story.rating} onContinue={gate.confirm} onAlways={gate.alwaysShow} />
         </View>
       ) : (
         <ReaderWebView
@@ -432,7 +439,7 @@ export default function ReaderScreen() {
       )}
 
       {/* Bottom bar */}
-      {chrome && story && (
+      {chrome && story && !gate.blocked && (
         <View style={[styles.bottom, { paddingBottom: insets.bottom + 6, backgroundColor: chromeColor + 'F2', borderColor: theme.muted + '33' }]}>
           {settings.showProgress && (
             <View style={styles.progressRow}>

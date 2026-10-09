@@ -11,7 +11,7 @@ import { Alert, Platform, ScrollView, Switch, View } from 'react-native';
 import { ReaderSettingsPanel } from '../components/ReaderSettingsPanel';
 import { pickOption, toast } from '../components/Sheet';
 import { Row, Section, T } from '../components/ui';
-import { deleteSnapshot, snapshotInfo } from '../db/kv';
+import { deleteSnapshot, httpCache, snapshotInfo } from '../db/kv';
 import { downloadedBytes, removeAllDownloads } from '../features/downloads';
 import { configureBackgroundChecks, requestNotificationPermission } from '../features/updates';
 import { LANGUAGES, RATINGS, SORTS } from '../ffn/constants';
@@ -20,7 +20,7 @@ import { bridge } from '../net/bridge';
 import { clearImageCache } from '../net/images';
 import { clearHistory, exportBackup, importBackup, useLibrary } from '../state/library';
 import { useBridgeStatus, useSession } from '../state/session';
-import { updateSettings, useSettings } from '../state/settings';
+import { updateReader, updateSettings, updateSource, useSettings } from '../state/settings';
 import { useTheme } from '../theme';
 import { formatBytes, relativeMs } from '../utils/format';
 
@@ -33,6 +33,7 @@ export default function SettingsScreen() {
   const [bytes, setBytes] = useState<number | null>(null);
   const [snapshot, setSnapshot] = useState(snapshotInfo);
   const [readerPanel, setReaderPanel] = useState(false);
+  const ao3 = s.sources.ao3;
 
   useEffect(() => {
     downloadedBytes().then(setBytes).catch(() => setBytes(0));
@@ -98,6 +99,35 @@ export default function SettingsScreen() {
           }
         />
         <Row title="Haptic feedback" right={<Switch value={s.haptics} onValueChange={(v) => updateSettings({ haptics: v })} />} />
+      </Section>
+
+      <Section
+        title="Sources"
+        footer="AO3 works are loaded from archiveofourown.org one request at a time, with view_adult set: FicShelf asks before opening adult works itself. Turning a site off hides it everywhere; its stories stay in your library and downloads stay readable."
+      >
+        <Row title="FanFiction.net" subtitle="Always on" iconColor={c.source.ffn} icon="library-outline" />
+        <Row
+          title="Archive of Our Own (AO3)"
+          subtitle={ao3.enabled ? 'Browse, search, read, download, listen, updates' : 'Off'}
+          icon="library-outline"
+          iconColor={c.source.ao3}
+          right={<Switch value={ao3.enabled} onValueChange={(v) => updateSource('ao3', { enabled: v })} accessibilityLabel="AO3" />}
+        />
+        {ao3.enabled && (
+          <Row
+            title="Ask before showing adult works"
+            subtitle="Mature, Explicit and Not Rated works"
+            right={<Switch value={ao3.askAdult !== false} onValueChange={(v) => updateSource('ao3', { askAdult: v })} />}
+          />
+        )}
+        {ao3.enabled && (
+          <Row
+            title="Fold authors’ notes"
+            subtitle="Show notes before and after chapters as a one-line bar"
+            right={<Switch value={!!s.reader.collapseNotes} onValueChange={(v) => updateReader({ collapseNotes: v })} />}
+          />
+        )}
+        <Row title="Wattpad" value="Coming soon" iconColor={c.source.wp} icon="library-outline" />
       </Section>
 
       <Section title="Reader" footer="Every reading option (themes, fonts, spacing, pages, read aloud) is also in the Aa menu inside the reader.">
@@ -178,7 +208,16 @@ export default function SettingsScreen() {
         <Row icon="share-outline" title="Back up library" subtitle="Saves stories, progress, bookmarks, collections, drafts" onPress={doExport} />
         <Row icon="download-outline" title="Restore from backup" onPress={doImport} />
         <Row icon="image-outline" title="Clear image cache" onPress={() => (clearImageCache(), toast('Image cache cleared'))} />
-        <Row icon="refresh-outline" title="Clear page cache" onPress={() => (invalidate(''), toast('Cache cleared'))} />
+        <Row
+          icon="refresh-outline"
+          title="Clear page cache"
+          subtitle="Pages kept in memory and AO3’s saved fandom lists"
+          onPress={() => {
+            invalidate('');
+            httpCache.clear().catch(() => {});
+            toast('Cache cleared');
+          }}
+        />
         <Row icon="time-outline" title="Clear reading history" destructive onPress={() => confirm('Clear reading history?', 'Your progress in every story will be forgotten.', clearHistory)} />
         <Row
           icon="trash-outline"
@@ -213,7 +252,7 @@ export default function SettingsScreen() {
         <Row title="Version" value={`${Constants.expoConfig?.version ?? '1.0.0'}${Platform.OS === 'ios' ? ' (iOS)' : ''}`} />
         <View style={{ padding: 14 }}>
           <T muted size={13} style={{ lineHeight: 19 }}>
-            FicShelf is an unofficial reader for FanFiction.net and isn’t affiliated with FanFiction.Net or FictionPress. All stories belong to their authors and are loaded live from fanfiction.net. Please support writers with reviews, follows and favorites.
+            FicShelf is an unofficial reader for FanFiction.net and Archive of Our Own. It isn’t affiliated with FanFiction.Net, FictionPress, AO3 or the Organization for Transformative Works. All stories belong to their authors and are loaded from fanfiction.net and archiveofourown.org. Please support writers with reviews, kudos, comments, follows and favorites on their sites.
           </T>
         </View>
       </Section>

@@ -5,29 +5,46 @@ import { chapterStore } from '../db/kv';
 import { splitKey, type StoryKey } from '../sources/keys';
 import { sourceOf } from '../sources/registry';
 import type { ChapterContent, ChapterInfo, FetchOpts, StoryInfo } from '../sources/types';
+import { libraryStore } from '../state/library';
+import { applyChapterIds, chapterIdsOf } from './chapterIds';
 
 export function getSavedChapter(key: StoryKey, chapter: number): Promise<string | undefined> {
   return chapterStore.get(key, chapter);
 }
 
-/** Saves one chapter (the reader caches chapters you read, too). */
-export function saveChapter(key: StoryKey, chapter: number, html: string): Promise<void> {
-  return chapterStore.put(key, chapter, html);
+/** Saves one chapter (the reader caches chapters you read, too), with the site's id for it. */
+export function saveChapter(key: StoryKey, chapter: number, html: string, remoteId?: string): Promise<void> {
+  return chapterStore.put(key, chapter, html, remoteId);
+}
+
+/** A story page's chapter ids, stored for a library story (moving reading state if they changed). */
+async function syncChapterIds(key: StoryKey, info: StoryInfo | undefined) {
+  const ids = info && chapterIdsOf(info);
+  if (ids) await applyChapterIds(key, ids).catch(() => {});
 }
 
 /** The story's page from its site: metadata and chapter list. */
 export async function fetchStory(key: StoryKey, opts: FetchOpts = {}): Promise<StoryInfo> {
   // async, so a key this can't fetch rejects (and shows an error) instead of throwing.
-  return sourceOf(key).getStory(splitKey(key).remoteId, opts);
+  const info = await sourceOf(key).getStory(splitKey(key).remoteId, opts);
+  await syncChapterIds(key, info);
+  return info;
 }
 
 /**
- * One chapter from the story's site. On FanFiction.net the chapter's page also carries the story's
- * metadata (`story`), so reading a chapter refreshes the chapter count at no extra request.
+ * One chapter from the story's site. Chapter pages also carry the story's metadata (`story`) on
+ * FanFiction.net and AO3, so reading a chapter refreshes the chapter count at no extra request.
  */
 export async function fetchChapter(key: StoryKey, chapter: number | ChapterInfo, opts: FetchOpts = {}): Promise<ChapterContent> {
-  const ch = typeof chapter === 'number' ? { number: chapter, title: '' } : chapter;
-  return sourceOf(key).getChapter(splitKey(key).remoteId, ch, opts);
+  const ch: ChapterInfo = typeof chapter === 'number' ? { number: chapter, title: '' } : { ...chapter };
+  // The site's id for the chapter, when the library knows it (AO3 chapters are fetched by id).
+  if (!ch.remoteId) {
+    const id = libraryStore.get().stories[key]?.chapterIds?.[ch.number - 1];
+    if (id) ch.remoteId = id;
+  }
+  const c = await sourceOf(key).getChapter(splitKey(key).remoteId, ch, opts);
+  await syncChapterIds(key, c.story);
+  return c;
 }
 
 const notes = (html: string | undefined, pos: 'before' | 'after') =>
@@ -55,7 +72,7 @@ export async function loadChapter(key: StoryKey, chapter: number): Promise<Loade
   if (saved) return { html: saved, offline: true };
   const c = await fetchChapter(key, chapter);
   const html = renderChapter(c);
-  if (html) saveChapter(key, chapter, html).catch(() => {});
+  if (html) saveChapter(key, chapter, html, c.remoteId).catch(() => {});
   return { html, story: c.story, offline: false };
 }
 
@@ -66,7 +83,7 @@ export function prefetchChapter(key: StoryKey, chapter: number) {
       if (have) return;
       return fetchChapter(key, chapter, { quiet: true, priority: 'background' }).then((c) => {
         const html = renderChapter(c);
-        if (html) return saveChapter(key, chapter, html);
+        if (html) return saveChapter(key, chapter, html, c.remoteId);
       });
     })
     .catch(() => {});

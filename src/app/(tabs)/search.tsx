@@ -1,23 +1,28 @@
-// Search: stories, writers, forums, communities — with match / type / sort options, live facets,
-// fandom exclusion, recent searches and "open by link or id". Searching is FanFiction.net's; a
-// pasted link to another site the app knows (AO3, Wattpad) says whether it can be opened yet.
+// Search: one box for searching or pasting a link, then the chosen site's search. FanFiction.net:
+// stories, writers, forums, communities, with match / type / sort options, live facets, fandom
+// exclusion and recent searches (as before). AO3: its work search form; results open on the AO3
+// works screen. A pasted link opens in the app when its site is on; a bare number asks which site.
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { Ao3SearchForm } from '../../components/ao3/Ao3SearchForm';
+import { pickSource, SourceChips, useSourcesWith } from '../../components/SourceChips';
 import { useMemo, useState } from 'react';
 import { FlatList, Keyboard, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Cover } from '../../components/Cover';
-import { pickOption } from '../../components/Sheet';
+import { pickOption, toast } from '../../components/Sheet';
 import { StoryCard } from '../../components/StoryCard';
 import { Empty, ErrorView, Loading, Notice } from '../../components/states';
 import { Chip, Input, Segmented, T } from '../../components/ui';
-import { openLinkHit } from '../../features/actions';
+import { openLinkHit, openStory } from '../../features/actions';
 import { search } from '../../ffn/api';
 import { SEARCH_FORMAT, SEARCH_MATCH, SEARCH_SORTS, type SearchType } from '../../ffn/constants';
 import type { SearchResults } from '../../ffn/types';
 import { SEARCH_FACET_KEYS, type SearchParams } from '../../ffn/urls';
 import { usePaged } from '../../hooks/useQuery';
-import { disabledNotice, resolveLink } from '../../sources/registry';
+import type { Ao3Search } from '../../sources/ao3/urls';
+import { toKey } from '../../sources/keys';
+import { disabledNotice, isBareStoryNumber, resolveLink } from '../../sources/registry';
 import { addRecentSearch, clearRecentSearches, useLibrary } from '../../state/library';
 import { updateSettings, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
@@ -34,14 +39,46 @@ export default function SearchScreen() {
   const [type, setType] = useState<SearchType>('story');
   /** Why a pasted link can't be opened (a site that isn't readable in this version). */
   const [notice, setNotice] = useState<{ title: string; message?: string }>();
-  // This is FanFiction.net search, so it offers FanFiction.net's recent searches.
-  const recents = useLibrary((s) => s.searches.filter((r) => r.source === 'ffn'));
+  const sources = useSourcesWith('search');
+  const savedScope = useSettings((s) => s.searchScope);
+  const scope = pickSource(savedScope, sources);
+  const [ao3, setAo3] = useState<Ao3Search>({});
+  // Each site's own recent searches.
+  const recents = useLibrary((s) => s.searches.filter((r) => r.source === scope));
   const excluded = useSettings((s) => s.excludedFandoms);
+
+  /** AO3's search, with the box as its any-field query. */
+  const runAo3 = (keywords: string, fields: Ao3Search = ao3) => {
+    const q: Ao3Search = { ...fields, query: keywords.trim() || undefined };
+    if (!Object.values(q).some((v) => v !== undefined && v !== '' && !(Array.isArray(v) && !v.length))) {
+      toast('Type something to search for, or fill in a field');
+      return;
+    }
+    Keyboard.dismiss();
+    if (q.query) addRecentSearch('ao3', q.query, 'works');
+    router.push({ pathname: '/ao3/works', params: { q: JSON.stringify(q) } });
+  };
 
   const run = (keywords: string, t: SearchType = type, extra: Partial<SearchParams> = {}) => {
     const k = keywords.trim();
+    if (!k && scope === 'ao3') return runAo3(k);
     if (!k) return;
     setNotice(undefined);
+    // A bare number names a story on either site.
+    if (isBareStoryNumber(k)) {
+      const id = k.replace(/^0+(?=\d)/, '');
+      Keyboard.dismiss();
+      pickOption(
+        `Open story ${id}`,
+        [
+          { value: 'ffn' as const, label: `FanFiction.net story ${id}` },
+          { value: 'ao3' as const, label: `AO3 work ${id}` },
+        ],
+        scope === 'ao3' ? 'ao3' : 'ffn',
+        (src) => openStory(toKey(src, id)),
+      );
+      return;
+    }
     const link = resolveLink(k);
     if (link?.kind === 'disabled') {
       Keyboard.dismiss();
@@ -55,10 +92,11 @@ export default function SearchScreen() {
       openLinkHit(link);
       return;
     }
-    if (link?.kind === 'author') {
+    if (link?.kind === 'author' || (link && link.source !== 'ffn')) {
       openLinkHit(link);
       return;
     }
+    if (scope === 'ao3') return runAo3(k);
     Keyboard.dismiss();
     addRecentSearch('ffn', k, t);
     setParams({ keywords: k, type: t, ...extra });
@@ -96,7 +134,7 @@ export default function SearchScreen() {
       <View style={{ padding: 12, gap: 10 }}>
         <Input
           icon="search"
-          placeholder="Search stories, writers… or paste a link"
+          placeholder={scope === 'ao3' ? 'Search AO3 works… or paste a link' : 'Search stories, writers… or paste a link'}
           value={text}
           onChangeText={(t) => {
             setText(t);
@@ -112,22 +150,37 @@ export default function SearchScreen() {
             setNotice(undefined);
           }}
         />
-        <Segmented
-          value={type}
-          onChange={(t) => {
-            setType(t);
-            if (params) setParams({ keywords: params.keywords, type: t });
-          }}
-          options={[
-            { value: 'story', label: 'Stories' },
-            { value: 'writer', label: 'Writers' },
-            { value: 'community', label: 'Communities' },
-            { value: 'forum', label: 'Forums' },
-          ]}
-        />
+        {sources.length > 1 && (
+          <View style={{ marginHorizontal: -12 }}>
+            <SourceChips
+              sources={sources}
+              value={scope}
+              onChange={(id) => {
+                updateSettings({ searchScope: id });
+                setParams(null);
+                setNotice(undefined);
+              }}
+            />
+          </View>
+        )}
+        {scope === 'ffn' && (
+          <Segmented
+            value={type}
+            onChange={(t) => {
+              setType(t);
+              if (params) setParams({ keywords: params.keywords, type: t });
+            }}
+            options={[
+              { value: 'story', label: 'Stories' },
+              { value: 'writer', label: 'Writers' },
+              { value: 'community', label: 'Communities' },
+              { value: 'forum', label: 'Forums' },
+            ]}
+          />
+        )}
       </View>
 
-      {!params ? (
+      {!params || scope !== 'ffn' ? (
         <ScrollView contentContainerStyle={{ padding: 12 }} keyboardShouldPersistTaps="handled">
           {!!notice && (
             <View style={{ marginBottom: 14 }}>
@@ -149,6 +202,7 @@ export default function SearchScreen() {
                   key={`${r.type}:${r.keywords}`}
                   onPress={() => {
                     setText(r.keywords);
+                    if (scope === 'ao3') return runAo3(r.keywords, {});
                     setType(r.type as SearchType);
                     run(r.keywords, r.type as SearchType);
                   }}
@@ -165,14 +219,20 @@ export default function SearchScreen() {
               ))}
             </>
           )}
-          <View style={[styles.tip, { backgroundColor: c.surface, borderColor: c.border }]}>
-            <T size={14} weight="600">
-              Tips
-            </T>
-            <T muted size={13} style={{ marginTop: 4, lineHeight: 19 }}>
-              Use double quotes to search a phrase. Paste a fanfiction.net link or a story ID to open it directly. After searching, refine by category, rating, language, genre, status and length.
-            </T>
-          </View>
+          {scope === 'ao3' ? (
+            <View style={{ marginHorizontal: -16, marginTop: -10 }}>
+              <Ao3SearchForm value={ao3} onChange={setAo3} onSearch={() => runAo3(text)} />
+            </View>
+          ) : (
+            <View style={[styles.tip, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <T size={14} weight="600">
+                Tips
+              </T>
+              <T muted size={13} style={{ marginTop: 4, lineHeight: 19 }}>
+                Use double quotes to search a phrase. Paste a fanfiction.net link or a story ID to open it directly. After searching, refine by category, rating, language, genre, status and length.
+              </T>
+            </View>
+          )}
           {excluded.length > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
               <T size={13} weight="600" muted style={{ width: '100%' }}>

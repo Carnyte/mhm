@@ -178,6 +178,25 @@ export const chapterStore = {
   },
 };
 
+/**
+ * Site data kept between launches with a lifetime decided by the caller (AO3's fandom lists and
+ * media page: big, rarely changing, and AO3 asks apps to cache them).
+ */
+export const httpCache = {
+  async get(key: string): Promise<{ body: string; fetchedAt: number } | undefined> {
+    const row = await open().getFirstAsync<{ body: string; fetched_at: number }>('SELECT body, fetched_at FROM http_cache WHERE key = ?', key);
+    return row ? { body: row.body, fetchedAt: row.fetched_at } : undefined;
+  },
+  async put(key: string, body: string): Promise<void> {
+    if (!kv.writable) return;
+    await open().runAsync('INSERT OR REPLACE INTO http_cache (key, body, etag, fetched_at) VALUES (?, ?, NULL, ?)', key, body, Date.now());
+  },
+  async clear(): Promise<void> {
+    if (!kv.writable) return;
+    await open().runAsync('DELETE FROM http_cache');
+  },
+};
+
 // --- migration state (MigrationFailed screen, Settings → Storage) -------------------------------
 
 export function migrationStatus(): MigrationResult {

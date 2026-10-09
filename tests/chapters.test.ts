@@ -89,12 +89,12 @@ describe('chapter loader', () => {
     let thrown = false;
     let promise: Promise<unknown> | undefined;
     try {
-      promise = chapters.fetchChapter('ao3:5', 1);
+      promise = chapters.fetchChapter('wp:5', 1);
     } catch {
       thrown = true;
     }
     expect(thrown).toBe(false);
-    await expect(promise).rejects.toThrow('AO3 support is coming soon');
+    await expect(promise).rejects.toThrow('Wattpad support is coming soon');
     await expect(chapters.loadChapter('wp:9', 1)).rejects.toThrow('Wattpad support is coming soon');
     expect(mockFetched).toEqual([]);
   });

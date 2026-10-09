@@ -1,6 +1,6 @@
 // "Open link" (and ficshelf://open?url=…, and unknown deep-link routes): FanFiction.net links and
-// ids open as before; AO3 and Wattpad links say "coming soon" instead of failing or opening the
-// browser; anything else is "not a link".
+// ids open as before; AO3 links open in the app; Wattpad links say "coming soon" instead of failing
+// or opening the browser; anything else is "not a link".
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 jest.mock('../src/db/kv', () => require('./helpers/memoryKv').kvModule());
@@ -27,26 +27,27 @@ describe('open link', () => {
     ['https://www.fanfiction.net/forum/Talk/34/', { pathname: '/forum', params: { path: '/forum/Talk/34/' } }],
     ['https://www.fanfiction.net/topic/34/56/', { pathname: '/topic', params: { path: '/topic/34/56/' } }],
     ['https://www.fanfiction.net/account/settings.php', { pathname: '/web', params: { path: '/account/settings.php' } }],
-  ])('%s opens as before', (input, route) => {
+    ['https://archiveofourown.org/works/94201446', { pathname: '/story/[id]', params: { id: 'ao3:94201446' } }],
+    ['ao3.org/works/5/chapters/6', { pathname: '/story/[id]', params: { id: 'ao3:5' } }],
+    ['https://archiveofourown.org/tags/F*s*F/works', { pathname: '/ao3/works', params: { tag: 'F/F' } }],
+  ])('%s opens', (input, route) => {
     expect(openTarget(input)).toBeUndefined();
     expect(replace).toHaveBeenCalledWith(route);
   });
 
   it.each([
-    ['https://archiveofourown.org/works/94201446', 'AO3 support is coming soon'],
-    ['ao3.org/works/5/chapters/6', 'AO3 support is coming soon'],
     ['https://www.wattpad.com/story/404053457-title', 'Wattpad support is coming soon'],
     ['https://www.wattpad.com/1589023894-part', 'Wattpad support is coming soon'],
   ])('%s says it is coming soon, without opening anything', (input, title) => {
-    expect(openTarget(input)).toEqual({ notice: { title, message: 'This version of FicShelf can open FanFiction.net stories. Their links and story IDs work here.' } });
+    expect(openTarget(input)).toEqual({ notice: { title, message: 'This version of FicShelf can open FanFiction.net and AO3 stories. Their links and story IDs work here.' } });
     expect(openProblem(input)).toEqual(openTarget(input));
     expect(replace).not.toHaveBeenCalled();
     expect(router.push).not.toHaveBeenCalled();
   });
 
   it('says when something isn’t a link', () => {
-    expect(openTarget('https://example.com/whatever')).toEqual({ error: 'That doesn’t look like a fanfiction.net link or story ID.' });
-    expect(openTarget('hello')).toEqual({ error: 'That doesn’t look like a fanfiction.net link or story ID.' });
+    expect(openTarget('https://example.com/whatever')).toEqual({ error: 'That doesn’t look like a FanFiction.net or AO3 link, or a story ID.' });
+    expect(openTarget('hello')).toEqual({ error: 'That doesn’t look like a FanFiction.net or AO3 link, or a story ID.' });
     expect(replace).not.toHaveBeenCalled();
   });
 });

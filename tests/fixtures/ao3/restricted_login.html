@@ -1,0 +1,17 @@
+<!-- SYNTHETIC FIXTURE: shaped like the page AO3 sends a logged-out visitor of a restricted work to
+     (/users/login?restricted=true&return_to=/works/ID; otwarchive users/sessions/new). -->
+<!DOCTYPE html>
+<html lang="en"><head><title>Log In | Archive of Our Own</title></head>
+<body class="logged-out"><div id="outer"><div id="inner"><div id="main" class="sessions-new region" role="main">
+  <div class="flash notice">This work is only available to registered users of the Archive. If you already have an Archive of Our Own account, log in now. If you don't have an account, you can get one by <a href="/invite_requests">requesting an invitation</a>.</div>
+  <h2 class="heading">Log In</h2>
+  <form class="new_user" id="new_user" action="/users/login" accept-charset="UTF-8" method="post"><input type="hidden" name="authenticity_token" value="SYNTHETIC" autocomplete="off" />
+    <dl>
+      <dt><label for="user_login">Username or email:</label></dt>
+      <dd><input autocomplete="username" type="text" name="user[login]" id="user_login" /></dd>
+      <dt><label for="user_password">Password:</label></dt>
+      <dd><input autocomplete="current-password" type="password" name="user[password]" id="user_password" /></dd>
+    </dl>
+    <p class="submit actions"><input type="submit" name="commit" value="Log In" /></p>
+  </form>
+</div></div></div></body></html>

@@ -102,7 +102,7 @@ export default function AccountScreen() {
 
       <Section title="App">
         <Row icon="settings-outline" title="Settings" onPress={() => router.push('/settings')} />
-        <Row icon="link-outline" title="Open a FanFiction.net link" onPress={() => router.push('/open')} />
+        <Row icon="link-outline" title="Open a link" onPress={() => router.push('/open')} />
         <Row icon="globe-outline" title="Browse FanFiction.net in the app" onPress={() => web('/', 'FanFiction.net')} />
         <Row
           icon="shield-checkmark-outline"

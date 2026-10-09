@@ -1,14 +1,14 @@
 // Every site the app knows, by id and by story key, and one entry point for links from anywhere
 // (Search, Open link, deep links, links inside chapters).
 //
-// FanFiction.net is the only site readable in this version. AO3 and Wattpad are registered so their
-// links are recognised: a pasted AO3 link says "AO3 support is coming soon" instead of falling
-// through to the browser or an FFN search. Imported files ('local') arrive with the import feature.
+// FanFiction.net and AO3 are readable. Wattpad is registered so its links are recognised: a pasted
+// Wattpad link says "Wattpad support is coming soon" instead of falling through to the browser or
+// an FFN search. Imported files ('local') arrive with the import feature.
 //
 // What each site adds to the screens (menus, buttons, stat cells) is in src/sources/ui.ts, kept
 // apart so this module and the adapters stay free of React Native.
 
-import { parseAo3Link, workUrl } from './ao3/urls';
+import { ao3Source } from './ao3/adapter';
 import { ffnSource } from './ffn/adapter';
 import { SOURCE_IDS, SOURCE_NAMES, splitKey, type SourceId, type StoryKey } from './keys';
 import type { LinkHit, Source, SourceCaps } from './types';
@@ -32,13 +32,17 @@ export function disabledMessage(source: SourceId): string {
   return s.comingSoon ? comingSoonMessage(source) : `${s.name} is switched off. Turn it on in Settings → Sources.`;
 }
 
+/** "A", "A and B", "A, B and C". */
+export function listNames(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 /** The same, with a line of detail, for a notice under a pasted link. */
 export function disabledNotice(source: SourceId): { title: string; message?: string } {
   if (!getSource(source).comingSoon) return { title: disabledMessage(source) };
-  const readable = enabledSources().map((s) => s.name);
   return {
     title: comingSoonMessage(source),
-    message: `This version of FicShelf can open ${readable.join(', ') || 'no'} stories. Their links and story IDs work here.`,
+    message: `This version of FicShelf can open ${listNames(enabledSources().map((s) => s.name)) || 'no'} stories. Their links and story IDs work here.`,
   };
 }
 
@@ -73,13 +77,7 @@ function comingSoon(id: SourceId, s: Pick<Source, 'short' | 'transport' | 'reade
 
 const SOURCES: Record<SourceId, Source> = {
   ffn: ffnSource,
-  ao3: comingSoon('ao3', {
-    short: 'AO3',
-    transport: 'http',
-    reader: { baseUrl: 'https://archiveofourown.org/' },
-    parseLink: parseAo3Link,
-    webUrl: (id, ch) => workUrl(id, ch?.remoteId),
-  }),
+  ao3: ao3Source,
   wp: comingSoon('wp', {
     short: 'Wattpad',
     transport: 'http',
@@ -112,9 +110,15 @@ export function enabledSources(): Source[] {
 
 export type ResolvedLink = LinkHit | { kind: 'disabled'; source: SourceId };
 
+/** A bare story number ("3171550"): FanFiction.net's or AO3's? Screens ask when AO3 is on. */
+export function isBareStoryNumber(input: string): boolean {
+  return /^\s*\d{1,15}\s*$/.test(input ?? '') && SOURCES.ao3.enabled();
+}
+
 /**
  * Sites with their own hosts first; FanFiction.net last, because it also takes bare numbers and
- * relative paths (links inside its chapters, ficshelf:// deep links). A bare number is an FFN story.
+ * relative paths (links inside its chapters, ficshelf:// deep links). A bare number is an FFN story
+ * here; screens where the user types one ask "FanFiction.net or AO3?" (see isBareStoryNumber).
  */
 const LINK_ORDER: SourceId[] = ['ao3', 'wp', 'local', 'ffn'];
 
