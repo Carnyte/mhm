@@ -1,7 +1,9 @@
 // The allowlist sanitizer for HTML from outside the app (AO3 / Wattpad chapters, imported files):
 // hostile markup comes out inert, ordinary story formatting survives.
 
-import { sanitizeHtml } from '../src/html/sanitize';
+import { render } from 'dom-serializer';
+import { parseDocument } from 'htmlparser2';
+import { sanitizeChildren, sanitizeHtml } from '../src/html/sanitize';
 
 describe('sanitizeHtml: keeps story formatting', () => {
   it('keeps paragraphs, emphasis, breaks, rules, headings, lists and quotes', () => {
@@ -118,5 +120,33 @@ describe('sanitizeHtml: review fixes', () => {
   it('copes with a body holding a huge number of paragraphs', () => {
     const html = '<html><body>' + '<p>x</p>\n'.repeat(150_000) + '</body></html>';
     expect(() => sanitizeHtml(html)).not.toThrow();
+  });
+});
+
+describe('sanitizeHtml: options for imported books', () => {
+  it('points images where the hook says, or drops them', () => {
+    const image = (src: string) => (src === 'a.png' ? 'ficshelf-img:3' : src.startsWith('https:') ? src : null);
+    expect(sanitizeHtml('<p><img src="a.png" alt="A"><img src="b.png"><img src="https://x.example/c.png"></p>', { image })).toBe(
+      '<p><img src="ficshelf-img:3" alt="A"><img src="https://x.example/c.png"></p>',
+    );
+    // Without the hook an image reference is just an unknown scheme.
+    expect(sanitizeHtml('<img src="ficshelf-img:3">')).toBe('<img>');
+    // The hook can't smuggle a dangerous URL through.
+    expect(sanitizeHtml('<img src="x">', { image: () => 'javascript:alert(1)' })).toBe('<img>');
+  });
+
+  it('drops relative URLs and classes when asked, keeping #fragments', () => {
+    const o = { relativeUrls: 'drop' as const, classes: 'none' as const };
+    expect(sanitizeHtml('<a href="/works/2" class="x">a</a> <a href="ch2.xhtml#n">b</a> <a href="#fn1">c</a> <a href="https://ok.example/">d</a>', o)).toBe(
+      '<a>a</a> <a>b</a> <a href="#fn1">c</a> <a href="https://ok.example/">d</a>',
+    );
+    expect(sanitizeHtml('<blockquote cite="/x"><p class="note">q</p></blockquote>', o)).toBe('<blockquote><p>q</p></blockquote>');
+  });
+
+  it('cleans a tree that is parsed already, in place', () => {
+    const doc = parseDocument('<div><p onclick="x()">a<script>b</script></p><custom>c</custom></div>', { lowerCaseTags: true, lowerCaseAttributeNames: true });
+    const out = sanitizeChildren(doc);
+    expect(render(out)).toBe('<div><p>a</p>c</div>');
+    expect(doc.children).toBe(out);
   });
 });

@@ -2,12 +2,15 @@
 // story's site (through its Source, see src/sources/registry.ts).
 
 import { chapterStore } from '../db/kv';
+import { renderChapter } from '../reader/notes';
 import { splitKey, type StoryKey } from '../sources/keys';
 import { withKnownTitles } from '../sources/meta';
 import { sourceOf } from '../sources/registry';
 import type { ChapterContent, ChapterInfo, FetchOpts, StoryInfo } from '../sources/types';
 import { libraryStore, patchStory } from '../state/library';
 import { applyChapterIds, chapterIdsOf } from './chapterIds';
+
+export { renderChapter };
 
 export function getSavedChapter(key: StoryKey, chapter: number): Promise<string | undefined> {
   return chapterStore.get(key, chapter);
@@ -64,18 +67,6 @@ export async function fetchChapter(key: StoryKey, chapter: number | ChapterInfo,
     if (chapterList !== c.story.chapterList) c = { ...c, story: { ...c.story, chapterList } };
   }
   return c;
-}
-
-const notes = (html: string | undefined, pos: 'before' | 'after') =>
-  html?.trim() ? `<aside class="fs-notes" data-pos="${pos}">${html}</aside>` : '';
-
-/**
- * A chapter as the reader shows it and the device saves it: the author's notes before and after
- * the text become asides (`.fs-notes[data-pos]`), which the reader styles and the audiobook can
- * skip. Chapters without notes (all of FanFiction.net's) are just their text.
- */
-export function renderChapter(c: Pick<ChapterContent, 'html' | 'notesBefore' | 'notesAfter'>): string {
-  return notes(c.notesBefore, 'before') + c.html + notes(c.notesAfter, 'after');
 }
 
 export interface LoadedChapter {

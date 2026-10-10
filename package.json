@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@mozilla/readability": "0.6.0",
     "@react-native-community/slider": "5.2.0",
     "css-select": "^5.2.2",
     "dom-serializer": "^2.0.0",
@@ -46,6 +47,7 @@
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
     "expo-task-manager": "~57.0.21",
+    "fflate": "0.8.3",
     "htmlparser2": "^9.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

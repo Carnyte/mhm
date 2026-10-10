@@ -10,6 +10,9 @@
 // Event handlers, javascript:/vbscript:/data: URLs (except data: images), and ids / classes that
 // would collide with the reader page's own are removed.
 //
+// Imported books (src/import) also pass a hook that points each <img> at the book's own image
+// (`ficshelf-img:<n>`), drop relative links (they lead nowhere inside the app) and drop classes.
+//
 // FanFiction.net's parsers keep their own sanitizer (src/ffn/parsers/dom.ts sanitizeHtml).
 
 import { render } from 'dom-serializer';
@@ -21,7 +24,19 @@ export interface SanitizeOptions {
   keepAttrs?: string[];
   /** Inline styles: 'safe' keeps alignment / emphasis / indents (default); 'none' drops them all. */
   styles?: 'safe' | 'none';
+  /**
+   * Called with each <img>'s src before it's checked: the src to use instead, or null to drop the
+   * image. A result of the form `ficshelf-img:<n>` (an imported book's own image) is kept as is.
+   */
+  image?: (src: string) => string | null;
+  /** 'drop' removes relative URLs from href / src / cite ('#fragment' links stay). Default 'keep'. */
+  relativeUrls?: 'keep' | 'drop';
+  /** 'none' removes every class attribute. Default 'keep' (minus the reader's own classes). */
+  classes?: 'keep' | 'none';
 }
+
+/** An imported book's own image, by its index in the book (see src/import). */
+export const IMAGE_REF = /^ficshelf-img:\d{1,6}$/;
 
 /** Elements removed together with everything inside them. */
 const DROP = new Set([
@@ -199,7 +214,7 @@ function allowedAttrs(name: string): string[] | undefined {
   return Object.prototype.hasOwnProperty.call(ALLOWED, name) ? ALLOWED[name] : undefined;
 }
 
-function safeUrl(value: string, schemes: Set<string>, images = false): string | undefined {
+function safeUrl(value: string, schemes: Set<string>, images = false, relative: 'keep' | 'drop' = 'keep'): string | undefined {
   // Check exactly what is returned: strip from both ends what browsers ignore (C0 controls,
   // space) and what trim() removes (Unicode spaces such as U+00A0, U+FEFF, U+2028, U+3000).
   const url = value.replace(/^[\s\x00-\x20]+|[\s\x00-\x20]+$/g, '');
@@ -208,6 +223,7 @@ function safeUrl(value: string, schemes: Set<string>, images = false): string | 
   if (images && DATA_IMAGE.test(url)) return url;
   const m = v.match(/^([a-z][a-z0-9+.-]*):/i);
   if (m && !schemes.has(m[1].toLowerCase())) return undefined;
+  if (!m && relative === 'drop' && !v.startsWith('#')) return undefined;
   return url;
 }
 
@@ -235,13 +251,13 @@ function cleanAttrs(name: string, attribs: Record<string, string>, o: SanitizeOp
     let v: string | undefined = value;
     switch (key) {
       case 'href':
-        v = safeUrl(value, LINK_SCHEMES);
+        v = safeUrl(value, LINK_SCHEMES, false, o.relativeUrls);
         break;
       case 'src':
-        v = safeUrl(value, CITE_SCHEMES, true);
+        v = IMAGE_REF.test(value) && o.image ? value : safeUrl(value, CITE_SCHEMES, true, o.relativeUrls);
         break;
       case 'cite':
-        v = safeUrl(value, CITE_SCHEMES);
+        v = safeUrl(value, CITE_SCHEMES, false, o.relativeUrls);
         break;
       case 'style':
         v = o.styles === 'none' ? undefined : safeStyle(value);
@@ -251,10 +267,12 @@ function cleanAttrs(name: string, attribs: Record<string, string>, o: SanitizeOp
         break;
       case 'class':
         v =
-          value
-            .split(/\s+/)
-            .filter((c) => /^[\w-]+$/.test(c) && !RESERVED_CLASSES.has(c))
-            .join(' ') || undefined;
+          o.classes === 'none'
+            ? undefined
+            : value
+                .split(/\s+/)
+                .filter((c) => /^[\w-]+$/.test(c) && !RESERVED_CLASSES.has(c))
+                .join(' ') || undefined;
         break;
     }
     if (v !== undefined) out[key] = v;
@@ -265,10 +283,19 @@ function cleanAttrs(name: string, attribs: Record<string, string>, o: SanitizeOp
 /** Makes untrusted HTML safe to put in the reader page. */
 export function sanitizeHtml(html: string, opts: SanitizeOptions = {}): string {
   const doc = parseDocument(html, { decodeEntities: true, lowerCaseTags: true, lowerCaseAttributeNames: true });
+  return render(sanitizeChildren(doc, opts), { encodeEntities: 'utf8' }).trim();
+}
+
+/**
+ * sanitizeHtml for a tree that is already parsed (imported books parse each file once): cleans
+ * `root`'s children in place and returns them. `root` itself is left as it is. Tag and attribute
+ * names must be lower case, as htmlparser2 gives them in HTML mode.
+ */
+export function sanitizeChildren(root: ParentNode, opts: SanitizeOptions = {}): AnyNode[] {
   // Pre-order list of the elements to clean (without descending into dropped ones), then clean
   // them children-first: each element is replaced by itself, its children (unwrapped) or nothing.
   const order: { el: Element; depth: number }[] = [];
-  const stack: { node: AnyNode; depth: number }[] = doc.children.map((node) => ({ node, depth: 1 }));
+  const stack: { node: AnyNode; depth: number }[] = root.children.map((node) => ({ node, depth: 1 }));
   stack.reverse();
   while (stack.length) {
     const { node, depth } = stack.pop()!;
@@ -297,13 +324,21 @@ export function sanitizeHtml(html: string, opts: SanitizeOptions = {}): string {
   for (let i = order.length - 1; i >= 0; i--) {
     const { el, depth } = order[i];
     const children = keptChildren(el);
+    if (el.name === 'img' && opts.image) {
+      const src = opts.image(el.attribs.src ?? '');
+      if (src === null) {
+        replacement.set(el, []);
+        continue;
+      }
+      el.attribs.src = src;
+    }
     if (allowedAttrs(el.name) && depth <= MAX_DEPTH) {
       adopt(el, children);
       el.attribs = cleanAttrs(el.name, el.attribs, opts);
       replacement.set(el, [el]);
     } else replacement.set(el, children);
   }
-  const top = keptChildren(doc);
-  adopt(doc, top);
-  return render(top, { encodeEntities: 'utf8' }).trim();
+  const top = keptChildren(root);
+  adopt(root, top);
+  return top;
 }
