@@ -11,6 +11,7 @@ import { bridge, BridgeError } from '../net/bridge';
 import { HttpTimeoutError, NetworkError, RateLimitedError, ServerBusyError } from '../net/httpCore';
 import { SOURCE_NAMES } from '../sources/keys';
 import { Ao3AdultNoticeError, Ao3ChapterGoneError, Ao3NotFoundError, Ao3RestrictedError, Ao3UnavailableError } from '../sources/ao3/api';
+import { LocalMissingError } from '../sources/local/adapter';
 import { ComingSoonError } from '../sources/registry';
 import { useTheme } from '../theme';
 import { errorMessage } from '../utils/format';
@@ -145,6 +146,9 @@ export function ErrorView({ error, onRetry, webUrl }: { error: unknown; onRetry?
         secondary={openOnAo3}
       />
     );
+  }
+  if (error instanceof LocalMissingError) {
+    return <Empty icon="document-outline" title="Not on this device" message={error.message} />;
   }
   if (error instanceof ComingSoonError) {
     return (

@@ -1,9 +1,10 @@
 # FicShelf: a modern FanFiction.net and AO3 app
 
 A from-scratch rebuild of the FanFiction.Net iPhone app, which hasn't been updated in about
-two years, that now also reads **Archive of Our Own (AO3)**. It's built with Expo (React Native,
-TypeScript) and runs on iOS, iPadOS and Android. It reads the **live** www.fanfiction.net and
-archiveofourown.org sites, and you can **log in with your real FanFiction.net account**.
+two years, that now also reads **Archive of Our Own (AO3)** and **your own story files** (EPUB,
+HTML, text, Markdown). It's built with Expo (React Native, TypeScript) and runs on iOS, iPadOS and
+Android. It reads the **live** www.fanfiction.net and archiveofourown.org sites, and you can **log
+in with your real FanFiction.net account**.
 
 - Feature plan and the full feature checklist: [`PLAN.md`](PLAN.md)
 - Unofficial app, not affiliated with FanFiction.Net, FictionPress, AO3 or the Organization for
@@ -76,6 +77,40 @@ pausing when AO3 answers 429 / Retry-After, with AO3-specific Cloudflare challen
 never follows Cloudflare's hidden `/cdn-cgi/` links, never asks the download host for a restricted
 work, and doesn't send hit counts. The code is in `src/sources/ao3/` and `src/app/ao3/`.
 
+## Imported files (EPUB, HTML, text, Markdown)
+
+Library → **+** → **Import a file** (several at once), or share a file to FicShelf from Files,
+Safari or Mail ("Open in FicShelf": this needs the iOS document types, so a Mac build needs
+`npx expo prebuild -p ios` once more; see INSTALL.md).
+
+- **What it reads:** EPUBs from AO3, FicHub, FanFicFare, Calibre or anywhere else (tables of
+  contents, AO3's split files, notes, tags, covers and pictures); HTML (AO3 downloads and saved
+  work pages, saved FanFiction.net pages, FanFicFare / FicHub HTML, and any other page cleaned up
+  the way Safari's Reader does it: menus, sidebars, comments and footers dropped); plain text
+  (chapter headings found, hard-wrapped lines joined); Markdown. PDF, Kindle (MOBI, AZW3) and
+  Word files get a message saying what to use instead.
+- **Before importing:** a preview with the cover, title and author (both editable), chapters,
+  words, tags, where the file came from ("This EPUB came from AO3 work 25253053") and anything
+  odd, with a progress bar while a long book is read.
+- **Linking:** a file from AO3 or FanFiction.net can become that story in your library, with the
+  file's chapters downloaded: updates, comments and its page work as for any downloaded story,
+  and an existing copy keeps its progress, bookmarks and collections. FicShelf asks the site once
+  for the story's details (AO3's spacing applies). Or keep it as a local story.
+- **Local stories** live on the **Imported** shelf and work like downloaded stories: collections,
+  bookmarks, Continue reading, the reader and the audiobook, all offline. They're never checked
+  for updates. Importing the same story again (same story page, same book id or same file)
+  offers **Replace** (your place and bookmarks follow their chapters) or **Keep both**.
+- **Safety:** imported files are untrusted. Their HTML goes through the allowlist sanitizer; the
+  reader shows it on a blank page with a Content-Security-Policy (pictures only as data: URIs,
+  only the reader's own scripts); names inside a zip are never used as file names; inputs over
+  100 MB, archives over 200 MB unpacked and pictures over 5 MB are refused.
+- **Storage:** chapters are saved like downloads; the original file (Settings → Imported files →
+  Keep original files), the cover and pictures go to `Documents/imports/<story>/`, recorded by
+  paths relative to Documents. Imported stories exist only on the device and aren't in backups.
+
+The code is in `src/import/` (parsing, pure TypeScript), `src/features/imports.ts` and
+`importFiles.ts` (storing), `src/sources/local/` and `src/app/import.tsx`.
+
 ## Audiobook
 
 Any story can be read aloud with the phone's own voices: tap **Listen** on a story, or the
@@ -117,14 +152,18 @@ src/net/            WebView bridge (BridgeHost.tsx), challenge handling, image l
                     client for other sites (http.ts: per-host queue, gaps, Retry-After) and bot-check detection
 src/ffn/            URL builders, constants, HTML parsers, form replay, typed API client
 src/state/          library / progress / settings / session stores (persisted to SQLite)
-src/sources/        the site layer: story keys ('ffn:123', 'ao3:5'…), the Source contract and registry
-                    (resolveLink), each site's adapter and UI slots: ffn/, ao3/ (api, adapter, parsers,
-                    URLs, constants), Wattpad link parsing; chapter remapping (remap.ts)
+src/sources/        the site layer: story keys ('ffn:123', 'ao3:5', 'local:…'), the Source contract and
+                    registry (resolveLink), each site's adapter and UI slots: ffn/, ao3/ (api, adapter,
+                    parsers, URLs, constants), local/ (imported files, device only), Wattpad link
+                    parsing; chapter remapping (remap.ts)
+src/import/         file import: EPUB / HTML / TXT / Markdown → a sanitized book (zip reading with size
+                    caps, encodings, reader-mode cleanup with Readability); pure TypeScript
 src/app/ao3/        AO3 screens: a medium's fandoms, works (tag listings and search results), series, creators
 src/html/           shared HTML helpers (dom.ts) and the allowlist sanitizer for other sites' HTML
 src/db/             SQLite key-value + chapter store, and the storage migrations (db/migrations)
 src/features/       chapter loading, downloads, update checks + notifications, chapter ids (remapping),
-                    shared story actions
+                    shared story actions, imports (storing / linking / replacing / deleting imported
+                    files, their folders, the file picker)
 src/reader/         reader HTML/CSS/JS template (themes, paging, read-aloud highlight, find)
 src/audio/          audiobook player: text segments, speech engine, background audio, voices
 src/components/     UI kit, story card, filter sheets, site chips, tag groups, What's new, AO3 browse / search /
@@ -143,14 +182,15 @@ Checks run while building this (October 2026):
 
 | Check | Result |
 |---|---|
-| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session, story keys and routes, library state, backups, the storage v2 migration on real SQLite (`node:sqlite`), the source registry and link parsing (FanFiction.net, AO3, Wattpad), the FanFiction.net adapter and its menus (labels unchanged), the polite HTTP client, bot-check detection, the HTML sanitizer, image loading and chapter remapping; AO3: parsers on synthetic fixtures, request URLs, the adapter (view_adult, refusals, listings, the fandom cache), the official download (link copied, never built; not for restricted works), batched update checks (45 works = 3 searches), chapter-id remapping, the FFN 3171550 / AO3 3171550 key collision, AO3's slots and the settings change that turns AO3 on; stale chapter ids (a chapter inserted, deleted or moved: the right chapter fetched, saved and recorded), shortened chapter titles, per-site check times, background budgets and back-off, the adult gate on every way into a work, per-site hidden fandoms and recent searches | 600 / 600 pass |
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session, story keys and routes, library state, backups, the storage v2 migration on real SQLite (`node:sqlite`), the source registry and link parsing (FanFiction.net, AO3, Wattpad), the FanFiction.net adapter and its menus (labels unchanged), the polite HTTP client, bot-check detection, the HTML sanitizer, image loading and chapter remapping; AO3: parsers on synthetic fixtures, request URLs, the adapter (view_adult, refusals, listings, the fandom cache), the official download (link copied, never built; not for restricted works), batched update checks (45 works = 3 searches), chapter-id remapping, the FFN 3171550 / AO3 3171550 key collision, AO3's slots and the settings change that turns AO3 on; stale chapter ids (a chapter inserted, deleted or moved: the right chapter fetched, saved and recorded), shortened chapter titles, per-site check times, background budgets and back-off, the adult gate on every way into a work, per-site hidden fandoms and recent searches; file import: EPUBs built in the tests (AO3/Calibre split files, FicHub, FanFicFare, hostile, zip-slip, zip bomb, DRM), HTML (AO3, saved pages, reader-mode cleanup), text and Markdown, encodings; storing imports (files by relative path, duplicates, Replace keeping progress, linking into an AO3 story, failures leaving nothing), deleting, the launch sweep, "Open in" routing, the local source never touching the network, backups without imported stories, the reader's CSP and pictures, the audiobook offline, the import screen (Open in, a PDF, several files) | 712 / 712 pass |
 | `npm run live-check -- --source ao3`: the AO3 parsers against **live** archiveofourown.org (5 requests, 3 s apart) | 5 / 5 pass: work page with chapter index and download link, /navigate, id search, official download (HEAD, served from Cloudflare's cache), /media. A further 9 requests checked a filtered tag listing, search results, the HTML download split into 17 chapters, a series, a creator's works, a chapter page and fandom suggestions (two of them first answered AO3's transient 525 error, shown as "AO3 is busy") |
 | `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
+| An imported story's reader page (built by the app, with its CSP) in headless Chromium | the reader's own scripts run (progress, ready, note toggles, read-aloud blocks, settings applied from outside); a script and an event handler planted past the sanitizer are refused; the book's picture loads from its data: URI; a footnote link jumps on the page; a web link goes to the app |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |
-| `npx expo export --platform ios` | bundles (4.3 MB Hermes bytecode) |
+| `npx expo export --platform ios` | bundles (4.7 MB Hermes bytecode); `--platform web` builds too |
 | `npx expo-doctor` | 21 / 21 checks pass (dependencies pinned to SDK 57 versions) |
-| `npx expo prebuild -p ios` / `-p android` | native projects generate cleanly (deployment target iOS 16.4, scene life cycle on, no push entitlement, background audio on, no microphone permission) |
+| `npx expo prebuild -p ios` / `-p android` | native projects generate cleanly (deployment target iOS 16.4, scene life cycle on, no push entitlement, background audio on, no microphone permission; Info.plist has the EPUB / HTML / text / Markdown document types, the Markdown type declaration and no opening in place) |
 | First install on a real iPhone (iOS 26, Xcode, free Apple ID) | builds and opens; login and search failed until the desktop user agent fix (October 2026) |
 | Web harness screenshots with live data | Browse, fandom directory, story list, story details and reader render correctly |
 
@@ -195,3 +235,7 @@ never commit a real page.
 - AO3 has no login in the app yet: restricted works open on AO3's site, and kudos, comments,
   subscriptions and AO3 bookmarks aren't available. Reading in the app doesn't add to a work's
   hit count. Creators' work skins (custom styling) aren't applied.
+- Imported stories exist only on the phone: backups leave them out and deleting the app erases
+  them, so keep the original files. There's no EPUB export yet, no import from links to other
+  sites, and Wattpad files are imported as local stories (their link is kept). Pictures on the web
+  inside an imported page aren't shown (only the file's own pictures are).

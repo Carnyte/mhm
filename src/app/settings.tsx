@@ -13,6 +13,8 @@ import { pickOption, toast } from '../components/Sheet';
 import { Row, Section, T } from '../components/ui';
 import { deleteSnapshot, httpCache, snapshotInfo } from '../db/kv';
 import { downloadedBytes, removeAllDownloads } from '../features/downloads';
+import { importFilesBytes } from '../features/importFiles';
+import { pickStoryFiles } from '../features/importPicker';
 import { configureBackgroundChecks, requestNotificationPermission } from '../features/updates';
 import { LANGUAGES, RATINGS, SORTS } from '../ffn/constants';
 import { invalidate } from '../hooks/useQuery';
@@ -30,7 +32,9 @@ export default function SettingsScreen() {
   const status = useBridgeStatus();
   const session = useSession();
   const storyCount = useLibrary((x) => Object.keys(x.stories).length);
+  const imported = useLibrary((x) => Object.values(x.stories).filter((st) => st.source === 'local').map((st) => st.key));
   const [bytes, setBytes] = useState<number | null>(null);
+  const [importBytes, setImportBytes] = useState<number | null>(null);
   const [snapshot, setSnapshot] = useState(snapshotInfo);
   const [readerPanel, setReaderPanel] = useState(false);
   const ao3 = s.sources.ao3;
@@ -38,6 +42,15 @@ export default function SettingsScreen() {
   useEffect(() => {
     downloadedBytes().then(setBytes).catch(() => setBytes(0));
   }, []);
+
+  // Imported stories' space: their saved text plus their files (originals, covers, pictures).
+  const importedKeys = imported.join(',');
+  useEffect(() => {
+    const keys = importedKeys ? (importedKeys.split(',') as typeof imported) : [];
+    Promise.all(keys.map((k) => downloadedBytes(k)))
+      .then((sizes) => setImportBytes(sizes.reduce((a, b) => a + b, importFilesBytes())))
+      .catch(() => setImportBytes(importFilesBytes()));
+  }, [importedKeys]);
 
   const toggleNotifications = async (v: boolean) => {
     if (v && !(await requestNotificationPermission())) {
@@ -61,7 +74,8 @@ export default function SettingsScreen() {
 
   const doImport = async () => {
     try {
-      const res = await DocumentPicker.getDocumentAsync({ type: ['application/json', 'public.json', '*/*'], copyToCacheDirectory: true });
+      // MIME types only: the picker silently drops UTI strings such as 'public.json'.
+      const res = await DocumentPicker.getDocumentAsync({ type: ['application/json'], copyToCacheDirectory: true });
       if (res.canceled || !res.assets?.[0]) return;
       const text = await new File(res.assets[0].uri).text();
       const n = importBackup(JSON.parse(text));
@@ -200,6 +214,20 @@ export default function SettingsScreen() {
         <Row title="Only on Wi-Fi" right={<Switch value={s.wifiOnly} onValueChange={(v) => updateSettings({ wifiOnly: v })} />} />
       </Section>
 
+      <Section
+        title="Imported files"
+        footer="Imported stories exist only on this device and aren’t in backups. Keeping the original file lets you import it again later without finding it."
+      >
+        <Row icon="document-outline" iconColor={c.source.local} title="Import a file" subtitle="EPUB, HTML, text or Markdown" onPress={pickStoryFiles} />
+        <Row title="Imported stories" value={String(imported.length)} />
+        <Row title="Space used" value={importBytes == null ? '…' : formatBytes(importBytes)} />
+        <Row
+          title="Keep original files"
+          subtitle="A copy of each imported file, next to its story"
+          right={<Switch value={s.sources.local?.keepOriginals !== false} onValueChange={(v) => updateSource('local', { keepOriginals: v })} accessibilityLabel="Keep original files" />}
+        />
+      </Section>
+
       <Section title="Library & storage">
         <Row title="Stories in library" value={String(storyCount)} />
         <Row title="Offline downloads" value={bytes == null ? '…' : formatBytes(bytes)} />
@@ -221,7 +249,7 @@ export default function SettingsScreen() {
             }
           />
         )}
-        <Row icon="share-outline" title="Back up library" subtitle="Saves stories, progress, bookmarks, collections, drafts" onPress={doExport} />
+        <Row icon="share-outline" title="Back up library" subtitle="Saves stories, progress, bookmarks, collections, drafts (not imported stories)" onPress={doExport} />
         <Row icon="download-outline" title="Restore from backup" onPress={doImport} />
         <Row icon="image-outline" title="Clear image cache" onPress={() => (clearImageCache(), toast('Image cache cleared'))} />
         <Row
@@ -239,7 +267,11 @@ export default function SettingsScreen() {
           icon="trash-outline"
           title="Delete all downloads"
           destructive
-          onPress={() => confirm('Delete all downloads?', 'Downloaded chapters will be removed from this device.', () => removeAllDownloads().then(() => setBytes(0)))}
+          onPress={() =>
+            confirm('Delete all downloads?', 'Downloaded chapters will be removed from this device. Imported stories stay.', () =>
+              removeAllDownloads().then(() => downloadedBytes().then(setBytes)),
+            )
+          }
         />
       </Section>
 

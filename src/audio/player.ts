@@ -65,6 +65,14 @@ export function listenPosition(key: StoryKey): Position | undefined {
   return positions[key];
 }
 
+/** Forgets a story's listening position (the story was deleted). */
+export function forgetListenPosition(key: StoryKey) {
+  if (!positions[key]) return;
+  const { [key]: _gone, ...rest } = positions;
+  positions = rest;
+  kv.set('listenPositions', positions).catch(() => {});
+}
+
 /** Moves a story's listening position after its chapters were reordered or deleted. */
 function remapListenPosition(key: StoryKey, r: ChapterRemap) {
   const p = positions[key];
@@ -473,7 +481,8 @@ async function artworkFile(cover: string | undefined): Promise<string | undefine
   let uri: string | null = null;
   try {
     const data = await loadImage(cover);
-    if (data && /^https?:/.test(data)) uri = data;
+    // Imported stories' covers are files on the device already.
+    if (data && /^(https?|file):/.test(data)) uri = data;
     else if (data?.startsWith('data:')) {
       const m = data.match(/^data:image\/(\w+);base64,(.*)$/);
       if (m) {

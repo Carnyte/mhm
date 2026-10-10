@@ -49,6 +49,7 @@ export const useCheckState = () => useStore(checkStore);
  */
 export function storiesToCheck(): LibraryStory[] {
   return Object.values(libraryStore.get().stories)
+    .filter((s) => checkable(s.source))
     .filter((s) => s.notify !== false && !s.complete && !s.gone && (s.followed || s.inLibrary || s.downloaded || (s.lastReadAt && s.favorited)))
     .sort((a, b) => (a.lastCheckedAt ?? 0) - (b.lastCheckedAt ?? 0));
 }
@@ -60,9 +61,15 @@ export const MAX_QUIET_REDOWNLOADS = 3;
 
 const isAbort = (e: unknown) => (e as Error)?.name === 'AbortError';
 
+/** A site whose stories can be checked: on, readable, with updates (imported files have none). */
+function checkable(id: SourceId): boolean {
+  const src = getSource(id);
+  return src.caps.updates && src.enabled() && !src.comingSoon;
+}
+
 /** Sites with stories to check that can be checked (on, readable). */
 function checkableSources(): SourceId[] {
-  return [...new Set(storiesToCheck().map((s) => s.source))].filter((id) => getSource(id).enabled() && !getSource(id).comingSoon);
+  return [...new Set(storiesToCheck().map((s) => s.source))].filter(checkable);
 }
 
 /** When a site's stories were last all checked (before per-site stamps: the last check at all). */
@@ -150,7 +157,7 @@ export async function checkForUpdates(opts: CheckOptions = {}) {
   // Nothing could be saved after a failed storage upgrade (see MigrationFailed).
   if (checkStore.get().running || !kv.writable) return [];
   const all = opts.keys ? opts.keys.map((key) => libraryStore.get().stories[key]).filter(Boolean) : storiesToCheck();
-  const list = all.filter((s) => getSource(s.source).enabled() && !getSource(s.source).comingSoon && (!opts.sources || opts.sources.includes(s.source)));
+  const list = all.filter((s) => checkable(s.source) && (!opts.sources || opts.sources.includes(s.source)));
   checkStore.set({ running: true, done: 0, total: list.length });
   const updated: { story: LibraryStory; added: number }[] = [];
   const stale: LibraryStory[] = [];

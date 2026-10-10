@@ -11,6 +11,7 @@ import { invalidate } from '../../hooks/useQuery';
 import { useLibrary } from '../../state/library';
 import { useBridgeStatus, useSession } from '../../state/session';
 import { useTheme } from '../../theme';
+import { pickStoryFiles } from '../../features/importPicker';
 
 const web = (path: string, title?: string) => router.push({ pathname: '/web', params: { path, title } });
 
@@ -98,6 +99,7 @@ export default function AccountScreen() {
         <Row icon="bookmarks-outline" title="Bookmarks" value={bookmarks ? String(bookmarks) : undefined} onPress={() => router.push('/bookmarks')} />
         <Row icon="albums-outline" title="Collections" value={collections ? String(collections) : undefined} onPress={() => router.push('/collections')} />
         {!session.loggedIn && <Row icon="document-text-outline" title="Drafts" onPress={() => router.push('/drafts')} />}
+        <Row icon="document-outline" title="Import a file" subtitle="EPUB, HTML, text or Markdown" onPress={pickStoryFiles} />
       </Section>
 
       <Section title="App">

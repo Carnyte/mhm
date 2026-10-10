@@ -21,6 +21,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { router } from 'expo-router';
 import { showActions, toast } from '../src/components/Sheet';
+import { Linking } from 'react-native';
 import { openLinkHit, openReaderLink, readerMenu, storyMenuActions, storyPageMenu } from '../src/features/actions';
 import { subscribe } from '../src/ffn/api';
 import { parseStoryPage } from '../src/ffn/parsers/story';
@@ -246,11 +247,17 @@ describe('links', () => {
     ]);
   });
 
-  it('inside a chapter: links to sites that aren’t readable yet say so; others do nothing', () => {
+  it('inside a chapter: links to sites that aren’t readable yet say so; other web pages open in Safari', () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
     openReaderLink('https://www.wattpad.com/story/1-x');
     expect(toast).toHaveBeenLastCalledWith('Wattpad support is coming soon');
+    expect(openURL).not.toHaveBeenCalled();
     openReaderLink('https://example.com/');
+    openReaderLink('mailto:someone@example.com');
+    openReaderLink('#fn1');
     expect(push).not.toHaveBeenCalled();
+    expect(openURL.mock.calls).toEqual([['https://example.com/']]);
+    openURL.mockRestore();
   });
 
   it('inside a chapter: AO3 works open in the app', () => {

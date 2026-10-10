@@ -12,6 +12,7 @@ import { ffnUi } from './ffn/ui';
 import { splitKey, type SourceId, type StoryKey } from './keys';
 import type { ChapterContent, RouteHref, SeriesRef, StoryInfo } from './types';
 import { ao3Ui } from './ao3/ui';
+import { localUi } from './local/ui';
 
 export interface StatCell {
   label: string;
@@ -118,7 +119,7 @@ const UIS: Record<SourceId, SourceUi> = {
   ffn: ffnUi,
   ao3: ao3Ui,
   wp: basicUi,
-  local: basicUi,
+  local: localUi,
 };
 
 export function getUi(source: SourceId): SourceUi {

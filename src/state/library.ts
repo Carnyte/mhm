@@ -17,6 +17,7 @@ import {
   normalizeStory,
 } from '../db/migrations/v2';
 import type { StoryDetail, StorySummary, UserRef } from '../ffn/types';
+import type { ImportGenerator, ImportKind, ImportOrigin } from '../import/types';
 import { libraryMetaFromFfn } from '../sources/ffn/map';
 import { authorKey, normalizeKey, splitKey, toKey, type SourceId, type StoryKey } from '../sources/keys';
 import { isStoryMeta, libraryMetaFromMeta, withKnownTitles } from '../sources/meta';
@@ -34,6 +35,36 @@ export interface LibraryAuthor {
   id: number | string;
   name: string;
   avatarUrl?: string;
+}
+
+/**
+ * The file behind an imported story: a local story's own file, or the file a site story (AO3,
+ * FanFiction.net) was linked to. Paths are relative to the app's Documents folder, whose absolute
+ * location changes between installs.
+ */
+export interface LocalOrigin {
+  kind: ImportKind;
+  /** The file's name as it was picked or opened. */
+  fileName: string;
+  generator?: ImportGenerator;
+  /** When it was imported (ms since epoch). */
+  importedAt: number;
+  /** The file's size in bytes. */
+  size: number;
+  /** Spots the same file imported again ('md5:…'). */
+  contentHash: string;
+  /** The story's page on its site, when the file names one. */
+  sourceUrl?: string;
+  /** The online story that page is, on a site the app reads. */
+  origin?: ImportOrigin;
+  /** The file's own ids (EPUB dc:identifier), for spotting a newer copy of the same book. */
+  identifiers?: string[];
+  /** The story's folder ('imports/local_lx3k9f2a8q')… */
+  dir: string;
+  /** …and inside it: the original file, the cover, and the chapters' images by index ('img/3.png'). */
+  original?: string;
+  cover?: string;
+  images?: Record<string, string>;
 }
 
 export interface LibraryStory {
@@ -86,6 +117,8 @@ export interface LibraryStory {
     /** The reader agreed to see this adult work. */
     adultOk?: boolean;
   };
+  /** Imported stories (and site stories an imported file was linked to): the file behind them. */
+  local?: LocalOrigin;
   /** FanFiction.net only: the numeric id, kept for an older build installed again. Read `key`. */
   id?: number;
 
@@ -512,6 +545,13 @@ export function removeBookmark(id: string) {
   persistBookmarks();
 }
 
+/** Forgets every bookmark in one story (the story was deleted). */
+export function removeBookmarksOf(key: StoryKey) {
+  if (!libraryStore.get().bookmarks.some((b) => b.storyKey === key)) return;
+  libraryStore.set((st) => ({ ...st, bookmarks: st.bookmarks.filter((b) => b.storyKey !== key) }));
+  persistBookmarks();
+}
+
 /** Moves one story's bookmarks after its chapters were reordered or deleted (see applyChapterIds). */
 export function remapStoryBookmarks(key: StoryKey, r: ChapterRemap) {
   if (!r.changed || !libraryStore.get().bookmarks.some((b) => b.storyKey === key)) return;
@@ -632,15 +672,29 @@ export interface BackupFile {
   drafts: Draft[];
 }
 
+/** Imported stories live only on this device: their text and files are never in a backup. */
+const isImported = (key: StoryKey) => splitKey(key).source === 'local';
+
+/** A record without what only this device has: downloads, and the file an import was linked to. */
+function portable(s: LibraryStory): LibraryStory {
+  const { local: _file, ...rest } = s;
+  const out: LibraryStory = { ...rest, downloaded: false, downloadedChapters: [] };
+  if (out.coverUrl?.startsWith('ficshelf-doc:')) delete out.coverUrl;
+  return out;
+}
+
 export function exportBackup(): BackupFile {
   const st = libraryStore.get();
   return {
     app: 'ficshelf',
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
-    stories: Object.values(st.stories).map((s) => ({ ...s, downloaded: false, downloadedChapters: [] })),
-    bookmarks: st.bookmarks,
-    collections: st.collections,
+    stories: Object.values(st.stories)
+      .filter((s) => !isImported(s.key))
+      .map(portable),
+    // Bookmarks can hold an excerpt of the text.
+    bookmarks: st.bookmarks.filter((b) => !isImported(b.storyKey)),
+    collections: st.collections.map((c) => (c.storyKeys.some(isImported) ? withKeys(c, c.storyKeys.filter((k) => !isImported(k))) : c)),
     authors: Object.values(st.authors),
     drafts: st.drafts,
   };
@@ -648,7 +702,9 @@ export function exportBackup(): BackupFile {
 
 /**
  * Merges a backup into the current library; returns the number of stories imported. Takes v1
- * files (numeric FanFiction.net ids, read as 'ffn:' keys) as well as current ones.
+ * files (numeric FanFiction.net ids, read as 'ffn:' keys) as well as current ones. An imported
+ * story only counts when it's on this device (its reading progress is merged); bookmarks and
+ * collection entries of imported stories that aren't are skipped.
  */
 export function importBackup(data: unknown): number {
   const file = data as Partial<BackupFile> & { version?: number };
@@ -657,9 +713,12 @@ export function importBackup(data: unknown): number {
   let n = 0;
   libraryStore.set((st) => {
     const stories = { ...st.stories };
+    const missing = (key: StoryKey) => isImported(key) && !stories[key];
     for (const raw of file.stories as unknown[]) {
-      const s = normalizeStory(raw);
-      if (!s) continue;
+      const read = normalizeStory(raw);
+      if (!read || missing(read.key)) continue;
+      // The files an import was linked to are on the device that made the backup, not here.
+      const s = portable(read);
       const prev = stories[s.key];
       const merged: LibraryStory = { ...s, ...prev, inLibrary: s.inLibrary || !!prev?.inLibrary };
       if (prev?.readChapters || s.readChapters) {
@@ -679,9 +738,11 @@ export function importBackup(data: unknown): number {
       persistAuthor(authors[a.key], a.key);
     }
     const collections = [...st.collections];
-    for (const c of normalizeCollections(file.collections)) if (!collections.some((x) => x.id === c.id)) collections.push(c);
+    for (const c of normalizeCollections(file.collections)) {
+      if (!collections.some((x) => x.id === c.id)) collections.push(c.storyKeys.some(missing) ? withKeys(c, c.storyKeys.filter((k) => !missing(k))) : c);
+    }
     const bookmarks = [...st.bookmarks];
-    for (const b of normalizeBookmarks(file.bookmarks)) if (!bookmarks.some((x) => x.id === b.id)) bookmarks.push(b);
+    for (const b of normalizeBookmarks(file.bookmarks)) if (!missing(b.storyKey) && !bookmarks.some((x) => x.id === b.id)) bookmarks.push(b);
     const drafts = [...st.drafts];
     for (const d of Array.isArray(file.drafts) ? file.drafts : []) if (!drafts.some((x) => x.id === d.id)) drafts.push(d);
     return { ...st, stories, authors, collections, bookmarks, drafts };

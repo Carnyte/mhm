@@ -84,7 +84,7 @@ function StoryCardImpl({
         </T>
       </View>
       <View style={styles.footer}>
-        <SourceBadge source={splitKey(key).source} />
+        <SourceBadge source={splitKey(key).source} label={lib?.source === 'local' ? (lib.local?.kind ?? 'file') : undefined} />
         {story.complete ? (
           <View style={[styles.status, { backgroundColor: c.success + '22' }]}>
             <T size={11} weight="700" style={{ color: c.success }}>

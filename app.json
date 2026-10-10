@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "ficshelf",
     "userInterfaceStyle": "automatic",
-    "description": "Unofficial reader for FanFiction.net and Archive of Our Own: browse, search, read, follow, favorite, review, read offline and listen.",
+    "description": "Unofficial reader for FanFiction.net and Archive of Our Own: browse, search, read, follow, favorite, review, read offline and listen. Imports EPUB, HTML, text and Markdown story files.",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ficshelf.reader",
@@ -17,7 +17,46 @@
           "processing",
           "audio"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "EPUB Book",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "org.idpf.epub-container"
+            ]
+          },
+          {
+            "CFBundleTypeName": "Story File",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.html",
+              "public.plain-text",
+              "net.daringfireball.markdown"
+            ]
+          }
+        ],
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeDescription": "Markdown",
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown"
+              ],
+              "public.mime-type": [
+                "text/markdown"
+              ]
+            }
+          }
+        ],
+        "LSSupportsOpeningDocumentsInPlace": false
       }
     },
     "android": {

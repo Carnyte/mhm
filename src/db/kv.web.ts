@@ -170,6 +170,24 @@ export const chapterStore = {
   async put(key: StoryKey, n: number, html: string, _remoteId?: string) {
     if (kv.writable) write(chKey(key, n), html);
   },
+  async putMany(
+    key: StoryKey,
+    rows: { number: number; html: string; remoteId?: string }[],
+    opts: { replace?: boolean; batch?: number; onProgress?: (done: number, total: number) => void; signal?: AbortSignal } = {},
+  ) {
+    if (!kv.writable) return;
+    if (opts.replace) for (const k of keys()) if (k.startsWith(`${CH}${key}:`)) remove(k);
+    rows.forEach((r, i) => {
+      write(chKey(key, r.number), r.html);
+      if ((i + 1) % (opts.batch ?? 20) === 0 || i === rows.length - 1) opts.onProgress?.(i + 1, rows.length);
+    });
+  },
+  async storyKeys(prefix: string): Promise<StoryKey[]> {
+    const out = new Set<StoryKey>();
+    for (const k of keys()) if (k.startsWith(CH + prefix)) out.add(k.slice(CH.length, k.lastIndexOf(':')) as StoryKey);
+    return [...out];
+  },
+  async removeStaging() {},
   async list(key: StoryKey) {
     migrate();
     return keys()
@@ -181,9 +199,9 @@ export const chapterStore = {
     if (!kv.writable) return;
     for (const k of keys()) if (k.startsWith(`${CH}${key}:`)) remove(k);
   },
-  async removeAll() {
+  async removeAll(keep?: string) {
     if (!kv.writable) return;
-    for (const k of keys()) if (k.startsWith(CH)) remove(k);
+    for (const k of keys()) if (k.startsWith(CH) && !(keep && k.startsWith(CH + keep))) remove(k);
   },
   async sizeBytes(key?: StoryKey) {
     migrate();

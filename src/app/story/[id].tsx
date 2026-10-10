@@ -121,6 +121,9 @@ export default function StoryScreen() {
   const tagGroups = ui.tagGroups?.(story) ?? [];
 
   const moreMenu = () => showActions(storyPageMenu(story), story.title);
+  // Imported stories are always in the library and on the device (deleted from the ⋯ menu).
+  const src = sourceOf(key);
+  const owned = src.transport === 'local';
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -129,15 +132,17 @@ export default function StoryScreen() {
           title: '',
           headerRight: () => (
             <View style={{ flexDirection: 'row' }}>
-              <IconButton
-                icon={lib?.inLibrary ? 'bookmark' : 'bookmark-outline'}
-                label={lib?.inLibrary ? 'Remove from library' : 'Add to library'}
-                active={lib?.inLibrary}
-                onPress={() => {
-                  setInLibrary(story, !lib?.inLibrary);
-                  toast(lib?.inLibrary ? 'Removed from library' : 'Added to library', 'success');
-                }}
-              />
+              {!owned && (
+                <IconButton
+                  icon={lib?.inLibrary ? 'bookmark' : 'bookmark-outline'}
+                  label={lib?.inLibrary ? 'Remove from library' : 'Add to library'}
+                  active={lib?.inLibrary}
+                  onPress={() => {
+                    setInLibrary(story, !lib?.inLibrary);
+                    toast(lib?.inLibrary ? 'Removed from library' : 'Added to library', 'success');
+                  }}
+                />
+              )}
               <IconButton icon="ellipsis-horizontal-circle-outline" label="More" onPress={moreMenu} />
             </View>
           ),
@@ -176,7 +181,7 @@ export default function StoryScreen() {
               {story.restricted && <Badge label="Locked" color={c.textMuted} />}
               {lib?.gone && !q.data && <Badge label={`Not on ${sourceOf(key).name} any more`} color={c.danger} />}
               {fresh > 0 && <Badge label={`${fresh} new`} color={c.accent} />}
-              <SourceBadge source={story.source} />
+              <SourceBadge source={story.source} label={owned ? (lib?.local?.kind ?? 'file') : undefined} />
             </View>
           </View>
         </View>
@@ -253,7 +258,7 @@ export default function StoryScreen() {
         <StatsGrid cells={ui.statCells(story)} />
 
         <View style={styles.actions}>
-          {job ? (
+          {!src.caps.download ? null : job ? (
             <Button title={`Downloading ${job.done}/${job.total}… Cancel`} icon="close-circle-outline" kind="secondary" onPress={() => cancelDownload(key)} style={{ flex: 1 }} />
           ) : lib?.downloaded ? (
             <Button

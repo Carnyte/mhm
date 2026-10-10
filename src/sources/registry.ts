@@ -3,13 +3,14 @@
 //
 // FanFiction.net and AO3 are readable. Wattpad is registered so its links are recognised: a pasted
 // Wattpad link says "Wattpad support is coming soon" instead of falling through to the browser or
-// an FFN search. Imported files ('local') arrive with the import feature.
+// an FFN search. Imported files ('local') are a source too, with no site behind them.
 //
 // What each site adds to the screens (menus, buttons, stat cells) is in src/sources/ui.ts, kept
 // apart so this module and the adapters stay free of React Native.
 
 import { ao3Source } from './ao3/adapter';
 import { ffnSource } from './ffn/adapter';
+import { localSource } from './local/adapter';
 import { SOURCE_IDS, SOURCE_NAMES, splitKey, type SourceId, type StoryKey } from './keys';
 import type { LinkHit, Source, SourceCaps } from './types';
 import { parseWattpadLink, partUrl, storyUrl as wattpadStoryUrl } from './wattpad/urls';
@@ -75,44 +76,46 @@ function comingSoon(id: SourceId, s: Pick<Source, 'short' | 'transport' | 'reade
   };
 }
 
-const SOURCES: Record<SourceId, Source> = {
-  ffn: ffnSource,
-  ao3: ao3Source,
-  wp: comingSoon('wp', {
-    short: 'Wattpad',
-    transport: 'http',
-    reader: { baseUrl: 'https://www.wattpad.com/' },
-    parseLink: parseWattpadLink,
-    webUrl: (id, ch) => (ch?.remoteId ? partUrl(ch.remoteId) : wattpadStoryUrl(id)),
-  }),
-  local: comingSoon('local', {
-    short: 'File',
-    transport: 'local',
-    reader: { baseUrl: 'about:blank', csp: "default-src 'none'; img-src data: file:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" },
-    parseLink: () => null,
-    webUrl: () => '',
-  }),
-};
+let table: Record<SourceId, Source> | undefined;
+
+/**
+ * Every source by id, built on first use: adapters import modules (the library) that import this
+ * one back, so an adapter may still be loading when this module is.
+ */
+function sources(): Record<SourceId, Source> {
+  return (table ??= {
+    ffn: ffnSource,
+    ao3: ao3Source,
+    wp: comingSoon('wp', {
+      short: 'Wattpad',
+      transport: 'http',
+      reader: { baseUrl: 'https://www.wattpad.com/' },
+      parseLink: parseWattpadLink,
+      webUrl: (id, ch) => (ch?.remoteId ? partUrl(ch.remoteId) : wattpadStoryUrl(id)),
+    }),
+    local: localSource,
+  });
+}
 
 export function getSource(id: SourceId): Source {
-  return SOURCES[id];
+  return sources()[id];
 }
 
 /** The site a story key belongs to. */
 export function sourceOf(key: StoryKey): Source {
-  return SOURCES[splitKey(key).source];
+  return sources()[splitKey(key).source];
 }
 
-/** Sites that are switched on and readable, in display order. */
+/** Sites that are switched on and readable, in display order (imported files aren't a site). */
 export function enabledSources(): Source[] {
-  return SOURCE_IDS.map((id) => SOURCES[id]).filter((s) => s.enabled());
+  return SOURCE_IDS.map((id) => sources()[id]).filter((s) => s.transport !== 'local' && s.enabled());
 }
 
 export type ResolvedLink = LinkHit | { kind: 'disabled'; source: SourceId };
 
 /** A bare story number ("3171550"): FanFiction.net's or AO3's? Screens ask when AO3 is on. */
 export function isBareStoryNumber(input: string): boolean {
-  return /^\s*\d{1,15}\s*$/.test(input ?? '') && SOURCES.ao3.enabled();
+  return /^\s*\d{1,15}\s*$/.test(input ?? '') && sources().ao3.enabled();
 }
 
 /**
@@ -146,7 +149,7 @@ export function resolveLink(input: string, base?: string): ResolvedLink | null {
   const s = input?.trim();
   if (!s) return null;
   for (const id of LINK_ORDER) {
-    const src = SOURCES[id];
+    const src = sources()[id];
     const hit = src.parseLink(absoluteLink(s, base));
     if (!hit) continue;
     return src.enabled() ? hit : { kind: 'disabled', source: id };

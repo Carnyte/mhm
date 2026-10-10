@@ -30,6 +30,8 @@ import { addBookmark, libraryStore, recordReading, useLibraryStory } from '../..
 import { useSettings } from '../../state/settings';
 import { useReaderTheme } from '../../theme';
 import { buildReaderHtml, readerCssVars } from '../../reader/template';
+import { withBookImages } from '../../reader/images';
+import { chapterImages } from '../../features/importFiles';
 import { ReaderSettingsPanel as SettingsPanel } from '../../components/ReaderSettingsPanel';
 import { countWords, htmlToText, readingTime } from '../../utils/format';
 import { onChapterRemap } from '../../features/chapterIds';
@@ -43,9 +45,18 @@ interface Loaded {
   content?: ChapterContent;
   html: string;
   offline: boolean;
+  /** An imported chapter's pictures, as data: URIs by number (see src/reader/images.ts). */
+  images?: Record<number, string>;
 }
 
 async function loadChapter(key: StoryKey, chapter: number): Promise<Loaded> {
+  const loaded = await loadText(key, chapter);
+  // Pictures from an imported file are read from its folder now (the page can't reach them).
+  if (loaded.html.includes('ficshelf-img:')) loaded.images = await chapterImages(key, loaded.html);
+  return loaded;
+}
+
+async function loadText(key: StoryKey, chapter: number): Promise<Loaded> {
   const lib = libraryStore.get().stories[key];
   // Downloaded stories open instantly from disk; so does an AO3 chapter read or prefetched before
   // (still the same chapter, and older than the work's last edit), instead of a second request.
@@ -269,7 +280,7 @@ export default function ReaderScreen() {
     const ch = data.story.chapterList.find((c) => c.number === chapter);
     return buildReaderHtml(
       {
-        html: segmentedHtml,
+        html: withBookImages(segmentedHtml, data.images, { webImages: !source?.reader.csp }),
         title: data.story.title,
         chapterTitle: data.story.chapters > 1 ? `${chapter}. ${ch?.title ?? `Chapter ${chapter}`}` : data.story.title,
         chapter,

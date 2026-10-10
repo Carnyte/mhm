@@ -132,6 +132,27 @@ export interface SavedChapter {
   remoteId?: string;
 }
 
+/** One chapter to save with putMany. */
+export interface ChapterRow {
+  number: number;
+  html: string;
+  remoteId?: string;
+}
+
+export interface PutManyOptions {
+  /** Swap the story's saved chapters for these, all at once at the end. */
+  replace?: boolean;
+  /** Chapters per transaction (default 20). */
+  batch?: number;
+  onProgress?: (done: number, total: number) => void;
+  signal?: AbortSignal;
+}
+
+/** Where putMany parks a replacement until it's complete (never a story key). */
+const staging = (key: StoryKey) => `${key}#staging`;
+
+const aborted = () => Object.assign(new Error('The import was cancelled.'), { name: 'AbortError' });
+
 export const chapterStore = {
   async get(key: StoryKey, n: number): Promise<string | undefined> {
     const row = await open().getFirstAsync<{ html: string }>('SELECT html FROM chapter_text WHERE story_key = ? AND number = ?', key, n);
@@ -158,6 +179,60 @@ export const chapterStore = {
       remoteId ?? null,
     );
   },
+  /**
+   * Saves many chapters (an imported book) in batches, one transaction each, reporting progress
+   * and letting the screen draw between batches. With `replace` the new chapters are written aside
+   * and swapped in for the story's old ones in one step at the end, so a failure or a cancel leaves
+   * the old ones as they were.
+   */
+  async putMany(key: StoryKey, rows: ChapterRow[], opts: PutManyOptions = {}): Promise<void> {
+    if (!kv.writable) return;
+    const d = open();
+    const target = opts.replace ? staging(key) : key;
+    const size = Math.max(1, opts.batch ?? 20);
+    const now = Date.now();
+    try {
+      if (opts.replace) await d.runAsync('DELETE FROM chapter_text WHERE story_key = ?', target);
+      for (let i = 0; i < rows.length; i += size) {
+        if (opts.signal?.aborted) throw aborted();
+        const part = rows.slice(i, i + size);
+        await d.withExclusiveTransactionAsync(async (tx) => {
+          for (const r of part) {
+            await tx.runAsync(
+              'INSERT OR REPLACE INTO chapter_text (story_key, number, html, saved_at, remote_id) VALUES (?, ?, ?, ?, ?)',
+              target,
+              r.number,
+              r.html,
+              now,
+              r.remoteId ?? null,
+            );
+          }
+        });
+        opts.onProgress?.(Math.min(rows.length, i + size), rows.length);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      if (opts.signal?.aborted) throw aborted();
+      if (opts.replace) {
+        await d.withExclusiveTransactionAsync(async (tx) => {
+          await tx.runAsync('DELETE FROM chapter_text WHERE story_key = ?', key);
+          await tx.runAsync('UPDATE chapter_text SET story_key = ? WHERE story_key = ?', key, target);
+        });
+      }
+    } catch (e) {
+      if (opts.replace) await d.runAsync('DELETE FROM chapter_text WHERE story_key = ?', target).catch(() => {});
+      throw e;
+    }
+  },
+  /** Story keys with saved chapters, among those starting with `prefix` ('local:'). */
+  async storyKeys(prefix: string): Promise<StoryKey[]> {
+    const rows = await open().getAllAsync<{ story_key: string }>('SELECT DISTINCT story_key FROM chapter_text WHERE story_key LIKE ? ESCAPE ?', like(prefix), '\\');
+    return rows.map((r) => r.story_key as StoryKey);
+  },
+  /** Drops replacements that never finished (the app was closed mid-import). */
+  async removeStaging(): Promise<void> {
+    if (!kv.writable) return;
+    await open().runAsync("DELETE FROM chapter_text WHERE story_key LIKE '%#staging'");
+  },
   async list(key: StoryKey): Promise<number[]> {
     const rows = await open().getAllAsync<{ number: number }>('SELECT number FROM chapter_text WHERE story_key = ? ORDER BY number', key);
     return rows.map((r) => r.number);
@@ -166,9 +241,11 @@ export const chapterStore = {
     if (!kv.writable) return;
     await open().runAsync('DELETE FROM chapter_text WHERE story_key = ?', key);
   },
-  async removeAll(): Promise<void> {
+  /** Every saved chapter, except those of stories whose key starts with `keep` ('local:'). */
+  async removeAll(keep?: string): Promise<void> {
     if (!kv.writable) return;
-    await open().runAsync('DELETE FROM chapter_text');
+    if (keep) await open().runAsync('DELETE FROM chapter_text WHERE story_key NOT LIKE ? ESCAPE ?', like(keep), '\\');
+    else await open().runAsync('DELETE FROM chapter_text');
   },
   async sizeBytes(key?: StoryKey): Promise<number> {
     const row = key

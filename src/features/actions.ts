@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { Linking, Share } from 'react-native';
 import { showActions, toast, type SheetAction } from '../components/Sheet';
 import { splitKey, toKey, type SourceId, type StoryKey } from '../sources/keys';
-import { disabledMessage, getSource, resolveLink, sourceOf, type ResolvedLink } from '../sources/registry';
+import { absoluteLink, disabledMessage, getSource, resolveLink, sourceOf, type ResolvedLink } from '../sources/registry';
 import type { ChapterContent, StoryInfo } from '../sources/types';
 import { getUi, uiOf } from '../sources/ui';
 import { keyOf, libraryStore, markAllRead, setInLibrary, toggleInCollection, type AnyStory } from '../state/library';
@@ -91,13 +91,17 @@ export function openLinkHit(hit: ResolvedLink, opts: { replace?: boolean } = {})
 }
 
 /**
- * A link tapped inside a chapter: stories open their story page; other pages of a site that's on
- * open as that site's page; links to sites that are off say why. Anything else is ignored.
+ * A link tapped inside a chapter (`base` is the story's site, which relative links belong to):
+ * stories open their story page; other pages of a site that's on open as that site's page; links
+ * to sites that are off say why; other web pages open in Safari. Anything else is ignored.
  */
-/** A link tapped in a chapter; `base` is the story's site, which relative links belong to. */
 export function openReaderLink(href: string, base?: string) {
   const hit = resolveLink(href, base);
-  if (!hit) return;
+  if (!hit) {
+    const url = absoluteLink(href.trim(), base);
+    if (/^https?:\/\/[^\s]+$/i.test(url)) Linking.openURL(url).catch(() => {});
+    return;
+  }
   if (hit.kind === 'disabled') toast(disabledMessage(hit.source));
   else if (hit.kind === 'story') openStory(toKey(hit.source, hit.id));
   // Other sites' tags, series, creators and chapter links open on their screens (FanFiction.net's
@@ -119,12 +123,21 @@ export function collectionActions(story: AnyStory): SheetAction[] {
   ];
 }
 
+/** Share and Copy link, for a story with a page to point to (an imported file may name none). */
+function linkActions(story: AnyStory): SheetAction[] {
+  const key = keyOf(story);
+  if (!storyUrl(key)) return [];
+  return [
+    { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
+    { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
+  ];
+}
+
 /** The story page's ⋯ menu: sharing and library entries, then the site's own. */
 export function storyPageMenu(story: StoryInfo): SheetAction[] {
   const key = story.key;
   return [
-    { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
-    { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
+    ...linkActions(story),
     { label: 'Add to collection…', icon: 'albums-outline', onPress: () => showActions(collectionActions(story), 'Collections') },
     { label: 'Mark all chapters read', icon: 'checkmark-done-outline', onPress: () => markAllRead(key, true) },
     { label: 'Mark all unread', icon: 'refresh-outline', onPress: () => markAllRead(key, false) },
@@ -137,7 +150,7 @@ export function readerMenu(story: StoryInfo, chapter: number, ctx: { content?: C
   return [
     { label: 'Bookmark this spot', icon: 'bookmark-outline', onPress: ctx.bookmark },
     ...uiOf(story.key).readerActions(story, chapter, { content: ctx.content }).menu,
-    { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
+    ...linkActions(story).slice(0, 1),
     { label: 'Story details', icon: 'information-circle-outline', onPress: () => openStory(story.key) },
   ];
 }
@@ -146,6 +159,9 @@ export function readerMenu(story: StoryInfo, chapter: number, ctx: { content?: C
 export function storyMenuActions(story: AnyStory): SheetAction[] {
   const key = keyOf(story);
   const ui = uiOf(key);
+  const src = sourceOf(key);
+  // Imported stories are always in the library and on the device: they're deleted instead.
+  const owned = src.transport === 'local';
   const lib = libraryStore.get().stories[key];
   const actions: SheetAction[] = [
     { label: 'Read', icon: 'book-outline', onPress: () => openReader(key, lib?.lastChapter) },
@@ -159,28 +175,33 @@ export function storyMenuActions(story: AnyStory): SheetAction[] {
           router.push('/listen');
         }),
     },
-    {
-      label: lib?.inLibrary ? 'Remove from library' : 'Add to library',
-      icon: lib?.inLibrary ? 'bookmark' : 'bookmark-outline',
-      onPress: () => {
-        setInLibrary(story, !lib?.inLibrary);
-        toast(lib?.inLibrary ? 'Removed from library' : 'Added to library', 'success');
-      },
-    },
+    ...(owned
+      ? []
+      : [
+          {
+            label: lib?.inLibrary ? 'Remove from library' : 'Add to library',
+            icon: lib?.inLibrary ? 'bookmark' : 'bookmark-outline',
+            onPress: () => {
+              setInLibrary(story, !lib?.inLibrary);
+              toast(lib?.inLibrary ? 'Removed from library' : 'Added to library', 'success');
+            },
+          } satisfies SheetAction,
+        ]),
     { label: 'Add to collection…', icon: 'albums-outline', onPress: () => showActions(collectionActions(story), 'Collections') },
-    lib?.downloaded
-      ? { label: 'Remove download', icon: 'trash-outline', destructive: true, onPress: () => removeDownload(key) }
-      : { label: 'Download for offline', icon: 'cloud-download-outline', onPress: () => downloadStory(story) },
+    ...(owned
+      ? []
+      : [
+          lib?.downloaded
+            ? ({ label: 'Remove download', icon: 'trash-outline', destructive: true, onPress: () => removeDownload(key) } satisfies SheetAction)
+            : ({ label: 'Download for offline', icon: 'cloud-download-outline', onPress: () => downloadStory(story) } satisfies SheetAction),
+        ]),
     ...ui.cardActions(story),
   ];
   const author = story.author;
   const authorRoute = author && ui.authorRoute(author);
   if (author && authorRoute) actions.push({ label: `More by ${author.name}`, icon: 'person-outline', onPress: () => router.push(authorRoute) });
-  actions.push(...hideFandomActions(story));
-  actions.push(
-    { label: 'Share', icon: 'share-outline', onPress: () => shareStory(story) },
-    { label: 'Copy link', icon: 'link-outline', onPress: () => copyLink(key) },
-  );
+  if (!owned) actions.push(...hideFandomActions(story));
+  actions.push(...linkActions(story));
   return actions;
 }
 

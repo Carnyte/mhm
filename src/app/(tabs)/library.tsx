@@ -1,5 +1,6 @@
 // Library: Reading history, saved stories, Follows / Favorites (synced from the account),
-// downloads, collections, authors — with sort and filters.
+// downloads, imported files, collections, authors — with sort and filters. The + button adds
+// stories: import files, or open a link.
 
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
@@ -9,6 +10,7 @@ import { pickOption, showActions, toast } from '../../components/Sheet';
 import { StoryCard } from '../../components/StoryCard';
 import { Empty } from '../../components/states';
 import { Chip, IconButton, Input, T } from '../../components/ui';
+import { pickStoryFiles } from '../../features/importPicker';
 import { syncAccount } from '../../features/updates';
 import { newChapterCount, storyProgress, unreadCount, useLibrary, type LibraryStory } from '../../state/library';
 import { useSession } from '../../state/session';
@@ -16,7 +18,7 @@ import { useTheme } from '../../theme';
 import { errorMessage, relativeMs } from '../../utils/format';
 import { compareKeys } from '../../sources/keys';
 
-type Shelf = 'reading' | 'saved' | 'follows' | 'favorites' | 'downloads' | 'authors';
+type Shelf = 'reading' | 'saved' | 'follows' | 'favorites' | 'downloads' | 'imported' | 'authors';
 type Sort = 'lastRead' | 'updated' | 'title' | 'unread' | 'progress' | 'added';
 
 const SHELVES: { value: Shelf; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -25,8 +27,22 @@ const SHELVES: { value: Shelf; label: string; icon: React.ComponentProps<typeof 
   { value: 'follows', label: 'Follows', icon: 'notifications-outline' },
   { value: 'favorites', label: 'Favorites', icon: 'heart-outline' },
   { value: 'downloads', label: 'Downloads', icon: 'cloud-done-outline' },
+  { value: 'imported', label: 'Imported', icon: 'document-text-outline' },
   { value: 'authors', label: 'Authors', icon: 'people-outline' },
 ];
+
+/** The + button: import story files, or open a link to a story. */
+function addStories() {
+  showActions(
+    [
+      // The picker waits for the sheet to finish closing (iOS presents one thing at a time).
+      { label: 'Import a file', icon: 'document-outline', onPress: () => setTimeout(pickStoryFiles, 300) },
+      { label: 'Open a link', icon: 'link-outline', onPress: () => router.push('/open') },
+    ],
+    'Add to your library',
+    'EPUB, HTML, text and Markdown files are imported to this device. Links to FanFiction.net and AO3 stories open in the app.',
+  );
+}
 
 const SORTS: { value: Sort; label: string }[] = [
   { value: 'lastRead', label: 'Last read' },
@@ -63,7 +79,10 @@ export default function LibraryScreen() {
       case 'favorites':
         return all.filter((s) => s.favorited);
       case 'downloads':
-        return all.filter((s) => s.downloaded);
+        // Imported stories have their own shelf.
+        return all.filter((s) => s.downloaded && s.source !== 'local');
+      case 'imported':
+        return all.filter((s) => s.source === 'local');
       default:
         return [];
     }
@@ -119,6 +138,7 @@ export default function LibraryScreen() {
         options={{
           headerRight: () => (
             <View style={{ flexDirection: 'row', marginRight: 8 }}>
+              <IconButton icon="add" label="Add stories" onPress={addStories} />
               <IconButton icon="albums-outline" label="Collections" onPress={() => router.push('/collections')} />
               <IconButton icon="bookmarks-outline" label="Bookmarks" onPress={() => router.push('/bookmarks')} />
               <IconButton icon={syncing ? 'sync' : 'cloud-download-outline'} label="Sync with FanFiction.net" onPress={doSync} disabled={syncing} />
@@ -228,6 +248,7 @@ export default function LibraryScreen() {
                   follows: 'No follows',
                   favorites: 'No favorites',
                   downloads: 'No downloads',
+                  imported: 'No imported stories',
                   authors: '',
                 }[shelf]
               }
@@ -238,10 +259,19 @@ export default function LibraryScreen() {
                   follows: session.loggedIn ? 'Tap sync to pull in your Story Alerts.' : 'Log in to sync your follows.',
                   favorites: session.loggedIn ? 'Tap sync to pull in your Favorite Stories.' : 'Log in to sync your favorites.',
                   downloads: 'Download stories to read them offline.',
+                  imported: 'Import EPUB, HTML, text or Markdown files with the + button, or open one with FicShelf from Files, Safari or Mail. They stay on this device.',
                   authors: '',
                 }[shelf]
               }
-              action={synced && !session.loggedIn ? { label: 'Log in', onPress: () => router.push('/login') } : synced ? { label: 'Sync now', onPress: doSync } : undefined}
+              action={
+                shelf === 'imported'
+                  ? { label: 'Import a file', onPress: pickStoryFiles }
+                  : synced && !session.loggedIn
+                    ? { label: 'Log in', onPress: () => router.push('/login') }
+                    : synced
+                      ? { label: 'Sync now', onPress: doSync }
+                      : undefined
+              }
             />
           }
           ListFooterComponent={<View style={{ height: 24 }} />}

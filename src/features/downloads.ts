@@ -12,6 +12,7 @@ import { createStore, useStore } from '../state/store';
 import { errorMessage } from '../utils/format';
 import { applyChapterIds, chapterIdsOf } from './chapterIds';
 import { fetchChapter, renderChapter } from './chapters';
+import { removeImportFiles } from './importFiles';
 
 export interface DownloadJob {
   key: StoryKey;
@@ -56,6 +57,8 @@ export async function downloadStory(story: AnyStory, opts: DownloadStoryOpts = {
   const key = keyOf(story);
   if (downloadsStore.get()[key]) return;
   const src = sourceOf(key);
+  // Imported stories are on the device already; there's nowhere to download them from.
+  if (!src.caps.download) return;
   if (src.downloadAll) return downloadWhole(story, src, opts);
   const have = new Set(await chapterStore.list(key));
   setJob(key, { key, title: story.title, done: 0, total: story.chapters || 1 });
@@ -148,17 +151,29 @@ export function cancelDownload(key: StoryKey) {
   setJob(key, null);
 }
 
+/** A downloaded copy that came from an imported file (its pictures and file go with it). */
+function dropImportedCopy(s: { key: StoryKey; local?: unknown; coverUrl?: string }): { local?: undefined; coverUrl?: undefined } {
+  if (!s.local) return {};
+  removeImportFiles(s.key);
+  return { local: undefined, ...(s.coverUrl?.startsWith('ficshelf-doc:') ? { coverUrl: undefined } : {}) };
+}
+
 export async function removeDownload(key: StoryKey) {
+  // Imported stories have no other copy: they're deleted, never "un-downloaded".
+  if (sourceOf(key).transport === 'local') return;
   cancelDownload(key);
   await chapterStore.remove(key);
-  patchStory(key, { downloaded: false, downloadedChapters: [] });
+  const lib = libraryStore.get().stories[key];
+  patchStory(key, { downloaded: false, downloadedChapters: [], ...(lib ? dropImportedCopy(lib) : {}) });
   toast('Download removed');
 }
 
+/** Every site story's saved chapters (imported stories keep theirs: they exist nowhere else). */
 export async function removeAllDownloads() {
-  await chapterStore.removeAll();
+  await chapterStore.removeAll('local:');
   for (const s of Object.values(libraryStore.get().stories)) {
-    if (s.downloaded || s.downloadedChapters?.length) patchStory(s.key, { downloaded: false, downloadedChapters: [] });
+    if (s.source === 'local') continue;
+    if (s.downloaded || s.downloadedChapters?.length) patchStory(s.key, { downloaded: false, downloadedChapters: [], ...dropImportedCopy(s) });
   }
 }
 

@@ -19,6 +19,11 @@ export function onChapterRemap(fn: RemapListener): () => void {
   return () => listeners.delete(fn);
 }
 
+/** Tells them a story's chapters moved (its library record and saved text are already moved). */
+export function announceRemap(key: StoryKey, r: ChapterRemap) {
+  if (r.changed) for (const fn of listeners) fn(key, r);
+}
+
 /** The chapter ids of a story page, when it has all of them. */
 export function chapterIdsOf(info: Pick<StoryInfo, 'chapterList'>): string[] | null {
   const ids = info.chapterList.map((c) => c.remoteId);
@@ -66,6 +71,6 @@ export async function applyChapterIds(key: StoryKey, ids: readonly string[] | nu
     ...(s.chapterTitles ? { chapterTitles: remapTitles(s.chapterTitles, ids.length, r) } : {}),
   }));
   remapStoryBookmarks(key, r);
-  for (const fn of listeners) fn(key, r);
+  announceRemap(key, r);
   return r;
 }

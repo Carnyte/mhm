@@ -34,11 +34,30 @@ export function kvModule() {
         return row ? { ...row } : undefined;
       },
       put: async (key: string, n: number, html: string, remoteId?: string) => void chapterRows.set(`${key}#${n}`, { html, remoteId, savedAt: Date.now() }),
+      putMany: async (
+        key: string,
+        rows: { number: number; html: string; remoteId?: string }[],
+        opts: { replace?: boolean; onProgress?: (done: number, total: number) => void; signal?: AbortSignal } = {},
+      ) => {
+        // Like the SQLite store: a replacement is all or nothing.
+        const fresh = new Map<string, { html: string; remoteId?: string; savedAt?: number }>();
+        rows.forEach((r, i) => {
+          if (opts.signal?.aborted) throw Object.assign(new Error('The import was cancelled.'), { name: 'AbortError' });
+          fresh.set(`${key}#${r.number}`, { html: r.html, remoteId: r.remoteId, savedAt: Date.now() });
+          opts.onProgress?.(i + 1, rows.length);
+        });
+        if (opts.replace) for (const n of chapterNumbers(key)) chapterRows.delete(`${key}#${n}`);
+        for (const [k, v] of fresh) chapterRows.set(k, v);
+      },
+      storyKeys: async (prefix: string) => [...new Set([...chapterRows.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(0, k.lastIndexOf('#'))))],
+      removeStaging: async () => {},
       list: async (key: string) => chapterNumbers(key),
       remove: async (key: string) => {
         for (const n of chapterNumbers(key)) chapterRows.delete(`${key}#${n}`);
       },
-      removeAll: async () => chapterRows.clear(),
+      removeAll: async (keep?: string) => {
+        for (const k of [...chapterRows.keys()]) if (!keep || !k.startsWith(keep)) chapterRows.delete(k);
+      },
       sizeBytes: async () => [...chapterRows.values()].reduce((n, r) => n + r.html.length, 0),
       renumber: async (key: string, map: Map<number, number | null>) => {
         const moving = [...map.keys()].map((from) => [from, chapterRows.get(`${key}#${from}`)] as const);

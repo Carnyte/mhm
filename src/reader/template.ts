@@ -19,8 +19,20 @@ export interface ReaderPayload {
    * review"). A tap posts `{type:'action', id}`.
    */
   endActions?: { id: string; label: string }[];
-  /** A Content-Security-Policy for the page (imported files); none for the sites. */
+  /**
+   * A Content-Security-Policy for the page (imported files); none for the sites. A `{nonce}` in
+   * it is replaced with a fresh nonce that only the page's own scripts carry.
+   */
   csp?: string;
+}
+
+/** A per-page script nonce (unguessable by the page's text, which can't run script anyway). */
+function makeNonce(): string {
+  const bytes = new Uint8Array(16);
+  const c = (globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
+  if (c?.getRandomValues) c.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function readerCssVars(s: ReaderSettings, t: ReaderTheme): Record<string, string> {
@@ -49,9 +61,13 @@ export function buildReaderHtml(p: ReaderPayload, s: ReaderSettings, t: ReaderTh
     .map(([k, v]) => `${k}:${v}`)
     .join(';');
   const endButtons = (p.endActions ?? []).map((a) => `<button class="alt" data-action="${escAttr(a.id)}">${esc(a.label)}</button>`).join('');
+  // Under a policy the reader's two scripts run by nonce; nothing else on the page can.
+  const nonce = p.csp?.includes('{nonce}') ? makeNonce() : undefined;
+  const csp = nonce ? p.csp!.split('{nonce}').join(nonce) : p.csp;
+  const script = nonce ? `<script nonce="${nonce}">` : '<script>';
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-${p.csp ? `<meta http-equiv="Content-Security-Policy" content="${escAttr(p.csp)}">\n` : ''}<style>
+${csp ? `<meta http-equiv="Content-Security-Policy" content="${escAttr(csp)}">\n` : ''}<style>
 :root{${vars}}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);-webkit-text-size-adjust:100%;}
 body{font-family:var(--font);font-size:var(--size);line-height:var(--lh);}
@@ -93,8 +109,8 @@ body.paged .hd,body.paged #text,body.paged .end{padding:0 var(--margin);max-widt
 ${p.hasNext ? '<button id="next">Next chapter →</button>' : '<div style="margin:8px 0 4px">You reached the end of the story.</div>'}
 <div>${endButtons}<button class="alt" id="mark">Bookmark</button></div></div>
 </div>
-<script>${READER_JS}</script>
-<script>window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn, collapseNotes: !!s.collapseNotes })});</script>
+${script}${READER_JS}</script>
+${script}window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn, collapseNotes: !!s.collapseNotes })});</script>
 </body></html>`;
 }
 
@@ -214,7 +230,12 @@ const READER_JS = String.raw`
     var id=e.target&&e.target.id;
     if(id==='next')post({type:'next'});else if(id==='mark')post({type:'bookmark',p:progress()});
     var act=e.target.closest&&e.target.closest('#end [data-action]');if(act){post({type:'action',id:act.getAttribute('data-action')});return;}
-    var a=e.target.closest&&e.target.closest('a[href]');if(a){e.preventDefault();post({type:'link',href:a.getAttribute('href')});}
+    var a=e.target.closest&&e.target.closest('a[href]');if(!a)return;e.preventDefault();
+    // A link to a place on this page (footnotes and their way back) jumps there; others go to the app.
+    var href=a.getAttribute('href')||'';
+    if(href.charAt(0)==='#'){var id=href.slice(1);try{id=decodeURIComponent(id);}catch(_){}
+      var to=id&&(document.getElementById(id)||document.getElementsByName(id)[0]);if(to)to.scrollIntoView({block:'start',inline:'start'});return;}
+    post({type:'link',href:href});
   });
   window.__init=function(o){
     paged=!!o.paged;tapToTurn=o.tapToTurn!==false;noteToggles(!!o.collapseNotes);

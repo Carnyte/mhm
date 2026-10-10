@@ -81,3 +81,86 @@ describe('v2 backups', () => {
     expect(snapshot(target)).toEqual(before);
   });
 });
+
+describe('imported stories and backups', () => {
+  const file = { kind: 'epub' as const, fileName: 'a.epub', importedAt: 1, size: 1, contentHash: 'md5:a', dir: 'imports/local_abc', cover: 'cover.jpg' };
+  const local = {
+    key: 'local:abc' as const,
+    source: 'local' as const,
+    remoteId: 'abc',
+    title: 'Imported',
+    summary: '',
+    genres: [],
+    chapters: 2,
+    words: 10,
+    stats: {},
+    complete: true,
+    inLibrary: true,
+    downloaded: true,
+    addedAt: 1,
+    coverUrl: 'ficshelf-doc:imports/local_abc/cover.jpg',
+    local: file,
+  };
+  const linked = {
+    ...local,
+    key: 'ao3:77' as const,
+    source: 'ao3' as const,
+    remoteId: '77',
+    title: 'Linked',
+    local: { ...file, dir: 'imports/ao3_77', origin: { source: 'ao3' as const, remoteId: '77', key: 'ao3:77' as const } },
+  };
+
+  it('are left out of the export with their bookmarks and collection entries; linked files are dropped', () => {
+    const lib = loadLibrary();
+    lib.upsertStory(local, local);
+    lib.upsertStory(linked, linked);
+    const col = lib.createCollection('Both');
+    lib.toggleInCollection(col.id, lib.libraryStore.get().stories['local:abc']);
+    lib.toggleInCollection(col.id, lib.libraryStore.get().stories['ao3:77']);
+    lib.addBookmark({ storyKey: 'local:abc', storyTitle: 'Imported', chapter: 1, progress: 0.5, excerpt: 'Text from the file' });
+    lib.addBookmark({ storyKey: 'ao3:77', storyTitle: 'Linked', chapter: 1, progress: 0.5 });
+
+    const out = JSON.parse(JSON.stringify(lib.exportBackup()));
+    expect(JSON.stringify(out)).not.toContain('local:abc');
+    expect(out.stories.map((s: { key: string }) => s.key)).toEqual(['ao3:77']);
+    expect(out.stories[0].local).toBeUndefined();
+    expect(out.stories[0].coverUrl).toBeUndefined();
+    expect(out.stories[0].downloaded).toBe(false);
+    expect(out.bookmarks.map((b: { storyKey: string }) => b.storyKey)).toEqual(['ao3:77']);
+    expect(out.collections[0].storyKeys).toEqual(['ao3:77']);
+    // The library itself is untouched.
+    expect(lib.libraryStore.get().stories['local:abc'].local).toEqual(file);
+  });
+
+  it('restore: an imported story counts only when it’s on this device (its progress merges)', () => {
+    const backup = {
+      app: 'ficshelf',
+      version: 2,
+      exportedAt: 1,
+      stories: [
+        { ...local, readChapters: [1], lastReadAt: 50 },
+        { ...local, key: 'local:elsewhere', remoteId: 'elsewhere', local: { ...file, dir: 'imports/local_elsewhere' } },
+        { ...linked, key: 'ao3:88', remoteId: '88', local: { ...linked.local, dir: '../../escape' } },
+      ],
+      bookmarks: [
+        { id: 'b1', storyKey: 'local:elsewhere', storyTitle: 'x', chapter: 1, progress: 0, createdAt: 1 },
+        { id: 'b2', storyKey: 'local:abc', storyTitle: 'x', chapter: 2, progress: 0, createdAt: 1 },
+      ],
+      collections: [{ id: 'c1', name: 'C', storyKeys: ['local:elsewhere', 'ao3:88', 'local:abc'], createdAt: 1 }],
+      authors: [],
+      drafts: [],
+    };
+    const lib = loadLibrary();
+    lib.upsertStory(local, { ...local, readChapters: [2], lastReadAt: 10 });
+
+    expect(lib.importBackup(JSON.parse(JSON.stringify(backup)))).toBe(2);
+    const st = lib.libraryStore.get();
+    expect(Object.keys(st.stories).sort()).toEqual(['ao3:88', 'local:abc']);
+    expect(st.stories['local:abc']).toMatchObject({ readChapters: [1, 2], lastReadAt: 50, local: file, coverUrl: local.coverUrl });
+    // A site story's linked file is on the device that made the backup.
+    expect(st.stories['ao3:88'].local).toBeUndefined();
+    expect(st.stories['ao3:88'].coverUrl).toBeUndefined();
+    expect(st.bookmarks.map((b) => b.id)).toEqual(['b2']);
+    expect(st.collections[0].storyKeys).toEqual(['ao3:88', 'local:abc']);
+  });
+});

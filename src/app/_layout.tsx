@@ -11,6 +11,7 @@ import { useMiniPlayerInset } from '../components/miniPlayerLayout';
 import { SheetHost } from '../components/Sheet';
 import { WhatsNewSheet } from '../components/WhatsNewSheet';
 import { migrationStatus } from '../db/kv';
+import { sweepImports } from '../features/importFiles';
 import { checkForUpdates, configureBackgroundChecks, dueSources } from '../features/updates';
 import { bridge } from '../net/bridge';
 import { BridgeHost } from '../net/BridgeHost';
@@ -18,6 +19,10 @@ import { normalizeKey } from '../sources/keys';
 import { reloadLibrary } from '../state/library';
 import { settingsStore } from '../state/settings';
 import { useTheme } from '../theme';
+
+// A screen opened from outside (a file sent with "Open in FicShelf", a ficshelf:// link) sits on top
+// of the tabs, so closing it lands somewhere.
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 if (Platform.OS !== 'web') {
   Notifications.setNotificationHandler({
@@ -43,6 +48,14 @@ function useNotificationRouting(enabled: boolean) {
     Notifications.getLastNotificationResponseAsync().then((r) => r && go(r.notification.request.content.data));
     const sub = Notifications.addNotificationResponseReceivedListener((r) => go(r.notification.request.content.data));
     return () => sub.remove();
+  }, [enabled]);
+}
+
+/** Once per launch: clears what imports leave behind (Inbox copies, unfinished imports). */
+function useImportSweep(enabled: boolean) {
+  useEffect(() => {
+    if (Platform.OS === 'web' || !enabled) return;
+    sweepImports().catch(() => {});
   }, [enabled]);
 }
 
@@ -74,6 +87,7 @@ export default function RootLayout() {
   const playerInset = useMiniPlayerInset();
   const [migration, setMigration] = useState(migrationStatus);
   useNotificationRouting(migration.ok);
+  useImportSweep(migration.ok);
   useAutoChecks();
 
   const navTheme = {
@@ -124,6 +138,7 @@ export default function RootLayout() {
             <Stack.Screen name="review/[id]" options={{ presentation: 'modal', title: 'Write a review' }} />
             <Stack.Screen name="messages/compose" options={{ presentation: 'modal', title: 'New message' }} />
             <Stack.Screen name="open" options={{ presentation: 'modal', title: 'Open link' }} />
+            <Stack.Screen name="import" options={{ presentation: 'modal', title: 'Import' }} />
             <Stack.Screen name="listen" options={{ title: 'Now listening' }} />
             <Stack.Screen name="ao3/works" options={{ title: 'AO3' }} />
             <Stack.Screen name="ao3/fandoms/[medium]" options={{ title: 'Fandoms' }} />

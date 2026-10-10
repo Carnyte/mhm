@@ -301,6 +301,32 @@ your session · ⏳ not built (reason given).
 - ⏳ Later: AO3 login (restricted works, kudos, comments, subscriptions, AO3 bookmarks, Marked for
   Later), creator's style toggle, offline images
 
+### 2.13 Imported files (EPUB, HTML, text, Markdown)
+- ✅ Library → + → Import a file (system picker, several files at once); "Open in FicShelf" from
+  Files, Safari and Mail (iOS document types; the copy iOS puts in Documents/Inbox is deleted after
+  import, and left-overs are swept at launch)
+- ✅ EPUB (AO3, FicHub, FanFicFare, Calibre, generic), HTML (AO3 downloads and saved pages, saved
+  FanFiction.net pages, FanFicFare / FicHub HTML, and a Safari-Reader-style cleanup of any other
+  page), plain text with chapter detection and unwrapping, Markdown
+- ✅ Import screen: progress (chapter N of M), preview (cover, title, author, chapters, words, tags,
+  where the file came from, warnings), editable title and author, a per-file status list for
+  several files, clear messages for PDF / Kindle / Word files, damaged or too large files
+- ✅ Link to the online story when the file came from AO3 or FanFiction.net (suggested when the
+  chapter counts agree): stored as that story with the file's chapters downloaded, merged into the
+  library's copy when there is one, the site asked once for its details; or keep as a local story
+- ✅ Already imported (same story page, same book id or same file): Replace (keeps progress,
+  bookmarks and collections; chapters matched by title, then position) or Keep both
+- ✅ Local stories: an Imported shelf, collections, bookmarks, Continue reading, library filter,
+  reader and audiobook fully offline, never checked for updates; story page with the file's stats
+  and its original site as a link; Delete removes the text, pictures, file, bookmarks, collection
+  entries and listening position
+- ✅ Untrusted files: allowlist sanitizer, the reader page on about:blank with a CSP (pictures only as
+  data: URIs, only the reader's own scripts by nonce), zip-slip-proof file names, size caps
+- ✅ Settings → Imported files: keep original files (on), space used, "only on this device, not in
+  backups"; backups leave imported stories out
+- ⏳ Later: EPUB export, full backup with imported stories, links from other sites (FicHub, page
+  clipping), Wattpad linking
+
 ---
 
 ## 3. Code map
@@ -314,13 +340,15 @@ src/ffn/constants.ts   categories, genres, ratings, languages, lengths …
 src/ffn/parsers/       HTML → typed models (story, lists, search, reviews, profile …)
 src/ffn/forms.ts       generic form parsing + "form replay"
 src/ffn/api.ts         typed client (calls bridge + parsers)
-src/sources/           site layer: keys, Source contract, registry, slots; ffn/ and ao3/ adapters
+src/sources/           site layer: keys, Source contract, registry, slots; ffn/, ao3/ and local/ adapters
 src/sources/ao3/       AO3: api (polite native requests), adapter, parsers/, urls, constants, ui slots
 src/net/http*.ts       polite HTTP client for AO3 (per-host queue, gaps, Retry-After); blocks.ts
 src/db/                SQLite (library, chapters, history, bookmarks, collections, drafts)
 src/state/             settings store, auth/session store
 src/reader/            reader HTML template + in-reader JS
-src/features/          updates checker, downloads, shared story actions
+src/features/          updates checker, downloads, shared story actions, imports (storing, linking,
+                       replacing, deleting imported files; importFiles.ts: their folders)
+src/import/            file import: EPUB / HTML / TXT / Markdown → a sanitized book (pure TypeScript)
 src/audio/             audiobook player: segmentation, TTS engine, background audio / lock screen, voices
 src/components/        UI kit
 tests/                 Jest tests + synthetic HTML fixtures (no real story text)
@@ -334,7 +362,7 @@ scripts/dev-proxy.ts   lets the web build use a real Chromium session (for scree
 
 ```bash
 npm install
-npm test               # unit tests (600)
+npm test               # unit tests (712)
 npm run lint           # eslint + check-keys
 npm run typecheck
 npx expo run:ios       # local dev build (needs Xcode), or:
@@ -346,6 +374,6 @@ use a **development build**, not Expo Go.
 
 ## 5. Verification done
 
-See the **Verification** section of `README.md`: 600 unit tests, a 17-check live run of the
+See the **Verification** section of `README.md`: 712 unit tests, a 17-check live run of the
 FanFiction.net parsers and a 5-check live run of the AO3 parsers, typecheck, lint, iOS bundle
 export, expo-doctor, and live-data screenshots.

@@ -64,6 +64,8 @@ export interface SourceSettings {
    * are `AppSettings.excludedFandoms`, where older builds read them.
    */
   hiddenFandoms?: string[];
+  /** Imported files: keep a copy of each original file next to the story (on unless turned off). */
+  keepOriginals?: boolean;
 }
 
 export interface AppSettings {

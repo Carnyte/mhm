@@ -4,7 +4,7 @@
 // The transforms are pure and idempotent, so the same functions migrate v1 data, merge rows an
 // older build writes after the upgrade, import v1 backups, and normalise blobs when they're read.
 
-import type { Bookmark, Collection, LibraryStory, RecentSearch, SavedAuthor } from '../../state/library';
+import type { Bookmark, Collection, LibraryStory, LocalOrigin, RecentSearch, SavedAuthor } from '../../state/library';
 import type { PinnedFandom } from '../../state/settings';
 import { authorKey, isSourceId, isStoryKey, normalizeKey, splitKey, type SourceId, type StoryKey } from '../../sources/keys';
 import type { MigrationCounts, MigrationEnv, MigrationResult, SyncDb } from './index';
@@ -71,9 +71,49 @@ export function normalizeStory(raw: unknown, key?: StoryKey): LibraryStory | nul
     remoteId,
     stats,
     ffn,
+    local: normalizeLocal(rest.local),
     // An older build installed again keys stories by this, so FanFiction.net records keep it.
     id: source === 'ffn' ? Number(remoteId) : undefined,
   }) as unknown as LibraryStory;
+}
+
+const IMPORT_KINDS = new Set(['epub', 'html', 'txt', 'md']);
+const isStr = (x: unknown): x is string => typeof x === 'string';
+// Where an imported story's files may be: its own folder under imports/, plain names inside it.
+// The app deletes these folders, so nothing else (`..`, absolute paths) is ever accepted.
+const IMPORT_DIR = /^imports\/[a-z0-9_-]{1,80}$/i;
+const IMPORT_FILE = /^[a-z0-9_-]{1,40}\.[a-z0-9]{1,8}$/i;
+const IMPORT_IMAGE = /^img\/\d{1,6}\.[a-z0-9]{1,5}$/i;
+
+/**
+ * An imported story's file record, checked: only the app's own shapes survive (it names folders
+ * the app deletes, and a backup or an older build could hand anything). Undefined when unusable.
+ */
+export function normalizeLocal(raw: unknown): LocalOrigin | undefined {
+  if (!isObj(raw) || !isStr(raw.kind) || !IMPORT_KINDS.has(raw.kind) || !isStr(raw.dir) || !IMPORT_DIR.test(raw.dir)) return undefined;
+  const out: Obj = {
+    kind: raw.kind,
+    fileName: isStr(raw.fileName) ? raw.fileName.slice(0, 255) : '',
+    importedAt: typeof raw.importedAt === 'number' ? raw.importedAt : 0,
+    size: typeof raw.size === 'number' ? raw.size : 0,
+    contentHash: isStr(raw.contentHash) ? raw.contentHash : '',
+    dir: raw.dir,
+  };
+  if (isStr(raw.generator)) out.generator = raw.generator;
+  if (isStr(raw.sourceUrl) && /^https?:\/\//i.test(raw.sourceUrl)) out.sourceUrl = raw.sourceUrl;
+  const o = raw.origin;
+  if (isObj(o) && (o.source === 'ao3' || o.source === 'ffn' || o.source === 'wp') && isStoryKey(o.key) && o.key === `${o.source}:${o.remoteId}`) {
+    out.origin = { source: o.source, remoteId: o.remoteId, key: o.key };
+  }
+  if (Array.isArray(raw.identifiers)) out.identifiers = raw.identifiers.filter(isStr).slice(0, 20);
+  if (isStr(raw.original) && IMPORT_FILE.test(raw.original)) out.original = raw.original;
+  if (isStr(raw.cover) && IMPORT_FILE.test(raw.cover)) out.cover = raw.cover;
+  if (isObj(raw.images)) {
+    const images: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw.images)) if (/^\d{1,6}$/.test(k) && isStr(v) && IMPORT_IMAGE.test(v)) images[k] = v;
+    out.images = images;
+  }
+  return out as unknown as LocalOrigin;
 }
 
 function numbersOnly(o: Obj): Obj {

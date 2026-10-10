@@ -1,6 +1,7 @@
 // A small pill naming a story's site ("FFN", "AO3", "WATTPAD"), styled like the COMPLETE pill.
 // It only appears once more than one site is switched on: with FanFiction.net alone every story
-// is from there, so nothing changes on screen.
+// is from there, so nothing changes on screen. Imported stories always have theirs, naming the
+// kind of file ("EPUB", "HTML", "TXT").
 
 import { StyleSheet, View } from 'react-native';
 import type { SourceId } from '../sources/keys';
@@ -15,16 +16,16 @@ export function useEnabledSourceCount(): number {
   return enabledSources().length;
 }
 
-export function SourceBadge({ source, always }: { source: SourceId; always?: boolean }) {
+export function SourceBadge({ source, always, label }: { source: SourceId; always?: boolean; label?: string }) {
   const c = useTheme();
   const count = useEnabledSourceCount();
-  if (!always && count <= 1) return null;
-  const color = c.source[source];
   const src = getSource(source);
+  if (!always && count <= 1 && src.transport !== 'local') return null;
+  const color = c.source[source];
   return (
-    <View style={[styles.pill, { backgroundColor: color + '22' }]} accessibilityLabel={`From ${src.name}`}>
+    <View style={[styles.pill, { backgroundColor: color + '22' }]} accessibilityLabel={label ? `Imported ${label} file` : `From ${src.name}`}>
       <T size={11} weight="700" style={{ color }}>
-        {src.short.toUpperCase()}
+        {(label ?? src.short).toUpperCase()}
       </T>
     </View>
   );
