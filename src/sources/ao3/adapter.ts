@@ -329,8 +329,10 @@ async function checkUpdates(stories: LibraryStory[], o: UpdateCheckOpts = {}): P
       const m = found.get(s.remoteId);
       if (m) {
         out.push(compare(s, m));
-        // Fewer chapters than the library has: chapters were deleted, so its ids are stale.
-        if (m.chapters < s.chapters) probe.push(s);
+        // Fewer chapters than the library's ids: chapters were deleted, so the ids are stale. (Not
+        // the stored count, which this result lowers at once: a run cut short before the probe
+        // must still probe next time.)
+        if (m.chapters < (s.chapterIds?.length ?? s.chapters)) probe.push(s);
       } else if ((s.restricted || restrictedIds.has(s.remoteId)) && !loggedIn()) {
         // Only for logged-in AO3 users: the search can't return it, and /navigate would only
         // bounce off AO3's login page.
@@ -355,7 +357,8 @@ async function checkUpdates(stories: LibraryStory[], o: UpdateCheckOpts = {}): P
         break;
       }
       if (e instanceof Ao3NotFoundError) await emit([{ key: s.key, changed: false, gone: true }]);
-      else if (e instanceof Ao3RestrictedError) await emit([{ key: s.key, changed: false }]);
+      // Locked since it was saved: remembered, so it isn't probed again while logged out.
+      else if (e instanceof Ao3RestrictedError) await emit([{ key: s.key, changed: false, restricted: true }]);
       else await emit([{ key: s.key, changed: false, error: e as Error }]);
     }
   }

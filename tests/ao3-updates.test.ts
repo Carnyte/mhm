@@ -22,9 +22,14 @@ jest.mock('expo-notifications', () => ({
 jest.mock('../src/net/bridge', () => ({ bridge: { pageReady: true, subscribe: () => () => {}, status: 'ready', loggedIn: false } }));
 jest.mock('../src/features/downloads', () => ({ downloadStory: jest.fn(async () => {}) }));
 const mockFfnFetched: number[] = [];
+const mockFfnMissing = new Set<number>();
 jest.mock('../src/ffn/api', () => ({
   getStory: async (id: number) => {
     mockFfnFetched.push(id);
+    if (mockFfnMissing.has(id)) {
+      const { FfnPageError } = jest.requireActual('../src/ffn/parsers/story') as typeof import('../src/ffn/parsers/story');
+      throw new FfnPageError('Story not found.', 'not_found');
+    }
     return {
       id,
       title: 'FFN story',
@@ -102,6 +107,7 @@ beforeEach(() => {
   resetAo3Session();
   mockSite = {};
   mockFfnFetched.length = 0;
+  mockFfnMissing.clear();
   jest.clearAllMocks();
   jest.restoreAllMocks();
   updateSettings({ lastUpdateCheck: undefined, lastUpdateCheckBySource: undefined, autoDownloadUpdates: true });
@@ -354,3 +360,60 @@ describe('a work that lost chapters (flows.2)', () => {
     expect(stories()['ao3:3171550']).toMatchObject({ chapters: 2, chapterIds: ['1001', '1003'], chapterTitles: ['One', 'Three'], lastChapter: 2, readChapters: [1, 2] });
   });
 });
+
+describe('follow-ups from the fix review', () => {
+  it('keeps probing a shrunken work until its ids are refreshed, even if a run stopped before /navigate', async () => {
+    mockSite = { '3171550': [2, 200] };
+    seed([work('3171550', { chapters: 3, chapterIds: ['1001', '1002', '1003'], lastChapter: 3 })]);
+    on(/\/works\/3171550\/navigate$/, { status: 503, text: 'busy' });
+    await checkForUpdates({ quiet: true }); // the probe fails: the count drops, the ids stay
+    expect(stories()['ao3:3171550']).toMatchObject({ chapters: 2, chapterIds: ['1001', '1002', '1003'] });
+    resetFake();
+    on(/\/works\/search/, (url) => searchAnswer(url));
+    on(/\/works\/3171550\/navigate$/, navigatePage({ ids: ['1001', '1003'], titles: ['One', 'Three'] }));
+    await checkForUpdates({ quiet: true, keys: ['ao3:3171550'] });
+    expect(navigates()).toHaveLength(1);
+    expect(stories()['ao3:3171550']).toMatchObject({ chapterIds: ['1001', '1003'], lastChapter: 2 });
+  });
+
+  it('remembers a work that became members-only, and stops probing it while logged out', async () => {
+    mockSite = {};
+    seed([work('7')]);
+    on(/\/works\/7\/navigate$/, { url: 'https://archiveofourown.org/users/login?restricted=true&return_to=%2Fworks%2F7%2Fnavigate', text: fixture('restricted_login.html') });
+    await checkForUpdates({ quiet: true });
+    expect(navigates()).toHaveLength(1);
+    expect(stories()['ao3:7']).toMatchObject({ restricted: true });
+    await checkForUpdates({ quiet: true });
+    expect(navigates()).toHaveLength(1);
+  });
+
+  it('never re-downloads from the background while logged in to the site', async () => {
+    mockSite = { '5': [4, 300] };
+    seed([work('5', { chapters: 3, downloaded: true, downloadedVersion: 100, version: 100 })]);
+    const { ao3Source } = jest.requireActual('../src/sources/ao3/adapter') as typeof import('../src/sources/ao3/adapter');
+    const src = ao3Source as { session?: unknown };
+    const had = src.session;
+    src.session = { get: () => ({ loggedIn: true, username: 'me' }) }; // AO3 login arrives in a later phase
+    try {
+      await checkForUpdates({ quiet: true, background: true });
+      expect(downloadStory).not.toHaveBeenCalled();
+      mockSite = { '5': [5, 400] };
+      await checkForUpdates({ quiet: true, keys: ['ao3:5'] });
+      expect(downloadStory).toHaveBeenCalled();
+    } finally {
+      src.session = had;
+    }
+  });
+
+  it('puts a FanFiction.net story that is gone at the back of the line instead of first every time', async () => {
+    const ffn = (id: string): LibraryStory => ({ ...work(id), key: toKey('ffn', id), source: 'ffn', remoteId: id, chapters: 2 });
+    mockFfnMissing.add(7);
+    seed([ffn('7'), ffn('8')]);
+    await checkForUpdates({ quiet: true });
+    // Stamped like a checked story, so stories not checked yet go ahead of it next time.
+    expect(stories()['ffn:7'].lastCheckedAt).toBeGreaterThan(0);
+    libraryStore.set((st) => ({ ...st, stories: { ...st.stories, 'ffn:9': ffn('9') } }));
+    expect(storiesToCheck().map((x) => x.key)[0]).toBe('ffn:9');
+  });
+});
+

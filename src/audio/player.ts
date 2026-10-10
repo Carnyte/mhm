@@ -9,7 +9,7 @@ import { kv } from '../db/kv';
 import { normalizePositions, type Position } from '../db/migrations/v2';
 import { onChapterRemap } from '../features/chapterIds';
 import { loadChapter as loadChapterText, prefetchChapter } from '../features/chapters';
-import { remapPosition, type ChapterRemap } from '../sources/remap';
+import { remapNumber, remapPosition, type ChapterRemap } from '../sources/remap';
 import { loadImage } from '../net/images';
 import { SOURCE_NAMES, sourceOfKey, type StoryKey } from '../sources/keys';
 import { keyOf, libraryStore, recordReading, type AnyStory, type LibraryStory } from '../state/library';
@@ -53,6 +53,7 @@ function savePosition(key: StoryKey, chapter: number, index: number) {
     positions = Object.fromEntries(entries);
     kv.set('listenPositions', positions).catch(() => {});
   }, 1500);
+  (positionsTimer as { unref?: () => void }).unref?.(); // don't keep a test process alive for it
 }
 
 /** 1 when the chapter starts with the spoken chapter title (block -1). */
@@ -383,7 +384,20 @@ function skipFrontMatter(s: Pick<PlayerState, 'frontMatter' | 'segments'>, index
   return fm && !exact && index === fm.from && fm.to < s.segments.length ? fm.to : index;
 }
 
-async function loadChapter(chapter: number, startIndex: StartPoint, opts: { autoplay: boolean }) {
+/**
+ * Where to resume in a chapter: the listening position, unless the reader has since read further
+ * (its progress is newer), else the start.
+ */
+function resumePoint(key: StoryKey, chapter: number): StartPoint {
+  const saved = listenPosition(key);
+  const lib = libraryStore.get().stories[key];
+  const listened = saved && saved.chapter === chapter ? saved : undefined;
+  const readP = lib?.chapterProgress?.[chapter];
+  const readNewer = readP != null && readP > 0.01 && readP < 0.97 && (!listened || (lib?.lastReadAt ?? 0) > listened.at + 90_000);
+  return readNewer ? { progress: readP! } : listened ? { body: listened.index } : 0;
+}
+
+async function loadChapter(chapter: number, startIndex: StartPoint, opts: { autoplay: boolean; followed?: boolean }) {
   const s = playerStore.get();
   if (!s.story) return;
   const story = s.story;
@@ -397,8 +411,25 @@ async function loadChapter(chapter: number, startIndex: StartPoint, opts: { auto
   if (opts.autoplay) audioSession.setPlaying(true);
   pushNowPlaying();
   try {
-    const { html, story: info, offline } = await loadChapterText(story.key, chapter);
+    // The site may renumber the chapters while this one loads (an AO3 chapter deleted or added):
+    // the chapter asked for is then the one now numbered remapNumber(chapter).
+    let moved: number | undefined;
+    const stopWatching = onChapterRemap((k, r) => {
+      if (k === story.key) moved = remapNumber(chapter, r);
+    });
+    let loaded: Awaited<ReturnType<typeof loadChapterText>>;
+    try {
+      loaded = await loadChapterText(story.key, chapter);
+    } finally {
+      stopWatching();
+    }
     if (token !== loadToken) return;
+    if (moved != null && moved !== chapter && !opts.followed) {
+      const resume = typeof startIndex === 'object' && ('body' in startIndex || 'progress' in startIndex);
+      await loadChapter(moved, resume ? resumePoint(story.key, moved) : startIndex, { ...opts, followed: true });
+      return;
+    }
+    const { html, story: info, offline } = loaded;
     let nextStory = story;
     if (info) {
       nextStory = { ...toPlayerStory(info), coverUrl: story.coverUrl ?? info.coverUrl };
@@ -513,21 +544,7 @@ export async function start(story: AnyStory | PlayerStory, opts: StartOptions = 
     return;
   }
   set({ ...IDLE, story: { ...ps, coverUrl: ps.coverUrl ?? cur.story?.coverUrl }, chapter, sleep: cur.sleep });
-  // Resume where you last were in this chapter: the listening position, unless you've since
-  // read further in the reader (its progress is newer).
-  const listened = saved && saved.chapter === chapter ? saved : undefined;
-  const readP = lib?.chapterProgress?.[chapter];
-  const readNewer = readP != null && readP > 0.01 && readP < 0.97 && (!listened || (lib?.lastReadAt ?? 0) > listened.at + 90_000);
-  const startAt: StartPoint =
-    opts.block != null
-      ? { block: opts.block, exact: opts.exact }
-      : opts.index != null
-        ? opts.index
-        : readNewer
-          ? { progress: readP! }
-          : listened
-            ? { body: listened.index }
-            : 0;
+  const startAt: StartPoint = opts.block != null ? { block: opts.block, exact: opts.exact } : opts.index != null ? opts.index : resumePoint(ps.key, chapter);
   await loadChapter(chapter, startAt, { autoplay: opts.autoplay !== false });
 }
 

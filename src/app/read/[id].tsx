@@ -32,8 +32,12 @@ import { useReaderTheme } from '../../theme';
 import { buildReaderHtml, readerCssVars } from '../../reader/template';
 import { ReaderSettingsPanel as SettingsPanel } from '../../components/ReaderSettingsPanel';
 import { countWords, htmlToText, readingTime } from '../../utils/format';
+import { onChapterRemap } from '../../features/chapterIds';
+import { remapNumber } from '../../sources/remap';
 
 interface Loaded {
+  /** The site renumbered the chapters while loading: the chapter asked for is now this one. */
+  movedTo?: number;
   story: StoryInfo;
   /** The chapter as fetched from the site (absent when it came from the device). */
   content?: ChapterContent;
@@ -48,8 +52,15 @@ async function loadChapter(key: StoryKey, chapter: number): Promise<Loaded> {
   const usable = await usableSavedChapter(key, chapter);
   if (usable && lib) return { story: infoFromLibrary(lib), html: usable, offline: true };
   const saved = await getSavedChapter(key, chapter);
+  // An AO3 chapter deleted or added since the library last looked renumbers the chapters while
+  // this loads; the chapter asked for (by the old numbering) is then remapNumber(chapter).
+  let moved: number | undefined;
+  const stopWatching = onChapterRemap((k, r) => {
+    if (k === key) moved = remapNumber(chapter, r);
+  });
   try {
-    const content = await fetchChapter(key, chapter);
+    const content = await fetchChapter(key, chapter).finally(stopWatching);
+    if (moved != null && moved !== chapter) return { movedTo: moved, story: content.story ?? infoFromLibrary(libraryStore.get().stories[key]!), html: '', offline: false };
     const html = renderChapter(content);
     if (html) saveChapter(key, chapter, html, content.remoteId).catch(() => {});
     // FanFiction.net chapter pages carry the story's metadata; other sites' may not.
@@ -163,6 +174,10 @@ export default function ReaderScreen() {
     loadChapter(key, chapter)
       .then((d) => {
         if (!alive) return;
+        if (d.movedTo) {
+          setChapter(d.movedTo); // follow the chapter that was asked for to its new number
+          return;
+        }
         setRes({ key: loadKey, data: d });
         const p = resumeProgress(key, chapter);
         progressRef.current = p;

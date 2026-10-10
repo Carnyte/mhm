@@ -7,6 +7,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { kv } from '../db/kv';
 import { getAccountAuthors, getAccountStories } from '../ffn/api';
+import { FfnPageError } from '../ffn/parsers/story';
 import type { StorySummary, UserRef } from '../ffn/types';
 import { bridge } from '../net/bridge';
 import { SOURCE_IDS, type SourceId, type StoryKey } from '../sources/keys';
@@ -134,6 +135,8 @@ export interface CheckOptions {
   deadline?: number;
   /** Stops the check (the background window ended). */
   signal?: AbortSignal;
+  /** Run by the background task (not something the user started). */
+  background?: boolean;
 }
 
 /**
@@ -173,6 +176,8 @@ export async function checkForUpdates(opts: CheckOptions = {}) {
         }
       } catch (e) {
         failed(e);
+        // Deleted on the site: checked again later, but not first in line every time.
+        if (e instanceof FfnPageError && e.code === 'not_found') patchStory(s.key, { lastCheckedAt: Date.now() });
       }
       answered.add(s.key);
       tick();
@@ -192,6 +197,10 @@ export async function checkForUpdates(opts: CheckOptions = {}) {
     if (r.gone) {
       // Not on the site any more: not asked about again (opening it clears this).
       patchStory(r.key, { gone: true, lastCheckedAt: now });
+      return;
+    }
+    if (r.restricted) {
+      patchStory(r.key, { restricted: true, lastCheckedAt: now });
       return;
     }
     if (r.chapterIds) await applyChapterIds(r.key, r.chapterIds);
@@ -266,11 +275,15 @@ export async function checkForUpdates(opts: CheckOptions = {}) {
  * per check, oldest copies first and not after the deadline: the rest stay stale and come up
  * again at the next check.
  */
-async function autoDownload(stories: LibraryStory[], stale: LibraryStory[] = [], o: { deadline?: number; signal?: AbortSignal } = {}) {
+async function autoDownload(stories: LibraryStory[], stale: LibraryStory[] = [], o: { deadline?: number; signal?: AbortSignal; background?: boolean } = {}) {
   const st = settingsStore.get();
   if (!st.autoDownloadUpdates) return;
-  const grown = stories.filter((s) => s.downloaded);
+  // A download reads the story's page, which a site with accounts records in the user's history
+  // (AO3): never from the background while logged in there. The next check the user starts does it.
+  const allowed = (s: LibraryStory) => !(o.background && getSource(s.source).session?.get().loggedIn);
+  const grown = stories.filter((s) => s.downloaded && allowed(s));
   const refresh = stale
+    .filter(allowed)
     .filter((s) => !stories.some((x) => x.key === s.key))
     .sort((a, b) => (a.downloadedVersion ?? 0) - (b.downloadedVersion ?? 0))
     .slice(0, MAX_QUIET_REDOWNLOADS);
@@ -364,6 +377,7 @@ export async function runBackgroundCheck() {
       sources,
       deadline: Date.now() + BACKGROUND_BUDGET_MS,
       signal: ctrl.signal,
+      background: true,
     });
   } finally {
     sub?.remove();

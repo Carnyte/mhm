@@ -172,6 +172,8 @@ export interface UpdateResult {
   redownload?: boolean;
   /** The story was removed from the site. */
   gone?: boolean;
+  /** The story is now only for logged-in users (AO3 "locked"). */
+  restricted?: boolean;
   error?: Error;
 }
 
