@@ -271,6 +271,9 @@ async function downloadAll(remoteId: string, onChapter: (c: ChapterContent) => P
 /** What changed for one library work, from its search blurb. */
 function compare(s: LibraryStory, m: StoryMeta): UpdateResult {
   const version = m.version;
+  // A copy from an imported file has no version yet: it is taken as current (the check records
+  // the version), never re-downloaded behind the user's back for it.
+  const fromFile = !!s.local && s.downloadedVersion == null;
   return {
     key: s.key,
     meta: m,
@@ -278,7 +281,7 @@ function compare(s: LibraryStory, m: StoryMeta): UpdateResult {
     // Only a new chapter is news: AO3's version stamp changes on any edit (tags, collections…).
     changed: m.chapters > s.chapters,
     // A changed work makes the device's copy stale.
-    redownload: !!s.downloaded && !!version && version !== s.downloadedVersion,
+    redownload: !!s.downloaded && !!version && !fromFile && version !== s.downloadedVersion,
   };
 }
 

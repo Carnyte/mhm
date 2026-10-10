@@ -403,7 +403,8 @@ export function recordReading(src: AnyStory, chapter: number, progress: number) 
     chapterProgress,
     knownChapters: Math.max(prev?.knownChapters ?? 0, src.chapters),
   };
-  upsertStory(src, patch);
+  // An imported story exists only as imported: a reader still open on a deleted one never brings it back.
+  upsertStory(src, patch, { create: splitKey(keyOf(src)).source !== 'local' });
 }
 
 export function markChapterRead(key: StoryKey, chapter: number, read: boolean) {
@@ -535,6 +536,8 @@ function persistBookmarks() {
 }
 
 export function addBookmark(b: Omit<Bookmark, 'id' | 'createdAt' | 'storyId'>) {
+  // Not in an imported story that was deleted (a reader still open on it).
+  if (splitKey(b.storyKey).source === 'local' && !libraryStore.get().stories[b.storyKey]) return;
   const [entry] = normalizeBookmarks([{ ...b, id: uid(), createdAt: Date.now() }]);
   libraryStore.set((st) => ({ ...st, bookmarks: [entry, ...st.bookmarks] }));
   persistBookmarks();

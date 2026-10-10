@@ -32,7 +32,7 @@ import {
 import { settingsStore } from '../state/settings';
 import { announceRemap } from './chapterIds';
 import { fetchStory } from './chapters';
-import { dropStaged, importDirPath, removeImportFiles, storyFileRef, swapInStaged, writeBookFiles, writing } from './importFiles';
+import { dropStaged, importDirPath, removeImportFiles, removeStoryFiles, storyFileRef, swapInStaged, writeBookFiles, writing } from './importFiles';
 
 /** The picked or opened file a book was read from. */
 export interface ImportFile {
@@ -342,20 +342,21 @@ async function commitLinked(book: ImportedBook, file: ImportFile, o: CommitOptio
   const known = Object.keys(prev?.local?.images ?? {}).map(Number);
   const offset = known.length ? Math.max(...known) + 1 : 0;
   const shift = (html: string) => (offset ? html.replace(/ficshelf-img:(\d{1,6})/g, (_m, n: string) => `ficshelf-img:${Number(n) + offset}`) : html);
-  // Chapters the story has saved already are kept; the file fills in the rest.
+  // Chapters the story has saved already are kept; the file fills in the rest (and only their
+  // pictures are written).
   const have = new Set(await chapterStore.list(key));
-  const rows = book.chapters.map((c, i) => ({ number: i + 1, html: shift(c.html) })).filter((r) => !have.has(r.number));
+  const fresh = book.chapters.map((c, i) => ({ c, number: i + 1 })).filter((r) => !have.has(r.number));
+  const rows = fresh.map(({ c, number }) => ({ number, html: shift(c.html) }));
   writing.add(key);
-  let files;
+  let files: Awaited<ReturnType<typeof writeBookFiles>> | undefined;
   try {
-    files = await writeBookFiles(key, book, { originalUri: keep ? file.uri : undefined, offset, previous: prev?.local });
+    files = await writeBookFiles(key, book, { originalUri: keep ? file.uri : undefined, offset, previous: prev?.local, chapters: fresh.map((r) => r.c) });
     if (o.signal?.aborted) throw cancelled();
-    await chapterStore.putMany(key, rows, { onProgress: o.onProgress, signal: o.signal });
+    // Written aside and added in one step: a failed, cancelled or killed import leaves no rows.
+    await chapterStore.putMany(key, rows, { merge: true, onProgress: o.onProgress, signal: o.signal });
   } catch (e) {
-    if (!prev) {
-      removeImportFiles(key);
-      await chapterStore.remove(key).catch(() => {});
-    }
+    if (!prev) removeImportFiles(key);
+    else if (files) removeStoryFiles(key, Object.values(files.images));
     throw e;
   } finally {
     writing.delete(key);
@@ -367,7 +368,7 @@ async function commitLinked(book: ImportedBook, file: ImportFile, o: CommitOptio
   if (!files.original && prev?.local?.original) local.original = prev.local.original;
   if (!files.cover && prev?.local?.cover) local.cover = prev.local.cover;
   const cover = files.cover ? storyFileRef(key, files.cover) : undefined;
-  const downloadedChapters = await chapterStore.list(key);
+  const downloadedChapters = [...new Set([...have, ...rows.map((r) => r.number)])].sort((a, b) => a - b);
   if (prev) {
     const titles = prev.chapterTitles ?? [];
     upsertStory(prev, {
@@ -409,7 +410,9 @@ async function commitLinked(book: ImportedBook, file: ImportFile, o: CommitOptio
 export async function refreshLinkedStory(key: StoryKey): Promise<boolean> {
   try {
     const info = await fetchStory(key, { priority: 'user' });
-    upsertStory(info, {}, { create: false });
+    // The file is the site's current version as far as anyone knows (see the AO3 update check).
+    const s = libraryStore.get().stories[key];
+    upsertStory(info, s?.local && s.downloadedVersion == null && info.version ? { downloadedVersion: info.version } : {}, { create: false });
     return true;
   } catch {
     return false;

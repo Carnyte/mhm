@@ -10,10 +10,10 @@
 // common block syntax (paragraphs, emphasis, headings, rules, quotes, lists, code). Raw HTML in
 // it is shown as text, never as markup.
 
-import { chapterFromHtml, sanitizeFragment, Stepper, type BookDraft } from './build';
+import { chapterFromHtml, partsWarning, sanitizeFragment, splitParts, Stepper, type BookDraft } from './build';
 import { decodeBytesAsync } from './decode';
 import { findStoryUrl } from './detect';
-import { isChapterHeading, labeledFields } from './dom';
+import { CHAPTER_HEADING, isChapterHeading, labeledFields, ROMAN_HEADING, SCENE_BREAK } from './dom';
 import { fieldTags, languageName, parseComplete, parseDate, plainSummary } from './meta';
 import type { ImportedChapter } from './types';
 
@@ -25,27 +25,52 @@ const blank = (l: string | undefined) => l === undefined || l.trim() === '';
 const words = (lines: string[]) => lines.join(' ').match(/\S+/g)?.length ?? 0;
 const baseName = (fileName: string) => fileName.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
 
-/** A scene break: "* * *", "***", "---", "~~~", "###", "o0o0o", "=-=-=". */
-const SCENE_BREAK = /^\s*(?:(?:[*#~=_+-]\s*){3,}|(?:[oO0]\s*){4,}|(?:=-)+=?)\s*$/;
+/**
+ * Wraps text between pairs of `mark` ("**", "__", "~~") in `tag`: the opener followed by a
+ * non-space, the closer after one. One pass from left to right: an opener without a closer ends
+ * the search (no later opener can have one either), so a long line of openers costs no more than
+ * reading it. `wordEdges`: the marks must not touch a letter outside ("snake__case__name" stays).
+ */
+function pairs(h: string, mark: string, tag: string, wordEdges = false): string {
+  const isWord = (c: string | undefined) => !!c && /\w/.test(c);
+  const len = mark.length;
+  let out = '';
+  let from = 0;
+  for (let i = h.indexOf(mark); i >= 0; i = h.indexOf(mark, i + 1)) {
+    if (i < from || !/\S/.test(h[i + len] ?? '') || h[i + len] === mark[0] || (wordEdges && isWord(h[i - 1]))) continue;
+    let j = h.indexOf(mark, i + len + 1);
+    while (j >= 0 && (/\s/.test(h[j - 1]) || (wordEdges && isWord(h[j + len])))) j = h.indexOf(mark, j + 1);
+    if (j < 0) break;
+    out += `${h.slice(from, i)}<${tag}>${h.slice(i + len, j)}</${tag}>`;
+    from = j + len;
+    i = from - 1;
+  }
+  return out + h.slice(from);
+}
+
+/** Lines longer than this are shown as they are, without inline Markdown. */
+const MAX_INLINE_LINE = 20_000;
 
 /** Inline Markdown on one line of text: emphasis, strike, code, links. HTML is escaped first. */
 export function inlineMarkdown(s: string): string {
+  if (s.length > MAX_INLINE_LINE) return esc(s);
   const kept: string[] = [];
   const keep = (html: string) => `\u0001${kept.push(html) - 1}\u0001`;
   let h = esc(s);
   h = h.replace(/\\([\\`*_{}[\]()#+\-.!~>|])/g, (_m, c: string) => keep(c));
   h = h.replace(/`([^`]+)`/g, (_m, c: string) => keep(`<code>${c}</code>`));
-  // Link targets may hold one level of parentheses ("…/Foo_(bar)").
-  const target = String.raw`\(\s*([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)(?:\s+[^)]*)?\)`;
-  h = h.replace(new RegExp(String.raw`!\[([^\]]*)\]` + target, 'g'), (_m, alt: string, url: string) =>
+  // Link targets may hold one level of parentheses ("…/Foo_(bar)"); texts and titles are bounded,
+  // so a line full of "[" or "](" can't make the patterns retry the rest of the line from each.
+  const target = String.raw`\(\s*([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)(?:\s+[^)]{0,300})?\)`;
+  h = h.replace(new RegExp(String.raw`!\[([^\]]{0,500})\]` + target, 'g'), (_m, alt: string, url: string) =>
     /^https?:\/\//i.test(url) ? keep(`<img src="${quoteSafe(url)}" alt="${quoteSafe(alt)}">`) : alt,
   );
-  h = h.replace(new RegExp(String.raw`\[([^\]]+)\]` + target, 'g'), (_m, text: string, url: string) =>
+  h = h.replace(new RegExp(String.raw`\[([^\]]{1,500})\]` + target, 'g'), (_m, text: string, url: string) =>
     /^(https?:|mailto:)/i.test(url) ? `<a href="${quoteSafe(url)}">${text}</a>` : text,
   );
-  h = h.replace(/\*\*(?=\S)(.*?\S)\*\*/g, '<strong>$1</strong>').replace(/(^|[^\w])__(?=\S)(.*?\S)__(?!\w)/g, '$1<strong>$2</strong>');
+  h = pairs(pairs(h, '**', 'strong'), '__', 'strong', true);
   h = h.replace(/(^|[^*\w])\*(?=[^\s*])([^*]*?[^\s*])\*(?![*\w])/g, '$1<em>$2</em>').replace(/(^|[^_\w])_(?=[^\s_])([^_]*?[^\s_])_(?![_\w])/g, '$1<em>$2</em>');
-  h = h.replace(/~~(?=\S)(.*?\S)~~/g, '<del>$1</del>');
+  h = pairs(h, '~~', 'del');
   return h.replace(/\u0001(\d+)\u0001/g, (_m, i: string) => kept[Number(i)]);
 }
 
@@ -160,6 +185,9 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
       i++;
     }
   }
+  // A Roman numeral alone ("I", "V.") is a heading only where others are ("II", "III"…).
+  const roman = fff ? [] : starts.filter((s) => ROMAN_HEADING.test(s.title) && !CHAPTER_HEADING.test(s.title));
+  if (roman.length === 1) starts.splice(starts.indexOf(roman[0]), 1);
   const useHeadings = fff ? starts.length >= 1 : starts.length >= 2;
   const header = useHeadings ? lines.slice(0, starts[0].at) : lines;
   let sections: Section[] = useHeadings
@@ -174,8 +202,9 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
     if (/^End file\.?$/i.test(last[last.length - 1]?.trim() ?? '')) last.pop();
   }
 
-  // The header: title, author, labelled fields, a summary.
-  const headLines = header.map((l) => l.trim());
+  // The header: title, author, labelled fields, a summary (in its first lines: without chapter
+  // headings the "header" is the whole text).
+  const headLines = header.slice(0, 300).map((l) => l.trim());
   if (fff) {
     // FanFicFare wraps long field values onto the next lines.
     for (let i = headLines.length - 1; i > 0; i--) {
@@ -192,7 +221,9 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
   const firstIdx = header.findIndex((l) => !blank(l));
   if (firstIdx >= 0) {
     const first = header[firstIdx].trim();
-    const looksLikeTitle = first.length <= 100 && !/[.,;!?"”]$/.test(first) && !/^\w[\w ]*:\s/.test(first) && blank(header[firstIdx + 1]);
+    // A title stands alone, or has its byline right under it ("Title" / "by Author").
+    const alone = blank(header[firstIdx + 1]) || (BYLINE.test(header[firstIdx + 1].trim()) && blank(header[firstIdx + 2]));
+    const looksLikeTitle = first.length <= 100 && !/[.,;!?"”]$/.test(first) && !/^\w[\w ]*:\s/.test(first) && alone;
     if (looksLikeTitle && (useHeadings || header.slice(firstIdx + 1).some((l) => !blank(l)))) {
       title = first;
       bodyStart = firstIdx + 1;
@@ -205,6 +236,7 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
     }
   }
   if (!author && fields.Author) author = fields.Author;
+  await stepper.pause();
   const layout: TextLayout = {
     width: wrapWidth(lines),
     blankSeparated: lines.filter(blank).length * 4 >= lines.filter((l) => !blank(l)).length,
@@ -217,8 +249,22 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
     if (html) chapters.push(chapterFromHtml(t, html));
   };
   if (!useHeadings) {
-    await stepper.step(0, 1);
-    add(title || baseName(fileName), header.slice(bodyStart));
+    // A long text is cut into parts at scene breaks or paragraph breaks (see splitParts).
+    await stepper.pause();
+    const body = header.slice(bodyStart);
+    const lineWords = body.map((l) => (blank(l) || SCENE_BREAK.test(l) ? 0 : words([l])));
+    await stepper.pause();
+    const parts = splitParts(
+      lineWords,
+      (i) => SCENE_BREAK.test(body[i]) && blank(body[i - 1]),
+      (i) => blank(body[i - 1]) || (!layout.blankSeparated && layout.width == null),
+    );
+    if (parts.length > 1) warnings.push(partsWarning(lineWords.reduce((a, b) => a + b, 0), parts.length));
+    await stepper.step(0, parts.length);
+    for (let k = 0; k < parts.length; k++) {
+      add(parts.length > 1 ? `Part ${k + 1}` : title || baseName(fileName), body.slice(parts[k], parts[k + 1] ?? body.length));
+      await stepper.step(k + 1, parts.length);
+    }
   } else {
     await stepper.step(0, sections.length);
     // Text before the first chapter that isn't the title page is a chapter of its own.
@@ -408,9 +454,16 @@ export async function parseMarkdownFile(bytes: Uint8Array, fileName: string, ste
     if (html) chapters.push(chapterFromHtml(t, html));
   };
   if (!chapterLevel) {
-    await stepper.step(0, 1);
     const rest = blocks[0]?.t === 'h' && blocks[0].level === 1 ? blocks.slice(1) : blocks;
-    add(title || baseName(fileName), rest);
+    // A long text is cut into parts at rules or between blocks (see splitParts).
+    const blockWords = rest.map((b) => (b.t === 'p' || b.t === 'quote' ? words(b.lines) : b.t === 'list' ? words(b.items.flat()) : b.t === 'code' ? words([b.text]) : 0));
+    const parts = splitParts(blockWords, (i) => rest[i].t === 'hr');
+    if (parts.length > 1) warnings.push(partsWarning(blockWords.reduce((a, b) => a + b, 0), parts.length));
+    await stepper.step(0, parts.length);
+    for (let k = 0; k < parts.length; k++) {
+      add(parts.length > 1 ? `Part ${k + 1}` : title || baseName(fileName), rest.slice(parts[k], parts[k + 1] ?? rest.length));
+      await stepper.step(k + 1, parts.length);
+    }
   } else {
     const starts = blocks.map((b, i) => (b.t === 'h' && b.level === chapterLevel ? i : -1)).filter((i) => i >= 0);
     const intro = blocks.slice(0, starts[0]).filter((b) => !(b.t === 'h' && b.level < chapterLevel));

@@ -173,12 +173,12 @@ export const chapterStore = {
   async putMany(
     key: StoryKey,
     rows: { number: number; html: string; remoteId?: string }[],
-    opts: { replace?: boolean; batch?: number; onProgress?: (done: number, total: number) => void; signal?: AbortSignal } = {},
+    opts: { replace?: boolean; merge?: boolean; batch?: number; onProgress?: (done: number, total: number) => void; signal?: AbortSignal } = {},
   ) {
     if (!kv.writable) return;
     if (opts.replace) for (const k of keys()) if (k.startsWith(`${CH}${key}:`)) remove(k);
     rows.forEach((r, i) => {
-      write(chKey(key, r.number), r.html);
+      if (!opts.merge || read(chKey(key, r.number)) == null) write(chKey(key, r.number), r.html);
       if ((i + 1) % (opts.batch ?? 20) === 0 || i === rows.length - 1) opts.onProgress?.(i + 1, rows.length);
     });
   },

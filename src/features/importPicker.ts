@@ -5,13 +5,9 @@ import { router } from 'expo-router';
 import { toast } from '../components/Sheet';
 import { IMPORT_MIME_TYPES } from '../import';
 import { errorMessage } from '../utils/format';
+import { handOff, type PickedFile } from './importHandoff';
 
-/** A file handed to the import screen. */
-export interface PickedFile {
-  uri: string;
-  name: string;
-  size?: number;
-}
+export type { PickedFile } from './importHandoff';
 
 /**
  * Lets the user pick story files (several at once) and opens the import screen with them. MIME
@@ -23,7 +19,7 @@ export async function pickStoryFiles() {
     const res = await DocumentPicker.getDocumentAsync({ type: IMPORT_MIME_TYPES, multiple: true, copyToCacheDirectory: true });
     if (res.canceled || !res.assets?.length) return;
     const files: PickedFile[] = res.assets.map((a) => ({ uri: a.uri, name: a.name, ...(a.size != null ? { size: a.size } : {}) }));
-    router.push({ pathname: '/import', params: { files: JSON.stringify(files) } });
+    router.push({ pathname: '/import', params: { open: handOff(files) } });
   } catch (e) {
     toast(`Couldn’t open the file picker: ${errorMessage(e)}`, 'error');
   }

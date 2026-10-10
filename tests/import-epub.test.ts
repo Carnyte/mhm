@@ -3,6 +3,8 @@
 
 import { strToU8, zipSync } from 'fflate';
 import { ImportError, parseImport, parseImageRef, replaceImageRefs } from '../src/import';
+import * as zip from '../src/import/zip';
+import * as format from '../src/utils/format';
 import { buildEpub, ncx, nav, png, setDeclaredSize, xhtml } from './helpers/epub';
 
 const XHTML = 'application/xhtml+xml';
@@ -456,5 +458,231 @@ describe('EPUBs in general', () => {
     expect(book.chapters.map((c) => c.title)).toEqual(['Preface', 'Chapter One']);
     expect(book.chapters[1].html).toMatch(/^<img src="ficshelf-img:0" alt>/);
     expect(book.images[0].mime).toBe('image/jpeg');
+  });
+});
+
+describe('EPUBs that used to lose or repeat text', () => {
+  const NCX = 'application/x-dtbncx+xml';
+  /** An EPUB 2 with an NCX: files by path under OEBPS/, spine in the order given. */
+  const simple = (files: Record<string, string>, toc: [string, string][], metadata = '<dc:title>T</dc:title><dc:creator>A</dc:creator>') =>
+    buildEpub({
+      metadata,
+      manifest: { ncx: ['toc.ncx', NCX], ...Object.fromEntries(Object.keys(files).map((p, i) => [`f${i}`, [p, XHTML] as [string, string]])) },
+      spine: Object.keys(files).map((_, i) => `f${i}`),
+      spineAttrs: 'toc="ncx"',
+      files: { 'OEBPS/toc.ncx': ncx(toc), ...Object.fromEntries(Object.entries(files).map(([p, body]) => [`OEBPS/${p}`, xhtml(body)])) },
+    });
+  const ao3OneShot = (title: string) =>
+    simple(
+      {
+        's0.xhtml': `<div id="preface"><h2 class="toc-heading">Preface</h2><p class="message"><b>${title}</b><br/>Posted originally on the <a href="https://archiveofourown.org/">Archive of Our Own</a> at <a href="https://archiveofourown.org/works/777">https://archiveofourown.org/works/777</a>.</p>
+          <div class="meta"><dl class="tags"><dt>Rating:</dt><dd><a href="x">General Audiences</a></dd><dt>Stats:</dt><dd>Published: 2021-01-02 Words: 6 Chapters: 1/1</dd></dl>
+          <h1>${title}</h1><div class="byline">by <a href="x" rel="author">someone</a></div><p>Summary</p><blockquote class="userstuff"><p>Sum text.</p></blockquote></div></div>`,
+        's1.xhtml': `<div id="chapters" class="userstuff"><h2 class="toc-heading">${title}</h2><div class="userstuff"><p>Story body one.</p><p>Story body two.</p></div></div>`,
+        's2.xhtml': `<div id="afterword"><h2 class="toc-heading">Afterword</h2><div id="endnotes"><p>End Notes</p><blockquote class="userstuff"><p>Work end note.</p></blockquote></div></div>`,
+      },
+      [
+        ['Preface', 's0.xhtml'],
+        [title, 's1.xhtml'],
+        ['Afterword', 's2.xhtml'],
+      ],
+      `<dc:title>${title}</dc:title><dc:creator>someone</dc:creator><dc:publisher>Archive of Our Own</dc:publisher>`,
+    );
+
+  it.each(['Quiet Harbour', 'Afterword', 'Contents', 'Preface', 'Cover'])('reads an AO3 one-shot called “%s”', async (title) => {
+    const book = await parseImport(ao3OneShot(title), 'one.epub');
+    expect(book.generator).toBe('ao3');
+    expect(book.chapters.map((c) => c.title)).toEqual([title]);
+    expect(text(book.chapters[0].html)).toContain('Story body one. Story body two.');
+    expect(text(book.chapters[0].html)).toContain('Work end note.');
+  });
+
+  it('keeps chapters FicHub and FanFicFare files call “Introduction”, “Information” or “Cover”', async () => {
+    const fichub = buildEpub({
+      version: '3.0',
+      opfPath: 'EPUB/content.opf',
+      metadata: '<dc:identifier id="uid">abc123</dc:identifier><dc:title>FH</dc:title><dc:creator>someone</dc:creator><meta name="generator" content="Ebook-lib 0.17.1"/>',
+      manifest: { intro: ['introduction.xhtml', XHTML], nav: ['nav.xhtml', XHTML, 'nav'], c1: ['chap_1.xhtml', XHTML], c2: ['chap_2.xhtml', XHTML] },
+      spine: ['intro', 'nav', 'c1', 'c2'],
+      files: {
+        'EPUB/introduction.xhtml': xhtml('<h1>FH</h1><p><b>By: someone</b></p><p>Status: complete</p><p>Published: 2020-01-01</p><p>Exported with the assistance of <a href="https://fichub.net">FicHub.net</a></p>'),
+        'EPUB/nav.xhtml': nav([
+          ['Introduction', 'introduction.xhtml'],
+          ['Introduction', 'chap_1.xhtml'],
+          ['Contents', 'chap_2.xhtml'],
+        ]),
+        'EPUB/chap_1.xhtml': xhtml('<h2>Introduction</h2><p/><div><div><div> Introduction<p/></div><div><p>First chapter body text.</p></div></div></div>'),
+        'EPUB/chap_2.xhtml': xhtml('<h2>Contents</h2><div><p>Second chapter body.</p></div>'),
+      },
+    });
+    const fh = await parseImport(fichub, 'fh.epub');
+    expect(fh.chapters.map((c) => [c.title, text(c.html).trim()])).toEqual([
+      ['Introduction', 'First chapter body text.'],
+      ['Contents', 'Second chapter body.'],
+    ]);
+    const fff = simple(
+      {
+        'title_page.xhtml': '<h3>FF by <a class="authorlink" href="x">someone</a></h3><div><b>Status:</b> In-Progress<br/></div>',
+        'file0001.xhtml': '<h3 class="fff_chapter_title">Information</h3><div><p>Body of the first chapter.</p></div>',
+        'file0002.xhtml': '<h3 class="fff_chapter_title">Cover</h3><div><p>Body of the second chapter.</p></div>',
+      },
+      [
+        ['Title Page', 'title_page.xhtml'],
+        ['Information', 'file0001.xhtml'],
+        ['Cover', 'file0002.xhtml'],
+      ],
+      '<dc:title>FF</dc:title><dc:contributor>FanFicFare [https://github.com/JimmXinu/FanFicFare]</dc:contributor>',
+    );
+    expect((await parseImport(fff, 'ff.epub')).chapters.map((c) => c.title)).toEqual(['Information', 'Cover']);
+    // Elsewhere a short "Cover" page is front matter, but a chapter of that name isn't.
+    const other = simple(
+      { 'a.xhtml': '<p>Cover art by a friend.</p>', 'b.xhtml': para('Words of the story', 40), 'c.xhtml': `<h2>Cover</h2>${para('Under cover of night, the long chapter went on', 30)}` },
+      [
+        ['Cover', 'a.xhtml'],
+        ['Chapter 1', 'b.xhtml'],
+        ['Cover', 'c.xhtml'],
+      ],
+    );
+    expect((await parseImport(other, 'other.epub')).chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Cover']);
+  });
+
+  it('keeps text that comes before the first table-of-contents entry', async () => {
+    const prologue = simple({ 'prologue.xhtml': `<h1>Prologue</h1>${para('Before it all', 2)}`, 'c1.xhtml': para('One', 1), 'c2.xhtml': para('Two', 1) }, [
+      ['Chapter 1', 'c1.xhtml'],
+      ['Chapter 2', 'c2.xhtml'],
+    ]);
+    const a = await parseImport(prologue, 'prologue.epub');
+    expect(a.chapters.map((c) => [c.title, text(c.html).trim()])).toEqual([
+      ['Prologue', 'Before it all 1. Before it all 2.'],
+      ['Chapter 1', 'One 1.'],
+      ['Chapter 2', 'Two 1.'],
+    ]);
+    // Calibre's split files: the text before the first entry's #fragment.
+    const split = simple(
+      { 'titlepage.xhtml': '<div><p>T</p></div>', 'index_split_000.html': `${para('Opening words that run on and on before the first chapter heading', 15)}<h2 id="ch1">Chapter 1</h2>${para('One', 2)}`, 'index_split_001.html': `<h2>Chapter 2</h2>${para('Two', 2)}` },
+      [
+        ['Chapter 1', 'index_split_000.html#ch1'],
+        ['Chapter 2', 'index_split_001.html'],
+      ],
+    );
+    const b = await parseImport(split, 'split.epub');
+    expect(b.chapters.map((c) => c.title)).toEqual(['Introduction', 'Chapter 1', 'Chapter 2']);
+    expect(text(b.chapters[0].html)).toContain('Opening words that run on and on before the first chapter heading 15.');
+    expect(b.warnings).toEqual([]);
+    // An untitled file after the cover page is text, not more of the cover.
+    const afterCover = simple({ 'cover.xhtml': '<p>Cover</p>', 'untitled.xhtml': para('A foreword with enough words in it to be read as a real part of the book', 12), 'c1.xhtml': para('One', 1) }, [
+      ['Cover', 'cover.xhtml'],
+      ['Chapter 1', 'c1.xhtml'],
+    ]);
+    const d = await parseImport(afterCover, 'cover.epub');
+    expect(d.chapters.map((ch) => ch.title)).toEqual(['Introduction', 'Chapter 1']);
+    expect(text(d.chapters[0].html)).not.toContain('Cover');
+    // A few words before it are left out, and that's said.
+    const few = simple({ 'a.xhtml': `<p>${'Some words before the first chapter of the book, '.repeat(3)}</p><h2 id="c1">Chapter 1</h2>${para('One', 1)}`, 'b.xhtml': para('Two', 1) }, [
+      ['Chapter 1', 'a.xhtml#c1'],
+      ['Chapter 2', 'b.xhtml'],
+    ]);
+    const c = await parseImport(few, 'few.epub');
+    expect(c.chapters.map((ch) => ch.title)).toEqual(['Chapter 1', 'Chapter 2']);
+    expect(c.warnings).toEqual(['Some text before the first chapter in the table of contents was left out.']);
+  });
+
+  it('puts every piece of text in exactly one chapter when an entry can’t be found', async () => {
+    const one = simple({ 'a.xhtml': '<h2 id="x1">One</h2><p>body-one</p><h2 id="x2">Two</h2><p>body-two</p><h2 id="x3">Three</h2><p>body-three</p>' }, [
+      ['One', 'a.xhtml#x1'],
+      ['Two', 'a.xhtml#nothere'],
+      ['Three', 'a.xhtml#x3'],
+    ]);
+    const a = await parseImport(one, 'e5.epub');
+    expect(a.chapters.map((c) => [c.title, text(c.html).trim()])).toEqual([
+      ['One', 'body-one Two body-two'],
+      ['Three', 'body-three'],
+    ]);
+    expect(a.warnings).toEqual(['1 table-of-contents entry points to places that aren’t in the text, so its text is part of the chapter before.']);
+    // An entry without a #fragment after one with a fragment in the same file.
+    const two = simple({ 'a.xhtml': '<h2 id="x1">One</h2><p>body-one</p><p>body-two</p>', 'b.xhtml': '<p>body-three</p>' }, [
+      ['One', 'a.xhtml#x1'],
+      ['Two', 'a.xhtml'],
+      ['Three', 'b.xhtml'],
+    ]);
+    const b = await parseImport(two, 'e5b.epub');
+    expect(b.chapters.map((c) => text(c.html).trim())).toEqual(['body-one body-two', 'body-three']);
+    expect(b.words).toBe(3);
+  });
+
+  it('leaves no AO3 labels or bylines in the text of a chapter with only end notes', async () => {
+    const book = await parseImport(
+      simple(
+        {
+          's0.xhtml': '<div id="preface"><p class="message">Posted originally on the <a href="https://archiveofourown.org/">Archive of Our Own</a> at <a href="https://archiveofourown.org/works/9">https://archiveofourown.org/works/9</a>.</p></div>',
+          's1.xhtml': `<div id="chapters"><div class="meta group"><h2 class="heading">Chapter 1</h2><div class="byline">by <a href="x">guest</a></div><p>Chapter Notes</p><div class="endnote-link">(See the end of the chapter for <a href="#endnotes1">notes</a>.)</div></div>
+            <div class="userstuff"><p>Body one text.</p></div><div class="meta" id="endnotes1"><p>Chapter End Notes</p><blockquote class="userstuff"><p>End one.</p></blockquote></div></div>`,
+        },
+        [
+          ['Preface', 's0.xhtml'],
+          ['Chapter 1', 's1.xhtml'],
+        ],
+        '<dc:title>T</dc:title><dc:publisher>Archive of Our Own</dc:publisher>',
+      ),
+      'notes.epub',
+    );
+    expect(book.chapters[0].words).toBe(3);
+    expect(text(book.chapters[0].html.replace(/<aside[\s\S]*<\/aside>/, ''))).toBe(' Body one text. ');
+    expect(book.chapters[0].html).toMatch(/<aside class="fs-notes" data-pos="after">.*End one\..*<\/aside>$/);
+  });
+
+  it('keeps a first line of dialogue that repeats the chapter’s title', async () => {
+    const book = await parseImport(
+      simple({ 'c1.xhtml': '<h2>Hello</h2><p>“Hello?”</p><p>Nobody answered.</p>', 'c2.xhtml': '<p>“Run!”</p><p>They ran.</p>', 'c3.xhtml': '<p>Chapter 3 - The End</p><p>It ended.</p>' }, [
+        ['Hello', 'c1.xhtml'],
+        ['Run', 'c2.xhtml'],
+        ['Chapter 3: The End', 'c3.xhtml'],
+      ]),
+      'echo.epub',
+    );
+    expect(book.chapters.map((c) => text(c.html).trim())).toEqual(['“Hello?” Nobody answered.', '“Run!” They ran.', 'It ended.']);
+  });
+
+  it('takes pictures written into the text out of it, and refuses a giant text file', async () => {
+    const pic = `data:image/png;base64,${Buffer.from(png(120)).toString('base64')}`;
+    const book = await parseImport(simple({ 'c1.xhtml': `<p>See:</p><img src="${pic}" alt="p"/>`, 'c2.xhtml': para('Two', 1) }, [['One', 'c1.xhtml'], ['Two', 'c2.xhtml']]), 'pic.epub');
+    expect(book.chapters[0].html).toBe('<p>See:</p><img src="ficshelf-img:0" alt="p">');
+    expect(book.images).toEqual([{ index: 0, mime: 'image/png', bytes: png(120) }]);
+    const big = setDeclaredSize(simple({ 'c1.xhtml': para('One', 1), 'c2.xhtml': para('Two', 1) }, [['One', 'c1.xhtml'], ['Two', 'c2.xhtml']]), 'OEBPS/c1.xhtml', 40 * 1024 * 1024);
+    await expect(parseImport(big, 'big.epub')).rejects.toMatchObject({ code: 'too-large' });
+  });
+});
+
+describe('a long EPUB on the phone', () => {
+  const many = (n: number) => {
+    const files: Record<string, string> = {};
+    for (let i = 1; i <= n; i++) files[`OEBPS/c${i}.xhtml`] = xhtml(`<h2>Chapter ${i}</h2>${para(`Words of chapter ${i}`, 20)}`);
+    return buildEpub({
+      metadata: '<dc:title>Many</dc:title>',
+      manifest: { ncx: ['toc.ncx', 'application/x-dtbncx+xml'], ...Object.fromEntries(Array.from({ length: n }, (_, i) => [`c${i + 1}`, [`c${i + 1}.xhtml`, XHTML] as [string, string]])) },
+      spine: Array.from({ length: n }, (_, i) => `c${i + 1}`),
+      spineAttrs: 'toc="ncx"',
+      files: { ...files, 'OEBPS/toc.ncx': ncx(Array.from({ length: n }, (_, i) => [`Chapter ${i + 1}`, `c${i + 1}.xhtml`] as [string, string])) },
+    });
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  it('counts each chapter’s words as it goes, leaving no long stretch for the end', async () => {
+    const count = jest.spyOn(format, 'countWords');
+    const atStep: number[] = [];
+    const book = await parseImport(many(12), 'many.epub', { onProgress: () => atStep.push(count.mock.calls.length) });
+    expect(book.chapters).toHaveLength(12);
+    // Every chapter was counted by the time its step was reported; nothing is counted after the last.
+    expect(atStep.at(-1)).toBe(count.mock.calls.length);
+    expect(atStep.at(-1)).toBeGreaterThanOrEqual(12);
+  });
+
+  it('inflates each text file once, with pauses, never all of it at once', async () => {
+    const sync = jest.spyOn(zip, 'readEntry');
+    const async = jest.spyOn(zip, 'readEntryAsync');
+    await parseImport(many(6), 'many.epub');
+    const names = (m: jest.SpyInstance) => m.mock.calls.map((c) => (c[1] as zip.ZipEntry).name).filter((n) => /c\d+\.xhtml$/.test(n));
+    expect(names(sync)).toEqual([]);
+    expect(names(async).sort()).toEqual(['OEBPS/c1.xhtml', 'OEBPS/c2.xhtml', 'OEBPS/c3.xhtml', 'OEBPS/c4.xhtml', 'OEBPS/c5.xhtml', 'OEBPS/c6.xhtml']);
   });
 });

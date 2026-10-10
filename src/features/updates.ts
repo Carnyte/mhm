@@ -215,7 +215,9 @@ export async function checkForUpdates(opts: CheckOptions = {}) {
     if (r.chapterTitles?.length) patchStory(r.key, { chapterTitles: [...r.chapterTitles] });
     const seen = r.info ?? r.meta;
     const back = before.gone ? { gone: false } : {};
-    if (seen) upsertStory(seen, { lastCheckedAt: now, ...back });
+    // A copy from an imported file is as new as the site's version when first checked.
+    const fileVersion = before.local && before.downloaded && before.downloadedVersion == null && seen?.version ? { downloadedVersion: seen.version } : {};
+    if (seen) upsertStory(seen, { lastCheckedAt: now, ...back, ...fileVersion });
     else patchStory(r.key, (s) => ({ lastCheckedAt: now, ...back, ...(r.chapters && r.chapters > s.chapters ? { chapters: r.chapters } : {}) }));
     const after = libraryStore.get().stories[r.key] ?? before;
     // News is a new chapter only; any other edit just makes a download stale.

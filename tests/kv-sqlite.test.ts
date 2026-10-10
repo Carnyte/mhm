@@ -109,6 +109,58 @@ describe('chapterStore on SQLite', () => {
   });
 });
 
+describe('saving an imported book (putMany)', () => {
+  const book = (n: number, tag = 'new') => Array.from({ length: n }, (_, i) => ({ number: i + 1, html: `<p>${tag} ${i + 1}</p>` }));
+  const saved = (db: NodeDb, key: string) => db.getAllSync<{ number: number; html: string }>('SELECT number, html FROM chapter_text WHERE story_key = ? ORDER BY number', key);
+  const staged = (db: NodeDb) => db.getAllSync<{ n: number }>("SELECT COUNT(*) AS n FROM chapter_text WHERE story_key LIKE '%#staging'")[0].n;
+
+  it('waits for another connection’s write instead of failing at once', () => {
+    const db = openNodeDb();
+    loadKv(db).kv.getSync('x');
+    expect(db.getFirstSync<{ timeout: number }>('PRAGMA busy_timeout')?.timeout).toBe(5000);
+  });
+
+  it('writes in batches on the app’s own connection, reporting progress', async () => {
+    const db = openNodeDb();
+    const { chapterStore } = loadKv(db);
+    const spy = jest.spyOn(db, 'withExclusiveTransactionAsync');
+    const progress: number[] = [];
+    await chapterStore.putMany('local:a', book(45), { onProgress: (done) => progress.push(done) });
+    expect(saved(db, 'local:a')).toHaveLength(45);
+    expect(progress).toEqual([20, 40, 45]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('adds a linked file’s chapters all at once, keeping those saved meanwhile, or none of them', async () => {
+    const db = openNodeDb();
+    const { chapterStore } = loadKv(db);
+    await chapterStore.put('ao3:5', 1, '<p>from AO3</p>');
+    const ctrl = new AbortController();
+    await expect(chapterStore.putMany('ao3:5', book(45), { merge: true, batch: 10, signal: ctrl.signal, onProgress: (done) => done >= 20 && ctrl.abort() })).rejects.toThrow(/cancelled/);
+    expect(saved(db, 'ao3:5')).toEqual([{ number: 1, html: '<p>from AO3</p>' }]);
+    expect(staged(db)).toBe(0);
+    await chapterStore.putMany('ao3:5', book(3), { merge: true });
+    expect(saved(db, 'ao3:5').map((r) => r.html)).toEqual(['<p>from AO3</p>', '<p>new 2</p>', '<p>new 3</p>']);
+    // An import the app was closed in the middle of leaves rows aside only, which the launch sweep drops.
+    db.runSync("INSERT INTO chapter_text (story_key, number, html, saved_at) VALUES ('ffn:9#staging', 1, 'x', 1)");
+    await chapterStore.removeStaging();
+    expect(staged(db)).toBe(0);
+    expect(await chapterStore.list('ffn:9')).toEqual([]);
+  });
+
+  it('swaps a replacement in at the end, or leaves the old chapters', async () => {
+    const db = openNodeDb();
+    const { chapterStore } = loadKv(db);
+    await chapterStore.putMany('local:r', book(3, 'old'));
+    const ctrl = new AbortController();
+    await expect(chapterStore.putMany('local:r', book(30), { replace: true, batch: 10, signal: ctrl.signal, onProgress: () => ctrl.abort() })).rejects.toThrow(/cancelled/);
+    expect(saved(db, 'local:r').map((r) => r.html)).toEqual(['<p>old 1</p>', '<p>old 2</p>', '<p>old 3</p>']);
+    await chapterStore.putMany('local:r', book(2), { replace: true });
+    expect(saved(db, 'local:r').map((r) => r.html)).toEqual(['<p>new 1</p>', '<p>new 2</p>']);
+    expect(staged(db)).toBe(0);
+  });
+});
+
 describe('opening a v1 database', () => {
   it('migrates it, with a pre-upgrade copy when there is room', () => {
     const db = openNodeDb();

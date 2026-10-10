@@ -28,6 +28,18 @@ export function attrOf(e: Element | null | undefined, name: string): string | un
 
 export const hasClass = (e: Element, cls: string) => (e.attribs.class ?? '').split(/\s+/).includes(cls);
 
+/** Words of the text under some nodes, counted text node by text node (blocks never run together). */
+export function wordsIn(nodes: AnyNode[]): number {
+  let n = 0;
+  const stack = nodes.slice();
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (isText(x)) n += (x.data.match(/\S+/g) ?? []).length;
+    else if (isTag(x) && x.name !== 'script' && x.name !== 'style') for (const c of x.children) stack.push(c);
+  }
+  return n;
+}
+
 /** Visible text, whitespace collapsed. */
 export const textOf = (n: AnyNode | AnyNode[] | null | undefined) => (n ? textContent(n).replace(/\s+/g, ' ').trim() : '');
 
@@ -216,17 +228,26 @@ export function append(box: ParentNode, nodes: AnyNode[]) {
   if (nodes.length) setChildren(box, box.children.concat(nodes));
 }
 
-/** Headings that name a chapter: "Chapter 3", "Chapter Three: Title", "Prologue", "Part II", "12.", "XIV". */
+/** Headings that name a chapter: "Chapter 3", "Chapter Three: Title", "Prologue", "Part II", "12.", "3 - Title". */
 export const CHAPTER_HEADING =
-  /^(?:(?:chapter|ch\.?|chap\.?|part|book|volume|vol\.?|act|episode|section)\s*[\dIVXLCivxlc]+\b|(?:chapter|part|book)\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\b|(?:prologue|epilogue|interlude|afterword|foreword|omake|side story|extra)\b|\d{1,4}\s*(?:[.:)\-–—]|$)|[IVXLC]{1,8}\s*(?:[.:)\-–—]|$))/i;
+  /^(?:(?:chapter|ch\.?|chap\.?|part|book|volume|vol\.?|act|episode|section)\s*[\dIVXLCivxlc]+\b|(?:chapter|part|book)\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\b|(?:prologue|epilogue|interlude|afterword|foreword|omake|side story|extra)\b|\d{1,4}(?:\s*[.:)]?\s*$|\s*[.:)]\s+\S|\s+[-–—]\s+\S))/i;
+
+/**
+ * A Roman numeral heading: "XIV", "IV.", "IV. The Storm", "II - Home". Capitals only, and never
+ * run into what follows, so "I... I don't know.", "I-I'm sorry." and "V-very well." stay dialogue.
+ */
+export const ROMAN_HEADING = /^[IVXLC]{1,8}(?:\.?$|[.:)]\s+\S|\s+[-–—]\s+\S)/;
 
 export function isChapterHeading(s: string): boolean {
   const t = s.trim();
-  if (t.length > 120 || !CHAPTER_HEADING.test(t)) return false;
+  if (t.length > 120 || !(CHAPTER_HEADING.test(t) || ROMAN_HEADING.test(t))) return false;
   // A sentence isn't a heading: "Extra credit was given.", "1. The first rule is never to …".
   if (/[.!?,;:]$/.test(t) && t.length > 30) return false;
   return !(/^(?:\d{1,4}|[IVXLC]{1,8})\s*[.:)\-–—]\s*\S/i.test(t) && t.length > 60);
 }
+
+/** A scene break: "* * *", "***", "---", "~~~", "###", "o0o0o", "=-=-=". */
+export const SCENE_BREAK = /^\s*(?:(?:[*#~=_+-]\s*){3,}|(?:[oO0]\s*){4,}|(?:=-)+=?)\s*$/;
 
 /** Lower case, punctuation and spaces gone: "Chapter 1: The Start" ≈ "chapter 1 – the start". */
 export function normTitle(s: string): string {
@@ -250,25 +271,43 @@ function firstText(nodes: AnyNode[]): Text | null {
   return null;
 }
 
+/** Lower case, spaces collapsed: what an exact repeat of a title has to match. */
+const looseTitle = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+
 /**
- * Removes the chapter's title where the text repeats it at the very top (a heading, or a bare
- * line, as FicHub writes it twice): the reader shows the title itself. Any of `titles` matches.
+ * Removes the chapter's title where the text repeats it at the very top (a heading, then a bare
+ * line, as FicHub writes it twice): the reader shows the title itself. Any of `titles` matches. A
+ * heading matches whatever its punctuation; a paragraph only when it reads as the title itself
+ * ("Chapter 1 - The Start"), never a line of the story that happens to say it ("“Hello?”").
  */
 export function dropRepeatedTitle(box: Element, titles: string[]) {
   const wanted = new Set(titles.map(normTitle).filter(Boolean));
+  const exact = new Set(titles.map(looseTitle).filter(Boolean));
   if (!wanted.size) return;
-  for (let round = 0; round < 3; round++) {
+  let headingDone = false;
+  for (;;) {
     const t = firstText(box.children);
     if (!t) return;
     let heading: AnyNode | null = null;
-    for (let p: AnyNode | null = t.parent; p && p !== box; p = p.parent) if (isTag(p) && HEADING.test(p.name)) heading = p;
-    if (heading && wanted.has(normTitle(textOf(heading)))) removeElement(heading);
-    else if (wanted.has(normTitle(t.data))) {
-      // A bare line: remove it, and the elements it leaves empty.
-      let n: AnyNode = t;
-      while (n.parent && n.parent !== box && !(n.parent as ParentNode).children.some((c) => c !== n && hasContent(c))) n = n.parent;
-      removeElement(n);
-    } else return;
+    let inPara = false;
+    for (let p: AnyNode | null = t.parent; p && p !== box; p = p.parent) {
+      if (isTag(p) && HEADING.test(p.name)) heading = p;
+      if (isTag(p) && p.name === 'p') inPara = true;
+    }
+    if (heading) {
+      if (headingDone || !wanted.has(normTitle(textOf(heading)))) return;
+      removeElement(heading);
+      headingDone = true;
+      continue;
+    }
+    const line = t.data.trim();
+    const titleLike = !/^["“‘'(]/.test(line) && !/[.!?…"”’']$/.test(line);
+    if (!(exact.has(looseTitle(line)) || (wanted.has(normTitle(line)) && (!inPara || titleLike)))) return;
+    // A bare line: remove it, and the elements it leaves empty. Once.
+    let n: AnyNode = t;
+    while (n.parent && n.parent !== box && !(n.parent as ParentNode).children.some((c) => c !== n && hasContent(c))) n = n.parent;
+    removeElement(n);
+    return;
   }
 }
 

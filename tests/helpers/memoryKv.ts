@@ -37,7 +37,7 @@ export function kvModule() {
       putMany: async (
         key: string,
         rows: { number: number; html: string; remoteId?: string }[],
-        opts: { replace?: boolean; onProgress?: (done: number, total: number) => void; signal?: AbortSignal } = {},
+        opts: { replace?: boolean; merge?: boolean; onProgress?: (done: number, total: number) => void; signal?: AbortSignal } = {},
       ) => {
         // Like the SQLite store: a replacement is all or nothing.
         const fresh = new Map<string, { html: string; remoteId?: string; savedAt?: number }>();
@@ -47,7 +47,7 @@ export function kvModule() {
           opts.onProgress?.(i + 1, rows.length);
         });
         if (opts.replace) for (const n of chapterNumbers(key)) chapterRows.delete(`${key}#${n}`);
-        for (const [k, v] of fresh) chapterRows.set(k, v);
+        for (const [k, v] of fresh) if (!opts.merge || !chapterRows.has(k)) chapterRows.set(k, v);
       },
       storyKeys: async (prefix: string) => [...new Set([...chapterRows.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(0, k.lastIndexOf('#'))))],
       removeStaging: async () => {},

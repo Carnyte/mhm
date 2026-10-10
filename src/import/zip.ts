@@ -117,11 +117,8 @@ export function checkDeclaredSize(entries: ZipEntry[], max = MAX_UNCOMPRESSED_BY
 
 const STEP = 16 * 1024;
 
-/**
- * One entry's bytes. Throws when the entry is encrypted, uses a method other than store / deflate,
- * or inflates to more than it declared (a damaged entry or a zip bomb).
- */
-export function readEntry(bytes: Uint8Array, entry: ZipEntry): Uint8Array {
+/** readEntry's work, with a pause point (a yield) every 1 MB in or out. */
+function* inflateSteps(bytes: Uint8Array, entry: ZipEntry): Generator<void, Uint8Array, void> {
   if (entry.flags & 1) throw new ImportError('drm', 'This file is encrypted, so FicShelf can’t read it.');
   const h = entry.offset;
   if (h + 30 > bytes.length || u32(bytes, h) !== 0x04034b50) throw broken();
@@ -142,11 +139,40 @@ export function readEntry(bytes: Uint8Array, entry: ZipEntry): Uint8Array {
     written += chunk.length;
   });
   try {
-    for (let i = 0; i < data.length; i += STEP) inflater.push(data.subarray(i, i + STEP), i + STEP >= data.length);
+    let mark = 0;
+    for (let i = 0; i < data.length; i += STEP) {
+      inflater.push(data.subarray(i, i + STEP), i + STEP >= data.length);
+      if (written - mark >= 1 << 20 || (i / STEP) % 64 === 63) {
+        mark = written;
+        yield;
+      }
+    }
     if (!data.length) inflater.push(new Uint8Array(0), true);
   } catch (e) {
     if (e instanceof ImportError) throw e;
     throw broken();
   }
   return written === out.length ? out : out.subarray(0, written);
+}
+
+/**
+ * One entry's bytes. Throws when the entry is encrypted, uses a method other than store / deflate,
+ * or inflates to more than it declared (a damaged entry or a zip bomb).
+ */
+export function readEntry(bytes: Uint8Array, entry: ZipEntry): Uint8Array {
+  const steps = inflateSteps(bytes, entry);
+  let r = steps.next();
+  while (!r.done) r = steps.next();
+  return r.value;
+}
+
+/** readEntry for a big entry: awaits `pause` every 1 MB it reads or writes. */
+export async function readEntryAsync(bytes: Uint8Array, entry: ZipEntry, pause: () => Promise<void>): Promise<Uint8Array> {
+  const steps = inflateSteps(bytes, entry);
+  let r = steps.next();
+  while (!r.done) {
+    await pause();
+    r = steps.next();
+  }
+  return r.value;
 }

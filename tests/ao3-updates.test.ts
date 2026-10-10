@@ -172,6 +172,21 @@ describe('AO3 update checks', () => {
     expect(lib['ao3:13'].lastCheckedAt).toBeGreaterThan(0);
   });
 
+  it('takes a copy linked from an imported file as current, then notices later edits', async () => {
+    const local = { kind: 'epub' as const, fileName: 'w.epub', importedAt: 1, size: 1, contentHash: 'h', dir: 'imports/ao3_77', images: {}, origin: { source: 'ao3' as const, remoteId: '77', key: toKey('ao3', '77') } };
+    mockSite = { '77': [3, 100] };
+    seed([work('77', { downloaded: true, downloadedChapters: [1, 2, 3], local })]);
+    await checkForUpdates({ quiet: true });
+    // Nothing is fetched from AO3 for it, and the version it was checked at is kept.
+    expect(downloadStory).not.toHaveBeenCalled();
+    expect(stories()['ao3:77'].downloadedVersion).toBe(100);
+    // An edit on AO3 after that makes the copy stale, as for any download.
+    mockSite = { '77': [3, 200] };
+    updateSettings({ lastUpdateCheck: undefined, lastUpdateCheckBySource: undefined });
+    await checkForUpdates({ quiet: true });
+    expect((downloadStory as jest.Mock).mock.calls.map((c) => c[0].key)).toEqual(['ao3:77']);
+  });
+
   it('keeps FanFiction.net on its own per-story check alongside', async () => {
     mockSite = { '5': [3, 100] };
     seed([work('5'), { ...work('5'), key: 'ffn:3171550', source: 'ffn', remoteId: '3171550', chapters: 2 }]);

@@ -17,10 +17,12 @@ jest.mock('../src/audio/player', () => ({ stop: jest.fn(), forgetListenPosition:
 import * as player from '../src/audio/player';
 import { playerStore } from '../src/audio/state';
 import { sweepImports } from '../src/features/importFiles';
+import { handOff, release } from '../src/features/importHandoff';
 import { commitImport, contentHash, deleteImportedStory, findDuplicate, linkChoice, mapChaptersByTitle, normalizeSourceUrl } from '../src/features/imports';
 import { parseImport } from '../src/import';
 import type { StoryKey } from '../src/sources/keys';
-import { addBookmark, createCollection, libraryStore, toggleInCollection, upsertStory, type LibraryStory } from '../src/state/library';
+import { infoFromLibrary } from '../src/sources/meta';
+import { addBookmark, createCollection, libraryStore, recordReading, toggleInCollection, upsertStory, type LibraryStory } from '../src/state/library';
 import { updateSource } from '../src/state/settings';
 
 const FILE = { name: 'Story.epub', size: 1234, contentHash: 'md5:abc', uri: 'file:///cache/DocumentPicker/123.epub' };
@@ -356,6 +358,32 @@ describe('linking a file to its AO3 story', () => {
     expect(libraryStore.get().collections[0].storyKeys).toEqual(['ao3:123']);
   });
 
+  it('writes only the pictures of the chapters it stores', async () => {
+    const pics = [0, 1, 2].map((index) => ({ index, mime: 'image/png', bytes: png(64 + index) }));
+    const chapters = [0, 1, 2].map((i) => ({ title: `C${i + 1}`, html: `<p>${i}</p><img src="ficshelf-img:${i}">`, words: 1 }));
+    await commitImport(ao3Book({ images: pics, chapters }), FILE, { mode: 'link' });
+    expect(filesUnder('docs/imports/ao3_123/img')).toHaveLength(3);
+    // The updated file has a fourth chapter; the three saved ones stay as they are.
+    const more = [...chapters, { title: 'C4', html: '<p>3</p><img src="ficshelf-img:3">', words: 1 }];
+    await commitImport(ao3Book({ images: [...pics, { index: 3, mime: 'image/png', bytes: png(80) }], chapters: more }), FILE, { mode: 'link' });
+    // Its pictures are numbered after the first file's (0–2): its fourth is 3 + 3.
+    expect(stories()['ao3:123' as StoryKey].local!.images).toEqual({ 0: 'img/0.png', 1: 'img/1.png', 2: 'img/2.png', 6: 'img/6.png' });
+    expect(filesUnder('docs/imports/ao3_123/img')).toEqual(['0', '1', '2', '6'].map((n) => `docs/imports/ao3_123/img/${n}.png`));
+    expect(rows('ao3:123')[3][1]).toContain('ficshelf-img:6');
+  });
+
+  it('leaves no chapters or pictures behind when it fails on a story in the library', async () => {
+    seedStory({ key: 'ao3:123', source: 'ao3', remoteId: '123', title: 'T', summary: '', genres: [], chapters: 3, words: 1, stats: {}, complete: false, inLibrary: true, addedAt: 1 });
+    chapterRows.set('ao3:123#1', { html: '<p>Saved from AO3.</p>' });
+    const ctrl = new AbortController();
+    const pics = [{ index: 0, mime: 'image/png', bytes: png() }];
+    const chapters = [1, 2, 3].map((n) => ({ title: `C${n}`, html: `<p>${n}</p><img src="ficshelf-img:0">`, words: 1 }));
+    await expect(commitImport(ao3Book({ images: pics, chapters }), FILE, { mode: 'link', signal: ctrl.signal, onProgress: () => ctrl.abort() })).rejects.toThrow(/cancelled/);
+    expect(rows('ao3:123')).toEqual([[1, '<p>Saved from AO3.</p>']]);
+    expect(filesUnder('docs/imports/ao3_123/img')).toEqual([]);
+    expect(stories()['ao3:123' as StoryKey].local).toBeUndefined();
+  });
+
   it('numbers a second file’s pictures after the first one’s', async () => {
     const pic = { index: 0, mime: 'image/png', bytes: png() };
     const withPic = (title: string) => ao3Book({ images: [pic], chapters: [{ title, html: '<p>x</p><img src="ficshelf-img:0">', words: 1 }] });
@@ -392,6 +420,19 @@ describe('deleting an imported story', () => {
     expect(stories()[other]).toBeDefined();
   });
 
+  it('stays deleted when a reader still open on it saves its place or a bookmark', async () => {
+    const key = await commitImport(book(), FILE, { mode: 'local' });
+    const info = infoFromLibrary(stories()[key]);
+    await deleteImportedStory(key);
+    recordReading(info, 2, 0.4);
+    addBookmark({ storyKey: key, storyTitle: 'Paper Boats', chapter: 2, progress: 0.4 });
+    expect(stories()[key]).toBeUndefined();
+    expect(libraryStore.get().bookmarks).toEqual([]);
+    // Stories from sites are still remembered as you read them.
+    recordReading({ ...info, key: 'ao3:9' as StoryKey, source: 'ao3', remoteId: '9' }, 1, 0.5);
+    expect(stories()['ao3:9' as StoryKey]).toMatchObject({ lastChapter: 1 });
+  });
+
   it('stops the audiobook first when it is reading that story', async () => {
     const key = await commitImport(book(), FILE, { mode: 'local' });
     playerStore.set((p) => ({ ...p, story: { key, title: 'Paper Boats', chapters: 3, chapterTitles: [] } }));
@@ -419,5 +460,18 @@ describe('the launch sweep', () => {
     expect(chapterRows.has('local:gone#1')).toBe(false);
     expect(filesUnder(`docs/imports/${key.replace(':', '_')}`).length).toBe(1);
     expect(rows(key).length).toBe(3);
+  });
+
+  it('leaves alone an old Inbox copy the import screen was just opened with', async () => {
+    // iOS keeps the original's modification date on its copy: yesterday's file looks old.
+    putFile('docs/Inbox/Paper%20Boats.epub', new Uint8Array([1]), Date.now() - 86_400_000);
+    putFile('cache/import-preview/x.png', png(), Date.now() - 3_600_000);
+    const ticket = handOff([{ uri: 'file:///private/var/x/Documents/Inbox/Paper%20Boats.epub', name: 'Paper Boats.epub' }]);
+    await sweepImports();
+    expect(files.has('docs/Inbox/Paper%20Boats.epub')).toBe(true);
+    expect(files.has('cache/import-preview/x.png')).toBe(false);
+    release(ticket);
+    await sweepImports();
+    expect(files.has('docs/Inbox/Paper%20Boats.epub')).toBe(false);
   });
 });

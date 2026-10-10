@@ -7,7 +7,7 @@ import { isTag, isText, type Element, type ParentNode } from 'domhandler';
 import { findAll } from 'domutils';
 import { IMAGE_REF, sanitizeChildren, type SanitizeOptions } from '../html/sanitize';
 import { renderChapter } from '../reader/notes';
-import { countWords, htmlToText } from '../utils/format';
+import { countWords, formatFull, htmlToText } from '../utils/format';
 import { detectOrigin, originUrl } from './detect';
 import { hasContent, parseMarkup, pruneEmptyWrappers } from './dom';
 import { ImportError, MAX_COVER_BYTES, MAX_IMAGE_BYTES, type ImportedBook, type ImportedChapter, type ImportedImage, type ImportOptions } from './types';
@@ -43,10 +43,42 @@ export function imageMime(b: Uint8Array): string | undefined {
   return undefined;
 }
 
+const B64_VALUE = (() => {
+  const t = new Int16Array(128).fill(-1);
+  const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  for (let i = 0; i < abc.length; i++) t[abc.charCodeAt(i)] = i;
+  return t;
+})();
+
+/** Bytes of base64 text (whitespace and padding ignored), or undefined when it isn't base64. */
+export function fromBase64(s: string): Uint8Array | undefined {
+  const out = new Uint8Array(Math.floor((s.length * 3) / 4));
+  let n = 0;
+  let acc = 0;
+  let bits = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0x3d || c <= 0x20) continue; // '=', spaces, line breaks
+    const v = c < 128 ? B64_VALUE[c] : -1;
+    if (v < 0) return undefined;
+    acc = (acc << 6) | v;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[n++] = (acc >> bits) & 0xff;
+    }
+  }
+  return out.subarray(0, n);
+}
+
+/** An image written into the page itself (a page saved "as a single file", some EPUBs). */
+export const DATA_IMAGE_URI = /^data:image\/(?:png|gif|jpe?g|webp);base64,/i;
+
 /**
  * The book's images, numbered as they're first used. `load` gives an image's bytes and size by
  * its key (a path inside the EPUB), or undefined when there's none; too large or unknown types
- * are skipped and counted for the warnings.
+ * are skipped and counted for the warnings. Images written into the page (data: URIs) are taken
+ * out of the text the same way (addData).
  */
 export class ImageTable {
   private byKey = new Map<string, number | null>();
@@ -82,6 +114,25 @@ export class ImageTable {
     return index;
   }
 
+  /** A data: URI image's index, or null when it can't be used (too large: not even decoded). */
+  addData(uri: string): number | null {
+    const known = this.byKey.get(uri);
+    if (known !== undefined) return known;
+    let index: number | null = null;
+    const comma = uri.indexOf(',');
+    if ((uri.length - comma - 1) * 0.75 > MAX_IMAGE_BYTES + 3) this.skippedLarge++;
+    else {
+      const bytes = fromBase64(uri.slice(comma + 1));
+      const mime = bytes && imageMime(bytes);
+      if (bytes && mime) {
+        index = this.list.length;
+        this.list.push({ index, mime, bytes });
+      } else this.skippedOther++;
+    }
+    this.byKey.set(uri, index);
+    return index;
+  }
+
   warnings(): string[] {
     const out: string[] = [];
     if (this.skippedLarge) out.push(`Skipped ${this.skippedLarge} image${this.skippedLarge === 1 ? '' : 's'} larger than 5 MB.`);
@@ -93,19 +144,20 @@ export class ImageTable {
 /** Prefix of an EPUB image path the parser resolved (see epub.ts); never shown. */
 export const ZIP_SRC = 'ficshelf-zip:';
 
-/** Sanitizer settings for imported text: own images only (or web images), no relative links, no classes. */
+/**
+ * Sanitizer settings for imported text: own images only (or web images), no relative links, no
+ * classes. Images written into the page become the book's own (stored as files, under the size
+ * cap), never kept inline in the text.
+ */
 export function importSanitizeOptions(images?: ImageTable): SanitizeOptions {
   return {
     relativeUrls: 'drop',
     classes: 'none',
     image: (src) => {
       const s = src.trim();
-      if (/^(https?:|data:image\/)/i.test(s)) return s;
-      if (images && s.startsWith(ZIP_SRC)) {
-        const i = images.add(s.slice(ZIP_SRC.length));
-        return i == null ? null : imageRef(i);
-      }
-      return null;
+      if (/^https?:/i.test(s)) return s;
+      const i = !images ? null : s.startsWith(ZIP_SRC) ? images.add(s.slice(ZIP_SRC.length)) : DATA_IMAGE_URI.test(s) ? images.addData(s) : null;
+      return i == null ? null : imageRef(i);
     },
   };
 }
@@ -116,6 +168,7 @@ function numberImages(root: ParentNode, images?: ImageTable) {
   for (const img of findAll((e) => e.name === 'img', root.children)) {
     const src = img.attribs.src?.trim() ?? '';
     if (src.startsWith(ZIP_SRC)) images.add(src.slice(ZIP_SRC.length));
+    else if (DATA_IMAGE_URI.test(src)) images.addData(src);
   }
 }
 
@@ -153,14 +206,48 @@ export function finishChapter(title: string, box: Element, images?: ImageTable, 
   return html == null ? null : chapterFromHtml(title, html, notes);
 }
 
-/** A chapter from body HTML that is sanitized already. */
-export function chapterFromHtml(title: string, html: string, notes: { before?: string; after?: string } = {}): ImportedChapter {
+/** Words of a chapter's body HTML (the slow part of finishing a chapter, so it's done chapter by chapter). */
+export const wordsOfHtml = (html: string) => countWords(htmlToText(html));
+
+/** A chapter from body HTML that is sanitized already (`words`: counted already). */
+export function chapterFromHtml(title: string, html: string, notes: { before?: string; after?: string } = {}, words = wordsOfHtml(html)): ImportedChapter {
   return {
     title: title.replace(/\s+/g, ' ').trim() || 'Untitled',
     html: renderChapter({ html, notesBefore: notes.before, notesAfter: notes.after }),
-    words: countWords(htmlToText(html)),
+    words,
   };
 }
+
+/** A text with no chapter headings longer than this is cut into parts (see splitParts). */
+export const LONG_TEXT_WORDS = 30_000;
+
+/**
+ * Where to cut a long text that has no chapter headings, so no chapter is too big for the reader
+ * to open quickly: parts of about 10–20k words, cut before a scene break where one falls in that
+ * range, else at the first place past 20k. `words` are the word counts of the text's units (lines,
+ * blocks, nodes); `canStart(i)` says a part may start at unit i, `isBreak(i)` that unit i is a
+ * scene break. Returns the unit each part starts at: [0] for a text that isn't long.
+ */
+export function splitParts(words: number[], isBreak: (i: number) => boolean, canStart: (i: number) => boolean = () => true): number[] {
+  let total = 0;
+  for (const w of words) total += w;
+  if (total <= LONG_TEXT_WORDS) return [0];
+  const starts = [0];
+  let acc = 0;
+  for (let i = 0; i < words.length; i++) {
+    if (acc >= 10_000 && canStart(i) && (isBreak(i) || acc >= 20_000)) {
+      starts.push(i);
+      acc = 0;
+    }
+    acc += words[i];
+  }
+  // A short last part joins the one before.
+  if (starts.length > 1 && acc < 3_000) starts.pop();
+  return starts;
+}
+
+export const partsWarning = (words: number, parts: number) =>
+  `FicShelf found no chapter headings in this file, so its ${formatFull(words)} words were split into ${parts} parts.`;
 
 /**
  * Pauses between chapters (and between slices of a big file's decoding and parsing) so a long book

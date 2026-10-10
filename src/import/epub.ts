@@ -15,11 +15,11 @@
 // are only lookup keys, resolved within the zip, never file paths.
 
 import { render } from 'dom-serializer';
-import type { AnyNode, Document, Element, ParentNode } from 'domhandler';
+import { isTag, type AnyNode, type Document, type Element, type ParentNode } from 'domhandler';
 import { findAll, findOne, removeElement, textContent } from 'domutils';
 import { ao3Chapter } from '../sources/ao3/map';
-import { chapterFromHtml, cleanBody, ImageTable, sanitizeFragment, Stepper, ZIP_SRC, type BookDraft } from './build';
-import { decodeBytes } from './decode';
+import { chapterFromHtml, cleanBody, ImageTable, sanitizeFragment, Stepper, wordsOfHtml, ZIP_SRC, type BookDraft } from './build';
+import { decodeBytes, decodeBytesAsync } from './decode';
 import { findStoryUrl } from './detect';
 import {
   append,
@@ -30,17 +30,20 @@ import {
   el,
   els,
   hasClass,
+  isChapterHeading,
   labeledFields,
   localName,
   parseMarkup,
+  parseMarkupAsync,
   parseXml,
   splitBefore,
   takeAll,
   textOf,
+  wordsIn,
 } from './dom';
 import { ao3TagList, ao3Tags, fieldTags, languageName, parseComplete, parseDate, plainSummary, subjectTags } from './meta';
 import { ImportError, type ImportedChapter, type ImportGenerator } from './types';
-import { checkDeclaredSize, listZip, readEntry, type ZipEntry } from './zip';
+import { checkDeclaredSize, listZip, readEntry, readEntryAsync, type ZipEntry } from './zip';
 
 interface ManifestItem {
   id: string;
@@ -97,6 +100,8 @@ const fragmentOf = (href: string) => {
 const FRONT_TITLE = /^(title page|table of contents|contents|toc|cover|update log|information|information page|copyright|navigation)$/i;
 /** File names of front and back matter: FanFicFare's title / toc / log pages, covers, nav documents. */
 const FRONT_FILE = /(?:^|\/)(?:title_?page|titlepage|toc_?page|log_?page|cover(?:page)?|nav|toc|copyright)\.x?html?$/i;
+/** A single text file larger than this isn't read (the phone holds it, parsed, in memory). */
+const MAX_TEXT_BYTES = 30 * 1024 * 1024;
 /** Encryption that only obfuscates embedded fonts; anything else is DRM. */
 const FONT_OBFUSCATION = new Set(['http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC']);
 
@@ -135,6 +140,7 @@ function takeLabelled(root: AnyNode[], label: RegExp, images: ImageTable): strin
 interface Pending {
   title: string;
   html: string;
+  words: number;
   summary?: string;
   notes?: string;
   endNotes?: string;
@@ -152,10 +158,23 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   }
   const entryOf = (path: string) => byName.get(path) ?? byLower.get(path.toLowerCase());
   let badText = false;
+  const tooLarge = (e: ZipEntry) => {
+    if (e.size > MAX_TEXT_BYTES) throw new ImportError('too-large', 'This EPUB has a text file too large to import (over 30 MB).');
+  };
   const readText = (path: string): string | undefined => {
     const e = entryOf(path);
     if (!e) return undefined;
+    tooLarge(e);
     const d = decodeBytes(readEntry(bytes, e), { html: true });
+    if (d.replaced) badText = true;
+    return d.text;
+  };
+  /** readText for the book's text files, which can be big: inflated, decoded and parsed with pauses. */
+  const readTextAsync = async (path: string): Promise<string | undefined> => {
+    const e = entryOf(path);
+    if (!e) return undefined;
+    tooLarge(e);
+    const d = await decodeBytesAsync(await readEntryAsync(bytes, e, stepper.pause), { html: true }, stepper.pause);
     if (d.replaced) badText = true;
     return d.text;
   };
@@ -195,13 +214,14 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   if (!spine.length) throw new ImportError('invalid', 'This EPUB is damaged: it lists no text files.');
   const spineIndex = new Map(spine.map((p, i) => [p, i]));
 
-  // Each file is parsed once, when first needed, and its images resolved against it right away
-  // (a chapter can gather nodes from several files in different folders).
+  // Each file is parsed once, before it's needed (loadDoc, with pauses; docOf for small front
+  // matter), and its images resolved against it right away (a chapter can gather nodes from
+  // several files in different folders). Once a file's nodes are in chapters it reads as empty.
   const docs = new Map<string, Document>();
-  const docOf = (path: string): Document => {
-    let d = docs.get(path);
-    if (d) return d;
-    d = parseMarkup(readText(path) ?? '', true);
+  const used = new Set<string>();
+  /** Text of the files the generator check read, kept for parsing them. */
+  const sniffed = new Map<string, string>();
+  const prepare = (d: Document, path: string): Document => {
     for (const img of findAll((e) => e.name === 'img' || e.name === 'image', d.children)) {
       const src = (img.name === 'img' ? img.attribs.src : attrOf(img, 'href'))?.trim();
       if (!src) continue;
@@ -217,7 +237,25 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
     docs.set(path, d);
     return d;
   };
-  const bodyOf = (path: string): ParentNode => el(docOf(path), 'body') ?? docOf(path);
+  const takeSniffed = (path: string) => {
+    const t = sniffed.get(path);
+    sniffed.delete(path);
+    return t;
+  };
+  const docOf = (path: string): Document => docs.get(path) ?? prepare(parseMarkup(takeSniffed(path) ?? readText(path) ?? '', true), path);
+  const loadDoc = async (path: string) => {
+    if (docs.has(path) || used.has(path)) return;
+    const text = takeSniffed(path) ?? (await readTextAsync(path)) ?? '';
+    prepare(await parseMarkupAsync(text, stepper.pause, true), path);
+  };
+  const bodyOf = (path: string): ParentNode => (used.has(path) ? boxOf() : (el(docOf(path), 'body') ?? docOf(path)));
+  /** A file is in chapters now: its nodes have moved, and its tree can go. */
+  const consume = (path: string) => {
+    used.add(path);
+    docs.delete(path);
+  };
+  const marker = (path: string, frag?: string) =>
+    frag ? findOne((e) => e.attribs.id === frag || (e.name === 'a' && e.attribs.name === frag), bodyOf(path).children, true) : null;
 
   // Table of contents: EPUB 3 nav, else the NCX.
   let toc: TocEntry[] = [];
@@ -262,10 +300,12 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   const contributors = dc('contributor').join(' ');
   const publisher = dc('publisher')[0] ?? '';
   const generatorMeta = attrOf(metaNamed('generator'), 'content') ?? '';
-  const firstHtml = spine
-    .slice(0, 3)
-    .map((p) => readText(p) ?? '')
-    .join('\n');
+  let firstHtml = '';
+  for (const p of spine.slice(0, 3)) {
+    const t = (await readTextAsync(p)) ?? '';
+    sniffed.set(p, t);
+    firstHtml += t.slice(0, 64 * 1024) + '\n';
+  }
   let generator: ImportGenerator | undefined;
   if (/FanFicFare/i.test(contributors) || /class=["']fff_titlepage/.test(firstHtml)) generator = 'fanficfare';
   else if (/fichub\.net/i.test(firstHtml) && (/ebook-?lib/i.test(generatorMeta) || /Exported with the assistance of/i.test(firstHtml))) generator = 'fichub';
@@ -280,19 +320,67 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
       .map((r) => resolveHref(opfFile, attrOf(r, 'href') ?? '')),
   );
   const isFrontFile = (p: string) => FRONT_FILE.test(p) || guideFront.has(p);
+  /** Where an AO3 entry starts: in its #preface, #chapters or #afterword (a work can be called "Afterword"). */
+  const ao3Part = (t: TocEntry): string | undefined => {
+    const part = (e: Element) => /^(preface|chapters|afterword)$/.test(e.attribs.id ?? '');
+    const at = marker(t.path, t.frag);
+    if (at) {
+      for (let n: AnyNode | null = at; n; n = n.parent) if (isTag(n) && part(n)) return n.attribs.id;
+      return undefined;
+    }
+    return findOne(part, bodyOf(t.path).children, true)?.attribs.id;
+  };
+  /** A page of "Key: value" fields (FanFicFare's, FicHub's introduction). */
+  const fieldsPage = (p: string) => {
+    const text = blockText(bodyOf(p).children);
+    return /Exported with the assistance of/i.test(text) || Object.keys(labeledFields(text)).length >= 2;
+  };
+  /** Mostly links: a contents page. */
+  const linkPage = (p: string) => {
+    const kids = bodyOf(p).children;
+    return findAll((e) => e.name === 'a', kids).reduce((n, a) => n + textOf(a).length, 0) > textOf(kids).length * 0.5;
+  };
+  /** Short, or links or fields: a contents page, a cover, a copyright notice (not a chapter called "Cover"). */
+  const littlePage = (p: string) => wordsIn(bodyOf(p).children) < 300 || linkPage(p) || fieldsPage(p);
+  const lookedAt = (t: TocEntry) => FRONT_TITLE.test(t.title) || /^(preface|afterword|introduction)$/i.test(t.title);
+  // Front matter is told by where an entry is and what it holds; a title alone never makes a chapter
+  // front matter. FanFicFare and FicHub name their own pages' files; their chapters are called
+  // whatever the author called them.
   const isFrontEntry = (t: TocEntry): boolean => {
-    if (FRONT_TITLE.test(t.title) || (!t.frag && isFrontFile(t.path))) return true;
-    if (/^(preface|afterword)$/i.test(t.title)) return isAo3;
-    if (/^introduction$/i.test(t.title)) return generator === 'fichub' || Object.keys(labeledFields(blockText(bodyOf(t.path).children))).length >= 2;
-    return false;
+    if (!t.frag && isFrontFile(t.path)) return true;
+    if (!lookedAt(t) || generator === 'fanficfare') return false;
+    if (isAo3) {
+      const part = ao3Part(t);
+      if (part) return part !== 'chapters';
+      if (/^(preface|afterword)$/i.test(t.title)) return true;
+    }
+    if (/^introduction$/i.test(t.title)) return fieldsPage(t.path);
+    if (generator === 'fichub') return false;
+    return FRONT_TITLE.test(t.title) && littlePage(t.path);
+  };
+  for (const t of toc) if (lookedAt(t)) await loadDoc(t.path);
+  const frontEntries = new Set(toc.filter(isFrontEntry));
+  /**
+   * A file after a front-matter entry's own (before the next entry) is more of it when it's AO3's
+   * preface or afterword split in two, or more links or fields; else it's text (an untitled prologue).
+   */
+  const moreFront = (p: string) => {
+    if (isFrontFile(p)) return true;
+    if (isAo3) return findOne((e) => /^(preface|chapters|afterword)$/.test(e.attribs.id ?? ''), bodyOf(p).children, true)?.attribs.id !== 'chapters';
+    return linkPage(p) || fieldsPage(p);
   };
   const frontPaths = new Set<string>();
-  toc.forEach((t, i) => {
-    if (!isFrontEntry(t)) return;
-    const start = spineIndex.get(t.path)!;
+  for (let i = 0; i < toc.length; i++) {
+    if (!frontEntries.has(toc[i])) continue;
+    const start = spineIndex.get(toc[i].path)!;
     const end = i + 1 < toc.length ? spineIndex.get(toc[i + 1].path)! : spine.length;
-    for (let s = start; s < Math.max(end, start + 1); s++) frontPaths.add(spine[s]);
-  });
+    frontPaths.add(spine[start]);
+    for (let s = start + 1; s < end; s++) {
+      await loadDoc(spine[s]);
+      if (!moreFront(spine[s])) break;
+      frontPaths.add(spine[s]);
+    }
+  }
   for (const p of spine) if (isFrontFile(p)) frontPaths.add(p);
 
   // Front matter: fields, AO3's tag list, the stated source; AO3's summary and work notes.
@@ -308,6 +396,7 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   let workEndNotes: string | undefined;
   for (const p of spine) {
     if (!frontPaths.has(p)) continue;
+    await loadDoc(p);
     const kids = bodyOf(p).children;
     for (const [k, v] of Object.entries(labeledFields(blockText(kids)))) if (!(k in fields)) fields[k] = v;
     tagList ??= ao3TagList(kids);
@@ -346,6 +435,7 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
     const page = ref ? resolveHref(opfFile, attrOf(ref, 'href') ?? '') : undefined;
     if (page && /^image\//.test(items.find((m) => m.path === page)?.type ?? '')) coverPath = page;
     else if (page && entryOf(page)) {
+      await loadDoc(page);
       const src = findOne((e) => e.name === 'img', docOf(page).children, true)?.attribs.src ?? '';
       if (src.startsWith(ZIP_SRC)) coverPath = src.slice(ZIP_SRC.length);
     }
@@ -355,61 +445,115 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   const cover = coverPath && (!coverType || coverType.startsWith('image/')) ? (images.add(coverPath, { cover: true }) ?? undefined) : undefined;
 
   // Chapters: each entry runs to the next one; without a usable table of contents, each file is one.
-  type Segment = { title: string; front: boolean; from: TocEntry; to?: TocEntry };
-  const chapterEntries = toc.filter((t) => !isFrontEntry(t));
+  type Segment = { title: string; front: boolean; from: TocEntry; merged?: boolean };
+  const chapterEntries = toc.filter((t) => !frontEntries.has(t));
   const textFiles = spine.filter((p) => !frontPaths.has(p));
   const byToc = chapterEntries.length >= 2 || (chapterEntries.length === 1 && textFiles.length <= 2);
   let segments: Segment[];
-  if (byToc) segments = toc.map((t, i) => ({ title: t.title, front: isFrontEntry(t), from: t, to: toc[i + 1] }));
+  if (byToc) segments = toc.map((t) => ({ title: t.title, front: frontEntries.has(t), from: t }));
   else {
-    segments = textFiles.map((p) => {
+    segments = [];
+    for (const p of textFiles) {
+      await loadDoc(p);
       const d = docOf(p);
-      return { title: textOf(findOne((e) => /^h[1-3]$/.test(e.name), d.children, true)) || textOf(el(d, 'title')), front: false, from: { title: '', path: p } };
-    });
-    segments.forEach((s, i) => (s.to = segments[i + 1]?.from));
+      segments.push({ title: textOf(findOne((e) => /^h[1-3]$/.test(e.name), d.children, true)) || textOf(el(d, 'title')), front: false, from: { title: '', path: p } });
+    }
     if (toc.length) warnings.push('The table of contents didn’t match the text, so each file became a chapter.');
   }
-  const marker = (path: string, frag?: string) =>
-    frag ? findOne((e) => e.attribs.id === frag || (e.name === 'a' && e.attribs.name === frag), bodyOf(path).children, true) : null;
 
-  const total = segments.filter((s) => !s.front).length;
+  let total = segments.filter((s) => !s.front).length;
   const pending: Pending[] = [];
   let done = 0;
+  let leadTaken = false;
+  let unplaced = 0;
   await stepper.step(0, total);
-  for (const seg of segments) {
+  for (let k = 0; k < segments.length; k++) {
+    const seg = segments[k];
+    if (seg.merged) continue;
+    await loadDoc(seg.from.path);
     const fromIdx = spineIndex.get(seg.from.path)!;
-    // Whatever is still before this entry in its file belongs to no chapter.
     const start = marker(seg.from.path, seg.from.frag);
-    if (start) splitBefore(bodyOf(seg.from.path), start);
-    const toIdx = seg.to ? spineIndex.get(seg.to.path)! : spine.length;
-    const end = seg.to ? marker(seg.to.path, seg.to.frag) : null;
+    if (!seg.front && !leadTaken) {
+      // What comes before the first chapter's entry and isn't front matter (an untitled prologue,
+      // a foreword, the start of a file before the entry's #fragment).
+      leadTaken = true;
+      const lead = boxOf();
+      for (let s = 0; s < fromIdx; s++) {
+        const p = spine[s];
+        if (frontPaths.has(p) || used.has(p)) continue;
+        await loadDoc(p);
+        append(lead, takeAll(bodyOf(p)));
+        consume(p);
+      }
+      if (start) append(lead, splitBefore(bodyOf(seg.from.path), start));
+      takeLead(lead);
+    } else if (start) splitBefore(bodyOf(seg.from.path), start); // before a later entry: in no chapter
+    // The chapter runs to the next entry found in the text. One that can't be found in the file the
+    // chapter starts in (its #fragment isn't there, or it has none) is part of this chapter.
+    let next = k + 1;
+    let end: Element | null = null;
+    for (; next < segments.length; next++) {
+      const t = segments[next].from;
+      await loadDoc(t.path);
+      end = marker(t.path, t.frag);
+      if (end || spineIndex.get(t.path) !== fromIdx) break;
+      segments[next].merged = true;
+      if (!segments[next].front) {
+        unplaced++;
+        total--;
+      }
+    }
+    const to = segments[next]?.from;
+    const toIdx = to ? spineIndex.get(to.path)! : spine.length;
     const box = boxOf();
     for (let s = fromIdx; s < spine.length; s++) {
       const p = spine[s];
       if (s > fromIdx && (s > toIdx || (s === toIdx && !end))) break;
       if (s > fromIdx && !seg.front && (isFrontFile(p) || (!byToc && frontPaths.has(p)))) break;
+      // Front matter runs only over its own files (the text after it is the lead, below).
+      if (s > fromIdx && seg.front && !frontPaths.has(p)) break;
+      await loadDoc(p);
       if (s === toIdx && end) {
         append(box, splitBefore(bodyOf(p), end));
         break;
       }
       append(box, takeAll(bodyOf(p)));
-      docs.delete(p);
+      consume(p);
     }
     if (seg.front) continue;
     const c = takeChapter(seg.title, box, pending.length + 1);
     if (c) pending.push(c);
     await stepper.step(++done, total);
   }
+  if (unplaced) warnings.push(`${unplaced} table-of-contents ${unplaced === 1 ? 'entry points' : 'entries point'} to places that aren’t in the text, so ${unplaced === 1 ? 'its text is' : 'their text is'} part of the chapter before.`);
+
+  /**
+   * Text before the first chapter: a chapter of its own when there's a real amount of it or it
+   * starts with a chapter heading ("Prologue"), else left out with a warning when it isn't a few
+   * words of title page.
+   */
+  function takeLead(box: Element) {
+    const words = wordsIn(box.children);
+    if (!words) return;
+    const heading = textOf(findOne((e) => /^h[1-3]$/.test(e.name) && !!textOf(e), box.children, true));
+    const firstLine = blockText(box.children).split('\n')[0] ?? '';
+    const named = isChapterHeading(heading) ? heading : isChapterHeading(firstLine) && firstLine.length <= 60 ? firstLine : '';
+    if (words >= 150 || named) {
+      const c = takeChapter(named || heading || 'Introduction', box, pending.length + 1);
+      if (c) pending.push(c);
+    } else if (words >= 20) warnings.push('Some text before the first chapter in the table of contents was left out.');
+  }
 
   /** A chapter's title, notes (AO3) and sanitized body out of its nodes. */
   function takeChapter(tocTitle: string, box: Element, n: number): Pending | null {
     let title = tocTitle;
-    const out: Omit<Pending, 'title' | 'html'> = {};
+    const out: Omit<Pending, 'title' | 'html' | 'words'> = {};
     if (isAo3) {
       title = ao3Title(tocTitle);
       const heading = findOne((e) => e.name === 'h2' && hasClass(e, 'heading'), box.children, true);
       // The chapter's own notes sit with its heading, before the text.
-      const head = heading?.parent && heading.parent !== box ? [heading.parent as Element] : box.children;
+      const meta = heading?.parent && heading.parent !== box && (heading.parent as Element).attribs.id !== 'chapters' ? (heading.parent as Element) : undefined;
+      const head = meta ? [meta] : box.children;
       if (heading) {
         title ||= ao3Title(textOf(heading));
         removeElement(heading);
@@ -423,22 +567,26 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
       }
       const seeEnd = (e: Element) => /^\(?See the end of the chapter for\s+(more\s+)?notes/i.test(textOf(e)) && !findOne((y) => y.name === 'p', e.children, true);
       for (const e of findAll(seeEnd, head)) removeElement(e);
+      // What's left of the heading's block is labels ("Chapter Notes" with only end notes) and a
+      // byline: the block goes, as the AO3 reader shows only the text (never the text itself).
+      if (meta && !findOne((e) => hasClass(e, 'userstuff') && e.name !== 'blockquote', meta.children, true) && textOf(meta).length < 400) removeElement(meta);
+      else for (const e of findAll((x) => /^Chapter (Notes|Summary)$/i.test(textOf(x)) || hasClass(x, 'byline'), head)) removeElement(e);
       for (const e of findAll((x) => x.attribs.id === 'afterword', box.children)) removeElement(e);
     }
     title ||= `Chapter ${n}`;
     dropRepeatedTitle(box, [title, tocTitle]);
     const html = cleanBody(box, images);
-    return html == null ? null : { title, html, ...out };
+    return html == null ? null : { title, html, words: wordsOfHtml(html), ...out };
   }
 
   // AO3's notes as the AO3 reader shows them: work notes before the first chapter, end notes after the last.
   const chapters: ImportedChapter[] = pending.map((p, i) => {
-    if (!isAo3) return chapterFromHtml(p.title, p.html);
+    if (!isAo3) return chapterFromHtml(p.title, p.html, {}, p.words);
     const c = ao3Chapter(
       { number: i + 1, title: p.title, html: p.html, summary: p.summary, notes: p.notes, endNotes: p.endNotes },
       { workTitle: p.title, workNotes, workEndNotes, isFirst: i === 0, isLast: i === pending.length - 1 },
     );
-    return chapterFromHtml(p.title, p.html, { before: c.notesBefore, after: c.notesAfter });
+    return chapterFromHtml(p.title, p.html, { before: c.notesBefore, after: c.notesAfter }, p.words);
   });
 
   if (badText) warnings.push('Some characters couldn’t be read: the file may use a text encoding FicShelf doesn’t know.');

@@ -5,17 +5,21 @@
 // in the library already can replace that story (keeping your place) or be kept as a second copy.
 // Several files at once get a list with a status and the same choices per file.
 //
-// The copies the picker and iOS make for this screen are deleted once it's done with them.
+// The screen is opened with a ticket for its files (importHandoff.ts), never a path: a ficshelf://
+// link can't make it read or delete anything. A file opened with "Open in" while the screen is up
+// joins the list. The copies the picker and iOS make for this screen are deleted once it's done
+// with them.
 
 import { Ionicons } from '@expo/vector-icons';
 import { File } from 'expo-file-system';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Empty, Notice } from '../components/states';
 import { Button, Chip, Input, ProgressBar, Segmented, T } from '../components/ui';
 import { openStory } from '../features/actions';
-import type { PickedFile } from '../features/importPicker';
+import { isImportCopy, removePreviewCover, writePreviewCover } from '../features/importFiles';
+import { filesFor, release, type PickedFile } from '../features/importHandoff';
 import {
   commitImport,
   contentHash,
@@ -39,6 +43,8 @@ interface Item {
   status: Status;
   progress?: { done: number; total: number };
   book?: ImportedBook;
+  /** The cover, written to a file for the preview. */
+  cover?: string;
   hash?: string;
   error?: string;
   link?: LinkChoice;
@@ -53,58 +59,18 @@ interface Item {
 const KIND_NAMES = { epub: 'EPUB', html: 'web page', txt: 'text file', md: 'Markdown file' } as const;
 const MATCHED_BY = { url: 'the same story page', identifier: 'the same book', hash: 'the same file' } as const;
 
-/** The files this screen was opened with: one from "Open in" (`file`), or the picker's (`files`). */
-function filesFrom(params: { file?: string; files?: string }): PickedFile[] {
-  if (params.file) {
-    const uri = params.file;
-    const last = uri.slice(uri.lastIndexOf('/') + 1);
-    let name = last;
-    try {
-      name = decodeURIComponent(last);
-    } catch {
-      // Keep the name as it is.
-    }
-    return [{ uri, name: name || 'Story' }];
-  }
-  try {
-    const list = JSON.parse(params.files ?? '[]') as PickedFile[];
-    return Array.isArray(list) ? list.filter((f) => f && typeof f.uri === 'string' && typeof f.name === 'string') : [];
-  } catch {
-    return [];
-  }
-}
+const newItems = (files: PickedFile[], from: number): Item[] =>
+  files.map((file, i) => ({ id: `${from + i}:${file.uri}`, file, status: 'waiting', mode: 'local', onDuplicate: 'replace', title: '', author: '' }));
 
-/**
- * Deletes the copy the picker or iOS made for this screen (Documents/Inbox, tmp/…-Inbox,
- * Caches/DocumentPicker), never anything else.
- */
+/** Deletes the copy the picker or iOS made for this screen, never anything else. */
 function deleteCopy(uri: string) {
-  if (!/[/-]Inbox\/|\/DocumentPicker\//.test(uri)) return;
+  if (!isImportCopy(uri)) return;
   try {
     const f = new File(uri);
     if (f.exists) f.delete();
   } catch {
     // The launch sweep gets it.
   }
-}
-
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-/** Base64 of some bytes (the preview's cover). */
-function base64(bytes: Uint8Array): string {
-  let out = '';
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i];
-    const b = bytes[i + 1];
-    const c = bytes[i + 2];
-    out += B64[a >> 2] + B64[((a & 3) << 4) | ((b ?? 0) >> 4)] + (b == null ? '=' : B64[((b & 15) << 2) | ((c ?? 0) >> 6)]) + (c == null ? '=' : B64[c & 63]);
-  }
-  return out;
-}
-
-function coverUri(book: ImportedBook | undefined): string | undefined {
-  const img = book?.cover != null ? book.images[book.cover] : undefined;
-  return img ? `data:${img.mime};base64,${base64(img.bytes)}` : undefined;
 }
 
 /** "3 chapters · 3,794 words · EPUB". */
@@ -122,22 +88,35 @@ function originLine(book: ImportedBook): string | undefined {
 
 export default function ImportScreen() {
   const c = useTheme();
-  const params = useLocalSearchParams<{ file?: string; files?: string }>();
-  const files = useMemo(() => filesFrom(params), [params]);
-  const [items, setItems] = useState<Item[]>(() =>
-    files.map((file, i) => ({ id: `${i}:${file.uri}`, file, status: 'waiting', mode: 'local', onDuplicate: 'replace', title: '', author: '' })),
-  );
+  const { open } = useLocalSearchParams<{ open?: string }>();
+  const [items, setItems] = useState<Item[]>(() => newItems(filesFor(open), 0));
   const [saving, setSaving] = useState(false);
   const itemsRef = useRef(items);
   useLayoutEffect(() => {
     itemsRef.current = items;
   });
+  // "Open in" again while this screen is up: the router hands it the new ticket; its file joins.
+  const [tickets, setTickets] = useState<string[]>(() => (open ? [open] : []));
+  if (open && !tickets.includes(open)) {
+    setTickets([...tickets, open]);
+    const more = filesFor(open);
+    if (more.length) setItems((list) => [...list, ...newItems(more, list.length)]);
+  }
+  const ticketsRef = useRef(tickets);
+  useLayoutEffect(() => {
+    ticketsRef.current = tickets;
+  });
   const reading = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
+    const ctrl = new AbortController();
+    reading.current = ctrl;
     return () => {
       mounted.current = false;
+      ctrl.abort();
+      for (const t of ticketsRef.current) release(t);
+      for (const it of itemsRef.current) removePreviewCover(it.cover);
     };
   }, []);
 
@@ -152,15 +131,20 @@ export default function ImportScreen() {
     else router.replace('/');
   };
 
-  // Read the files one after another (leaving the screen stops it).
+  // Read the files one after another, those that join later too (leaving the screen stops it).
+  const waiting = items.filter((it) => it.status === 'waiting').length;
+  const busyReading = useRef(false);
+  const [readRound, setReadRound] = useState(0);
   useEffect(() => {
-    if (Platform.OS === 'web') return;
-    const ctrl = new AbortController();
-    reading.current = ctrl;
-    const signal = ctrl.signal;
+    const signal = reading.current?.signal;
+    if (Platform.OS === 'web' || busyReading.current || !waiting || !signal) return;
+    busyReading.current = true;
+    const started = new Set<string>();
     (async () => {
-      for (const it of itemsRef.current) {
-        if (signal.aborted) return;
+      for (;;) {
+        const it = itemsRef.current.find((x) => x.status === 'waiting' && !started.has(x.id));
+        if (!it || signal.aborted) break;
+        started.add(it.id);
         update(it.id, { status: 'reading' });
         try {
           const f = new File(it.file.uri);
@@ -173,6 +157,7 @@ export default function ImportScreen() {
           update(it.id, {
             status: 'ready',
             book,
+            cover: writePreviewCover(book),
             hash,
             file: { ...it.file, size: bytes.length },
             link,
@@ -183,14 +168,16 @@ export default function ImportScreen() {
             progress: undefined,
           });
         } catch (e) {
-          if (signal.aborted) return;
+          if (signal.aborted) break;
           update(it.id, { status: 'failed', error: errorMessage(e), progress: undefined });
           deleteCopy(it.file.uri);
         }
       }
+      busyReading.current = false;
+      // A file that joined while the last one was read is picked up by another round.
+      if (mounted.current && !signal.aborted) setReadRound((n) => n + 1);
     })();
-    return () => ctrl.abort();
-  }, []);
+  }, [waiting, readRound]);
 
   const save = async () => {
     setSaving(true);
@@ -429,7 +416,7 @@ function Single({
 }) {
   const c = useTheme();
   const book = item.book;
-  const cover = useMemo(() => coverUri(book), [book]);
+  const cover = item.cover;
   if (item.status === 'waiting' || item.status === 'reading') {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, padding: 20, justifyContent: 'center' }}>

@@ -199,15 +199,18 @@ const DATA_IMAGE = /^data:image\/(?:png|gif|jpe?g|webp);base64,[a-z0-9+/=\s]*$/i
 /**
  * A URL attribute's value, or undefined when it isn't safe: only the given schemes, relative
  * URLs and #fragments. Control characters and whitespace (which browsers ignore inside a scheme,
- * as in "java\tscript:") are removed before the check.
+ * as in "java\tscript:") are removed before the check: `visible` is the URL's first 64 characters
+ * that count.
  */
-const visible = (s: string) =>
-  Array.from(s)
-    .filter((ch) => {
-      const c = ch.charCodeAt(0);
-      return c > 0x20 && (c < 0x7f || c > 0x9f);
-    })
-    .join('');
+const visible = (s: string) => {
+  // Only the start matters (the scheme), so a long URL (a data: image) isn't walked to its end.
+  let out = '';
+  for (let i = 0; i < s.length && out.length < 64; i++) {
+    const c = s.charCodeAt(i);
+    if (c > 0x20 && (c < 0x7f || c > 0x9f)) out += s[i];
+  }
+  return out;
+};
 
 /** The attributes a tag may keep, or undefined when the tag isn't allowed (own keys only: no "constructor"). */
 function allowedAttrs(name: string): string[] | undefined {

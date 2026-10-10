@@ -64,6 +64,15 @@ export function confirmDeleteImported(s: { key: StoryKey; title: string }, after
   );
 }
 
+/**
+ * Leaves every screen of a story that was just deleted (its page, and a reader the page was opened
+ * from, which would otherwise save its progress into a story that isn't there) for the library.
+ */
+function leaveDeleted() {
+  if (router.canDismiss()) router.dismissAll();
+  router.navigate('/library');
+}
+
 const deleteAction = (s: { key: StoryKey; title: string }, after?: () => void): SheetAction => ({
   label: 'Delete from this device',
   icon: 'trash-outline',
@@ -115,7 +124,7 @@ export const localUi: SourceUi = {
     return {
       menu: [
         ...(url ? [{ label: `Open on ${siteName(url)}`, icon: 'globe-outline' as const, onPress: () => openUrl(url) }] : []),
-        deleteAction(s, () => (router.canGoBack() ? router.back() : router.replace('/library'))),
+        deleteAction(s, leaveDeleted),
       ],
     };
   },

@@ -281,3 +281,72 @@ describe('Markdown', () => {
     expect(inlineMarkdown('**bold _and italic_**')).toBe('<strong>bold <em>and italic</em></strong>');
   });
 });
+
+describe('what a text file can hold without fooling the importer', () => {
+  const p = (s: string) => `${s} The harbour was quiet and the lanterns burned low over the water all night long.`;
+
+  it('keeps stammered lines of dialogue as text, never as chapter headings', async () => {
+    const lines = (...l: string[]) => bytes(l.join('\n\n'));
+    const withChapters = await parseImport(
+      lines('Chapter 1', p('She turned to me.'), "I... I don't know.", p('Silence.'), 'Chapter 2', p('Morning came.'), "I-I'm sorry.", 'V-very well.', p('She left.')),
+      'stammer.txt',
+    );
+    expect(withChapters.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2']);
+    expect(text(withChapters.chapters[0].html)).toContain("I... I don't know.");
+    expect(text(withChapters.chapters[1].html)).toContain("I-I'm sorry. V-very well.");
+    const without = await parseImport(lines('The Harbour', p('She turned to me.'), "I... I don't know.", p('Silence.'), 'V-very well.', p('She left.')), 'harbour.txt');
+    expect(without.chapters).toHaveLength(1);
+    expect(paras(without.chapters[0].html)).toHaveLength(5);
+  });
+
+  it('takes Roman numerals for headings only where there are several of them', async () => {
+    const book = await parseImport(bytes(['Storm', 'I', p('One.'), 'II', p('Two.'), 'III. The Calm', p('Three.')].join('\n\n')), 'storm.txt');
+    expect(book.chapters.map((c) => c.title)).toEqual(['I', 'II', 'III. The Calm']);
+    const lone = await parseImport(bytes(['Storm', 'Chapter 1', p('One.'), 'I.', p('A lone I.'), 'Chapter 2', p('Two.')].join('\n\n')), 'lone.txt');
+    expect(lone.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2']);
+    expect(text(lone.chapters[0].html)).toContain('I. A lone I.');
+  });
+
+  it('reads a title with its byline right under it', async () => {
+    const book = await parseImport(bytes('The Quiet Night\nby Someone Else\n\nChapter 1\n\nIt was quiet.\n\nChapter 2\n\nThen it was not.\n'), 'quiet2.txt');
+    expect(book).toMatchObject({ title: 'The Quiet Night', authors: ['Someone Else'] });
+    expect(book.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2']);
+    const whole = await parseImport(bytes('The Quiet Night\nAuthor: Someone Else\n\nIt was quiet.\n\nThen it was not.'), 'quiet.txt');
+    expect(whole).toMatchObject({ title: 'The Quiet Night', authors: ['Someone Else'] });
+    expect(whole.chapters[0].html).toBe('<p>It was quiet.</p>\n<p>Then it was not.</p>');
+  });
+
+  it('cuts a long text without headings into parts at its scene breaks', async () => {
+    const scene = (n: number) => Array.from({ length: 30 }, (_, i) => `Scene ${n} paragraph ${i} ${'word '.repeat(95)}`).join('\n\n');
+    const src = ['Long Night', ...Array.from({ length: 16 }, (_, n) => scene(n + 1)).flatMap((s) => [s, '* * *'])].join('\n\n');
+    const steps: number[] = [];
+    const book = await parseImport(bytes(src), 'long.txt', { onProgress: (done) => steps.push(done) });
+    expect(book.chapters.length).toBeGreaterThan(1);
+    expect(book.chapters.map((c) => c.title)).toEqual(book.chapters.map((_, i) => `Part ${i + 1}`));
+    for (const c of book.chapters) expect(c.words).toBeLessThanOrEqual(21_000);
+    // Each part starts where a scene does, and nothing is lost.
+    for (const c of book.chapters.slice(1)) expect(text(c.html)).toMatch(/^Scene \d+ paragraph 0 /);
+    expect(book.words).toBe(16 * 30 * 99);
+    expect(book.warnings).toEqual([`FicShelf found no chapter headings in this file, so its 47,520 words were split into ${book.chapters.length} parts.`]);
+    expect(steps.at(-1)).toBe(book.chapters.length);
+    // Markdown too.
+    const md = await parseImport(bytes(src.replace(/\* \* \*/g, '---')), 'long.md');
+    expect(md.chapters.length).toBe(book.chapters.length);
+  });
+
+  it('reads a long line of unclosed Markdown marks in linear time', async () => {
+    for (const unit of ['**a ', '__a ', '~~a ', '[a](b c ', '[a ', '![a ']) {
+      const line = unit.repeat(Math.ceil(200_000 / unit.length));
+      const started = Date.now();
+      const book = await parseImport(bytes(`Marks\n\n${line}\n`), 'marks.md');
+      expect(Date.now() - started).toBeLessThan(1500);
+      expect(book.chapters).toHaveLength(1);
+    }
+    const started = Date.now();
+    for (let i = 0; i < 20; i++) inlineMarkdown('**a '.repeat(4_000));
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(inlineMarkdown('**bold** and **more** but **open')).toBe('<strong>bold</strong> and <strong>more</strong> but **open');
+    expect(inlineMarkdown('~~gone~~ and snake__case__name and __strong__')).toBe('<del>gone</del> and snake__case__name and <strong>strong</strong>');
+    expect(inlineMarkdown('***both***')).toBe('<em><strong>both</strong></em>');
+  });
+});

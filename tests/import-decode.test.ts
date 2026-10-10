@@ -72,6 +72,26 @@ describe('importing text in other encodings', () => {
   });
 });
 
+describe('text that is mostly UTF-8', () => {
+  const mixed = new Uint8Array([...utf8('Title\n\n“Hello,” she said — café. It’s fine.\n\nShe didn'), 0x92, ...utf8('t care.')]);
+
+  it('stays UTF-8 around a stray Windows-1252 byte, which is read as Windows-1252', async () => {
+    expect(decodeBytes(mixed)).toEqual({ text: 'Title\n\n“Hello,” she said — café. It’s fine.\n\nShe didn’t care.', encoding: 'utf-8', replaced: true });
+    const book = await parseImport(mixed, 'mixed.txt');
+    expect(book.chapters[0].html).toBe('<p>“Hello,” she said — café. It’s fine.</p>\n<p>She didn’t care.</p>');
+  });
+
+  it('stays UTF-8 when the last character is cut in half, leaving it out', () => {
+    const whole = utf8('“Hello,” she said — it’s a café');
+    expect(decodeBytes(whole.subarray(0, whole.length - 1))).toEqual({ text: '“Hello,” she said — it’s a caf', encoding: 'utf-8', replaced: true });
+  });
+
+  it('still reads a Windows-1252 file as Windows-1252', () => {
+    const cp = new Uint8Array([...ascii('She said '), 0x93, ...ascii('caf'), 0xe9, 0x94, ...ascii(' and '), 0x96, ...ascii(' left.')]);
+    expect(decodeBytes(cp)).toEqual({ text: 'She said “café” and – left.', encoding: 'windows-1252', replaced: false });
+  });
+});
+
 describe('detectOrigin', () => {
   it('knows AO3 works, FanFiction.net stories and Wattpad stories, nothing else', () => {
     expect(detectOrigin('https://archiveofourown.org/works/25253053/chapters/61218982')).toEqual({ source: 'ao3', remoteId: '25253053', key: 'ao3:25253053' });

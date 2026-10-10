@@ -52,6 +52,7 @@ describe('sanitizeHtml: hostile markup', () => {
     ['<a href="javascript:alert(1)">x</a>', '<a>x</a>'],
     ['<a href="JaVaScRiPt:alert(1)">x</a>', '<a>x</a>'],
     ['<a href=" java\tscript:alert(1)">x</a>', '<a>x</a>'],
+    [`<a href="${'\t\n'.repeat(300)}java${'\t'.repeat(300)}script:alert(1)">x</a>`, '<a>x</a>'],
     ['<a href="&#106;avascript:alert(1)">x</a>', '<a>x</a>'],
     ['<a href="vbscript:msgbox(1)">x</a>', '<a>x</a>'],
     ['<a href="data:text/html;base64,PHNjcmlwdD4=">x</a>', '<a>x</a>'],
@@ -148,5 +149,17 @@ describe('sanitizeHtml: options for imported books', () => {
     const out = sanitizeChildren(doc);
     expect(render(out)).toBe('<div><p>a</p>c</div>');
     expect(doc.children).toBe(out);
+  });
+});
+
+describe('sanitizeHtml: long URLs', () => {
+  it('reads only as much of a URL as it needs to (a data: image of megabytes)', () => {
+    const pic = `data:image/png;base64,${'A'.repeat(8_000_000)}`;
+    const link = `https://ok.example/${'a'.repeat(4_000_000)}`;
+    expect(sanitizeHtml(`<img src="${pic}">`)).toBe(`<img src="${pic}">`);
+    const started = Date.now();
+    for (let i = 0; i < 3; i++) expect(sanitizeHtml(`<a href="${link}">x</a><img src="${pic}">`)).toBe(`<a href="${link}">x</a><img src="${pic}">`);
+    // Walking every character of them took about 3 s here (and a second a megabyte on the phone).
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });

@@ -16,6 +16,7 @@ import type { ImportedBook } from '../import/types';
 import type { StoryKey } from '../sources/keys';
 import { libraryStore, type LocalOrigin } from '../state/library';
 import { docRef } from '../utils/docFiles';
+import { inUse } from './importHandoff';
 
 export const IMPORTS_DIR = 'imports';
 
@@ -54,6 +55,12 @@ function writeFile(dir: Directory, name: string, bytes: Uint8Array) {
   f.write(bytes);
 }
 
+/** Deletes files of a story's folder by their names relative to it (pictures an import that failed wrote). */
+export function removeStoryFiles(key: StoryKey, names: string[]) {
+  const dir = storyDir(key);
+  for (const name of names) removeFile(dir, name);
+}
+
 function removeFile(dir: Directory, name: string | undefined) {
   if (!name) return;
   try {
@@ -79,6 +86,8 @@ export interface WriteFilesOptions {
   previous?: Pick<LocalOrigin, 'cover' | 'original'>;
   /** Write into '<folder>.new' instead: a replacement, swapped in once it's complete. */
   staging?: boolean;
+  /** Only the pictures these chapters show (a linked import storing only the chapters not saved yet). */
+  chapters?: ImportedBook['chapters'];
 }
 
 /**
@@ -90,7 +99,7 @@ export async function writeBookFiles(key: StoryKey, book: ImportedBook, o: Write
   if (o.staging && dir.exists) dir.delete();
   dir.create({ intermediates: true, idempotent: true });
   const offset = o.offset ?? 0;
-  const used = new Set(book.chapters.flatMap((c) => imageRefsIn(c.html)));
+  const used = new Set((o.chapters ?? book.chapters).flatMap((c) => imageRefsIn(c.html)));
   const images: Record<string, string> = {};
   const imgDir = new Directory(dir, 'img');
   for (const img of book.images) {
@@ -180,6 +189,37 @@ export async function chapterImages(key: StoryKey, html: string): Promise<Record
   return out;
 }
 
+const PREVIEW_DIR = 'import-preview';
+
+/**
+ * The book's cover as a file in Caches/import-preview, for the import screen to show (written by
+ * the system: no base64 of a big picture in JavaScript); undefined when there's none.
+ */
+export function writePreviewCover(book: Pick<ImportedBook, 'cover' | 'images'>): string | undefined {
+  const img = book.cover != null ? book.images[book.cover] : undefined;
+  const ext = img && EXT[img.mime];
+  if (!img || !ext) return undefined;
+  try {
+    const f = new File(Paths.cache, PREVIEW_DIR, `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.${ext}`);
+    f.create({ intermediates: true, overwrite: true });
+    f.write(img.bytes);
+    return f.uri;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Deletes a preview written by writePreviewCover. */
+export function removePreviewCover(uri: string | undefined) {
+  if (!uri || !uri.includes(`/${PREVIEW_DIR}/`)) return;
+  try {
+    const f = new File(uri);
+    if (f.exists) f.delete();
+  } catch {
+    // The launch sweep gets it.
+  }
+}
+
 /** Bytes used by imported stories' files (originals, covers, pictures). */
 export function importFilesBytes(): number {
   try {
@@ -190,6 +230,34 @@ export function importFilesBytes(): number {
   }
 }
 
+/** A file:// URL's path, decoded, without the /private iOS puts before /var; undefined with "." or ".." in it. */
+function plainPath(uri: string): string | undefined {
+  let p = uri.replace(/^file:\/\//i, '');
+  try {
+    p = decodeURIComponent(p);
+  } catch {
+    return undefined;
+  }
+  if (p.split('/').some((seg) => seg === '.' || seg === '..')) return undefined;
+  return p.replace(/^\/private(?=\/var\/)/, '');
+}
+
+const asDir = (p: string | undefined) => (p ? p.replace(/\/*$/, '/') : undefined);
+
+/**
+ * Whether a file is one of the copies made for an import, so the import screen may delete it:
+ * directly in Documents/Inbox ("Open in FicShelf"), Caches/DocumentPicker or tmp/…-Inbox (the picker).
+ */
+export function isImportCopy(uri: string): boolean {
+  const path = plainPath(uri);
+  const docs = asDir(plainPath(Paths.document.uri));
+  const cache = asDir(plainPath(Paths.cache.uri));
+  if (!path || !docs || !cache) return false;
+  const dir = path.slice(0, path.lastIndexOf('/') + 1);
+  const app = docs.replace(/Documents\/$/, '');
+  return dir === `${docs}Inbox/` || dir === `${cache}DocumentPicker/` || (dir.startsWith(`${app}tmp/`) && /^[^/]+-Inbox\/$/.test(dir.slice(app.length + 4)));
+}
+
 /** Files older than this are left-overs (the one being opened right now is newer). */
 const LEFTOVER_MS = 10 * 60_000;
 
@@ -197,7 +265,9 @@ function sweepDir(dir: Directory, now: number) {
   if (!dir.exists) return;
   for (const entry of dir.list()) {
     try {
-      const time = entry instanceof File ? (entry.modificationTime ?? entry.creationTime ?? 0) : (entry.info().modificationTime ?? 0);
+      // A file the import screen has is never a left-over, however old iOS says its copy is.
+      if (inUse(entry.name)) continue;
+      const time = entry instanceof File ? Math.max(entry.modificationTime ?? 0, entry.creationTime ?? 0) : (entry.info().modificationTime ?? 0);
       if (now - time > LEFTOVER_MS) entry.delete();
     } catch {
       // Try again next launch.
@@ -207,13 +277,14 @@ function sweepDir(dir: Directory, now: number) {
 
 /**
  * Clears out what imports leave behind, once at launch: copies iOS put in Documents/Inbox for
- * "Open in FicShelf" and the picker's copies (older than a few minutes, so a file being opened
- * right now stays), half-written replacements, and folders or saved chapters of imports that never
- * finished (no library record).
+ * "Open in FicShelf" and the picker's copies (older than a few minutes and not handed to the
+ * import screen, so a file being opened right now stays), half-written replacements, and folders
+ * or saved chapters of imports that never finished (no library record).
  */
 export async function sweepImports(now = Date.now()) {
   sweepDir(new Directory(Paths.document, 'Inbox'), now);
   sweepDir(new Directory(Paths.cache, 'DocumentPicker'), now);
+  sweepDir(new Directory(Paths.cache, PREVIEW_DIR), now);
   const stories = libraryStore.get().stories;
   const owned = (key: StoryKey) => writing.has(key) || !!stories[key]?.local || (key.startsWith('local:') && !!stories[key]);
   try {

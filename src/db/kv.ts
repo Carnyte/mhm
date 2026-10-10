@@ -80,9 +80,20 @@ function expireSnapshot(d: SQLiteDatabase) {
   }
 }
 
+/**
+ * How long a statement waits for another connection's write (an exclusive transaction runs on a
+ * connection of its own) before it gives up with "database is locked".
+ */
+const BUSY_TIMEOUT = 'PRAGMA busy_timeout = 5000';
+
 function open(): SQLiteDatabase {
   if (!db) {
     db = openDatabaseSync(DB_NAME);
+    try {
+      db.execSync(`${BUSY_TIMEOUT};`);
+    } catch {
+      // Writes then fail at once while another connection writes, as before.
+    }
     migrate(db);
   }
   return db;
@@ -142,6 +153,11 @@ export interface ChapterRow {
 export interface PutManyOptions {
   /** Swap the story's saved chapters for these, all at once at the end. */
   replace?: boolean;
+  /**
+   * Add these to the story's saved chapters, all at once at the end, keeping any it has saved
+   * meanwhile: a failed or cancelled (or killed) import leaves none of them behind.
+   */
+  merge?: boolean;
   /** Chapters per transaction (default 20). */
   batch?: number;
   onProgress?: (done: number, total: number) => void;
@@ -180,46 +196,45 @@ export const chapterStore = {
     );
   },
   /**
-   * Saves many chapters (an imported book) in batches, one transaction each, reporting progress
-   * and letting the screen draw between batches. With `replace` the new chapters are written aside
-   * and swapped in for the story's old ones in one step at the end, so a failure or a cancel leaves
-   * the old ones as they were.
+   * Saves many chapters (an imported book) in batches, one statement each on the app's own
+   * connection (so it never locks out the app's other writes), reporting progress and letting the
+   * screen draw between batches. With `replace` or `merge` the chapters are written aside first and
+   * put in place in one step at the end, so a failure or a cancel leaves the story as it was.
    */
   async putMany(key: StoryKey, rows: ChapterRow[], opts: PutManyOptions = {}): Promise<void> {
     if (!kv.writable) return;
     const d = open();
-    const target = opts.replace ? staging(key) : key;
+    const aside = opts.replace || opts.merge;
+    const target = aside ? staging(key) : key;
     const size = Math.max(1, opts.batch ?? 20);
     const now = Date.now();
     try {
-      if (opts.replace) await d.runAsync('DELETE FROM chapter_text WHERE story_key = ?', target);
+      if (aside) await d.runAsync('DELETE FROM chapter_text WHERE story_key = ?', target);
       for (let i = 0; i < rows.length; i += size) {
         if (opts.signal?.aborted) throw aborted();
         const part = rows.slice(i, i + size);
-        await d.withExclusiveTransactionAsync(async (tx) => {
-          for (const r of part) {
-            await tx.runAsync(
-              'INSERT OR REPLACE INTO chapter_text (story_key, number, html, saved_at, remote_id) VALUES (?, ?, ?, ?, ?)',
-              target,
-              r.number,
-              r.html,
-              now,
-              r.remoteId ?? null,
-            );
-          }
-        });
+        await d.runAsync(
+          `INSERT OR REPLACE INTO chapter_text (story_key, number, html, saved_at, remote_id) VALUES ${part.map(() => '(?, ?, ?, ?, ?)').join(', ')}`,
+          part.flatMap((r) => [target, r.number, r.html, now, r.remoteId ?? null]),
+        );
         opts.onProgress?.(Math.min(rows.length, i + size), rows.length);
         await new Promise((r) => setTimeout(r, 0));
       }
       if (opts.signal?.aborted) throw aborted();
-      if (opts.replace) {
+      if (aside) {
         await d.withExclusiveTransactionAsync(async (tx) => {
-          await tx.runAsync('DELETE FROM chapter_text WHERE story_key = ?', key);
-          await tx.runAsync('UPDATE chapter_text SET story_key = ? WHERE story_key = ?', key, target);
+          await tx.runAsync(BUSY_TIMEOUT);
+          if (opts.replace) {
+            await tx.runAsync('DELETE FROM chapter_text WHERE story_key = ?', key);
+            await tx.runAsync('UPDATE chapter_text SET story_key = ? WHERE story_key = ?', key, target);
+          } else {
+            await tx.runAsync('INSERT OR IGNORE INTO chapter_text SELECT ?, number, html, saved_at, remote_id FROM chapter_text WHERE story_key = ?', key, target);
+            await tx.runAsync('DELETE FROM chapter_text WHERE story_key = ?', target);
+          }
         });
       }
     } catch (e) {
-      if (opts.replace) await d.runAsync('DELETE FROM chapter_text WHERE story_key = ?', target).catch(() => {});
+      if (aside) await d.runAsync('DELETE FROM chapter_text WHERE story_key = ?', target).catch(() => {});
       throw e;
     }
   },
@@ -260,6 +275,7 @@ export const chapterStore = {
   async renumber(key: StoryKey, map: Map<number, number | null>): Promise<void> {
     if (!kv.writable || !map.size) return;
     await open().withExclusiveTransactionAsync(async (tx) => {
+      await tx.runAsync(BUSY_TIMEOUT);
       // Park the moving rows on negative numbers first, so swaps can't collide.
       for (const from of map.keys()) {
         await tx.runAsync('UPDATE chapter_text SET number = ? WHERE story_key = ? AND number = ?', -from - 1, key, from);

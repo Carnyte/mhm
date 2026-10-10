@@ -5,7 +5,8 @@
 //   1. a byte-order mark says UTF-8, UTF-16 LE or UTF-16 BE;
 //   2. an HTML file's <meta charset> is honoured when it names UTF-8, Windows-1252 or ISO-8859-1
 //      (browsers read ISO-8859-1 as Windows-1252, and so does this);
-//   3. text that is valid UTF-8 is UTF-8;
+//   3. text that is valid UTF-8 is UTF-8, and so is text that mostly is (a stray Windows-1252
+//      byte pasted into it, a last character cut in half): the odd bytes are read as Windows-1252;
 //   4. anything else is read as Windows-1252, which never fails.
 //
 // Other legacy encodings (Shift-JIS, GBK…) come out garbled; `replaced` tells the caller to warn.
@@ -77,6 +78,70 @@ function* utf8(bytes: Uint8Array, fatal: boolean): Generator<void, string, void>
   return parts.join('');
 }
 
+/** Length of the valid UTF-8 sequence at `i` (2–4), or 0 when the bytes there aren't one. */
+function utf8Sequence(b: Uint8Array, i: number): number {
+  const c = b[i];
+  const cont = (k: number) => i + k < b.length && (b[i + k] & 0xc0) === 0x80;
+  if (c >= 0xc2 && c <= 0xdf) return cont(1) ? 2 : 0;
+  if (c >= 0xe0 && c <= 0xef) {
+    const d = b[i + 1];
+    if (c === 0xe0 ? d < 0xa0 : c === 0xed ? d > 0x9f : false) return 0;
+    return cont(1) && cont(2) ? 3 : 0;
+  }
+  if (c >= 0xf0 && c <= 0xf4) {
+    const d = b[i + 1];
+    if (c === 0xf0 ? d < 0x90 : c === 0xf4 ? d > 0x8f : false) return 0;
+    return cont(1) && cont(2) && cont(3) ? 4 : 0;
+  }
+  return 0;
+}
+
+/**
+ * Text that isn't all valid UTF-8 but mostly is: its valid sequences as UTF-8, each odd byte as
+ * Windows-1252. Undefined when the odd bytes are too many for it to be UTF-8 at all (then the
+ * whole file is Windows-1252).
+ */
+function* lenientUtf8(bytes: Uint8Array): Generator<void, string | undefined, void> {
+  const bad: number[] = [];
+  let good = 0;
+  for (let i = 0, next = SLICE; i < bytes.length; ) {
+    if (i >= next) {
+      next += SLICE;
+      yield;
+    }
+    if (bytes[i] < 0x80) i++;
+    else {
+      const n = utf8Sequence(bytes, i);
+      if (n) {
+        good++;
+        i += n;
+      } else bad.push(i++);
+    }
+  }
+  // A last character cut in half is left out, not shown as Windows-1252 letters.
+  let end = bytes.length;
+  for (let k = end - 1; k >= 0 && k >= end - 3; k--) {
+    const c = bytes[k];
+    if ((c & 0xc0) === 0x80) continue;
+    const need = c >= 0xf0 ? 4 : c >= 0xe0 ? 3 : c >= 0xc2 ? 2 : 0;
+    if (need > end - k) end = k;
+    break;
+  }
+  while (bad.length && bad[bad.length - 1] >= end) bad.pop();
+  if (good <= bad.length * 2) return undefined;
+  const decoder = new TextDecoder('utf-8');
+  const parts: string[] = [];
+  let from = 0;
+  for (const at of bad) {
+    if (at > from) parts.push(decoder.decode(bytes.subarray(from, at)));
+    parts.push(decodeCp1252(bytes.subarray(at, at + 1)));
+    from = at + 1;
+    if (parts.length % 4096 === 0) yield;
+  }
+  parts.push(decoder.decode(bytes.subarray(from, end)));
+  return parts.join('');
+}
+
 /**
  * UTF-16 without a byte-order mark: mostly-ASCII text has a zero in every other byte. Returns
  * the byte order, or undefined when the sample doesn't look like that.
@@ -126,6 +191,8 @@ function* decodeSteps(bytes: Uint8Array, opts: { html?: boolean }): Generator<vo
   try {
     text = yield* utf8(bytes, true);
   } catch {
+    const mostly = yield* lenientUtf8(bytes);
+    if (mostly !== undefined) return { text: mostly, encoding: 'utf-8', replaced: true };
     return done(yield* sliced(bytes, decodeCp1252), 'windows-1252');
   }
   return done(text, 'utf-8');
