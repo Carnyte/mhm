@@ -59,6 +59,9 @@ export interface LocalOrigin {
   origin?: ImportOrigin;
   /** The file's own ids (EPUB dc:identifier), for spotting a newer copy of the same book. */
   identifiers?: string[];
+  /** The file's own chapter count and Updated date (Unix seconds): whether it holds the site's current text. */
+  chapters?: number;
+  updated?: number;
   /** The story's folder ('imports/local_lx3k9f2a8q')… */
   dir: string;
   /** …and inside it: the original file, the cover, and the chapters' images by index ('img/3.png'). */
@@ -425,6 +428,19 @@ export function markAllRead(key: StoryKey, read: boolean) {
 
 export function acknowledgeUpdates(key: StoryKey) {
   patchStory(key, (s) => ({ knownChapters: s.chapters }));
+}
+
+/**
+ * The site's version stamp a copy from a linked file can be recorded as, when the site is first
+ * asked about it: only when the file holds the site's current text as far as can be told (as many
+ * chapters, and an Updated date no older than the site's). Otherwise none, and the copy stays
+ * stale: the next download fetches the site's text rather than calling the old copy up to date.
+ */
+export function linkedFileVersion(s: Pick<LibraryStory, 'local' | 'downloaded' | 'downloadedVersion'>, seen: { chapters: number; updated?: number; version?: number }): number | undefined {
+  const file = s.local;
+  if (!file || !s.downloaded || s.downloadedVersion != null || !seen.version) return undefined;
+  if (file.chapters !== seen.chapters || file.updated == null || seen.updated == null || file.updated < seen.updated) return undefined;
+  return seen.version;
 }
 
 export function newChapterCount(s: LibraryStory): number {

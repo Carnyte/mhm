@@ -20,6 +20,7 @@ import { remapStoryState, type ChapterRemap } from '../sources/remap';
 import type { Tag } from '../sources/types';
 import {
   libraryStore,
+  linkedFileVersion,
   patchStory,
   remapStoryBookmarks,
   removeBookmarksOf,
@@ -221,6 +222,8 @@ function fileRecord(key: StoryKey, book: ImportedBook, file: ImportFile, files: 
   if (book.sourceUrl) out.sourceUrl = book.sourceUrl;
   if (book.origin) out.origin = book.origin;
   if (book.identifiers?.length) out.identifiers = book.identifiers;
+  out.chapters = book.chapters.length;
+  if (book.updated) out.updated = sec(book.updated);
   if (files.original) out.original = files.original;
   if (files.cover) out.cover = files.cover;
   return out;
@@ -410,9 +413,11 @@ async function commitLinked(book: ImportedBook, file: ImportFile, o: CommitOptio
 export async function refreshLinkedStory(key: StoryKey): Promise<boolean> {
   try {
     const info = await fetchStory(key, { priority: 'user' });
-    // The file is the site's current version as far as anyone knows (see the AO3 update check).
+    // The file is the site's current version when it holds as many chapters and isn't older (see
+    // linkedFileVersion); else the copy stays stale for the next download.
     const s = libraryStore.get().stories[key];
-    upsertStory(info, s?.local && s.downloadedVersion == null && info.version ? { downloadedVersion: info.version } : {}, { create: false });
+    const fileVersion = s ? linkedFileVersion(s, info) : undefined;
+    upsertStory(info, fileVersion ? { downloadedVersion: fileVersion } : {}, { create: false });
     return true;
   } catch {
     return false;

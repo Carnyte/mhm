@@ -13,7 +13,8 @@ import type { ChapterContent } from '../src/sources/types';
 import { forgetRecentPages } from '../src/sources/ao3/api';
 import { ao3Source, resetAo3Session } from '../src/sources/ao3/adapter';
 import { downloadStory } from '../src/features/downloads';
-import { libraryStore } from '../src/state/library';
+import { toast } from '../src/components/Sheet';
+import { libraryStore, type LibraryStory } from '../src/state/library';
 import { chapterRows } from './helpers/memoryKv';
 import { fixture, on, requests, resetFake } from './helpers/fakeAo3';
 
@@ -163,5 +164,37 @@ describe('downloading an AO3 work', () => {
     requests.length = 0;
     await downloadStory(lib, { quiet: true });
     expect(requests.map((r) => r.url)).toEqual([`${AO3}/works/3171550?view_adult=true`]);
+  });
+
+  it('replaces a linked file’s copy that was never taken as current, when asked to download', async () => {
+    on(/\/works\/3171550\?view_adult=true$/, workPage());
+    on(/\/downloads\//, fixture('download.html'));
+    const local = { kind: 'epub' as const, fileName: 'w.epub', importedAt: 1, size: 1, contentHash: 'h', dir: 'imports/ao3_3171550', chapters: 3, updated: 1 };
+    const story: LibraryStory = {
+      key: 'ao3:3171550',
+      source: 'ao3',
+      remoteId: '3171550',
+      title: 'T',
+      summary: '',
+      genres: [],
+      chapters: 3,
+      words: 1,
+      stats: {},
+      complete: true,
+      inLibrary: true,
+      downloaded: true,
+      downloadedChapters: [1, 2, 3],
+      version: 1772763357,
+      addedAt: 1,
+      local,
+    };
+    libraryStore.set((s) => ({ ...s, stories: { [story.key]: story } }));
+    for (const n of [1, 2, 3]) chapterRows.set(`ao3:3171550#${n}`, { html: `<p>Old text ${n} from the file.</p>` });
+    await downloadStory(story);
+    // The whole work is fetched (the copy is all there, but of no known version), and replaces the old text.
+    expect(requests.map((r) => r.url)).toEqual([`${AO3}/works/3171550?view_adult=true`, `${AO3}/downloads/3171550/Synthetic_Work.html?updated_at=1772763357`]);
+    expect(chapterRows.get('ao3:3171550#1')!.html).not.toContain('Old text');
+    expect(libraryStore.get().stories['ao3:3171550'].downloadedVersion).toBe(1772763357);
+    expect(toast).toHaveBeenLastCalledWith('Downloaded “T”', 'success');
   });
 });

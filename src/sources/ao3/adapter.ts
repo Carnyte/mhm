@@ -271,8 +271,9 @@ async function downloadAll(remoteId: string, onChapter: (c: ChapterContent) => P
 /** What changed for one library work, from its search blurb. */
 function compare(s: LibraryStory, m: StoryMeta): UpdateResult {
   const version = m.version;
-  // A copy from an imported file has no version yet: it is taken as current (the check records
-  // the version), never re-downloaded behind the user's back for it.
+  // A copy from an imported file has no version yet: the check records AO3's when the file is
+  // AO3's current text (linkedFileVersion), else the next download the user asks for fetches the
+  // text. Either way it's never re-downloaded behind the user's back for it.
   const fromFile = !!s.local && s.downloadedVersion == null;
   return {
     key: s.key,

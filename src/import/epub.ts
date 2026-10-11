@@ -33,6 +33,7 @@ import {
   isChapterHeading,
   labeledFields,
   localName,
+  nodesBetween,
   parseMarkup,
   parseMarkupAsync,
   parseXml,
@@ -96,8 +97,15 @@ const fragmentOf = (href: string) => {
   }
 };
 
-/** Table-of-contents titles that are never chapters. */
+/** Table-of-contents titles of front and back matter, when the page fits (see isFrontEntry). */
 const FRONT_TITLE = /^(title page|table of contents|contents|toc|cover|update log|information|information page|copyright|navigation)$/i;
+/** A copyright notice: "© 2020", "Copyright", "All rights reserved", an ISBN. */
+const COPYRIGHT = /©|\(c\)\s*\d{4}|\bcopyright\b|\ball rights reserved\b|\bISBN\b/i;
+/** The lines that go with one: "No part of this book may be reproduced…", "First edition", "Cover art by…". */
+const LEGAL = /\b(?:reproduced|transmitted|permission|publisher|published by|trademarks?|work of fiction|fictitious|resemblance|edition|printed in|cover (?:design|art|illustration)|licen[cs]ed)\b/i;
+/** A fic's own disclaimer ("I don't own Naruto", "Harry Potter is copyright J. K. Rowling; no money is made"), which opens its text. */
+const DISCLAIMER =
+  /\bdisclaimer\b|\b(?:don['’]t|do not|doesn['’]t|does not|didn['’]t) own\b|\bbelongs? to\b|\b(?:are|is) copyright(?:ed)?\b|\bno (?:money|profit)\b|\bnot (?:making|for) (?:any )?(?:money|profit)\b|\binfringement (?:is )?intended\b|\bfan ?fic(?:tion)?\b/i;
 /** File names of front and back matter: FanFicFare's title / toc / log pages, covers, nav documents. */
 const FRONT_FILE = /(?:^|\/)(?:title_?page|titlepage|toc_?page|log_?page|cover(?:page)?|nav|toc|copyright)\.x?html?$/i;
 /** A single text file larger than this isn't read (the phone holds it, parsed, in memory). */
@@ -331,22 +339,51 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
     return findOne(part, bodyOf(t.path).children, true)?.attribs.id;
   };
   /** A page of "Key: value" fields (FanFicFare's, FicHub's introduction). */
-  const fieldsPage = (p: string) => {
-    const text = blockText(bodyOf(p).children);
+  const fieldsPage = (page: AnyNode[]) => {
+    const text = blockText(page);
     return /Exported with the assistance of/i.test(text) || Object.keys(labeledFields(text)).length >= 2;
   };
   /** Mostly links: a contents page. */
-  const linkPage = (p: string) => {
-    const kids = bodyOf(p).children;
-    return findAll((e) => e.name === 'a', kids).reduce((n, a) => n + textOf(a).length, 0) > textOf(kids).length * 0.5;
+  const linkPage = (page: AnyNode[]) => findAll((e) => e.name === 'a', page).reduce((n, a) => n + textOf(a).length, 0) > textOf(page).length * 0.5;
+  /** Running text: a sentence or a long line, not a picture, a title, a byline or a notice. */
+  const proseLine = (l: string) => {
+    const n = l.match(/\S+/g)?.length ?? 0;
+    return n >= 12 || (n >= 3 && /[.!?…]["”’')\]]*$/.test(l));
   };
-  /** Short, or links or fields: a contents page, a cover, a copyright notice (not a chapter called "Cover"). */
-  const littlePage = (p: string) => wordsIn(bodyOf(p).children) < 300 || linkPage(p) || fieldsPage(p);
+  /**
+   * A copyright page of fewer than `maxWords` words: it opens with the notice, and has fewer than
+   * `maxBesides` words besides it and the lines that go with it. Never a fic's disclaimer, nor prose
+   * under a chapter's heading ("Prologue"). Returns how many words it has besides, or null.
+   */
+  const copyrightPage = (page: AnyNode[], maxWords: number, maxBesides = Infinity): number | null => {
+    const text = textOf(page);
+    if (wordsIn(page) >= maxWords || !COPYRIGHT.test(text.slice(0, 400)) || DISCLAIMER.test(text)) return null;
+    const besides = blockText(page)
+      .split('\n')
+      .filter((l) => !COPYRIGHT.test(l) && !LEGAL.test(l));
+    const words = besides.reduce((n, l) => n + (l.match(/\S+/g)?.length ?? 0), 0);
+    if (words >= maxBesides) return null;
+    const headed = !!findOne((e) => /^h[1-3]$/.test(e.name) && isChapterHeading(textOf(e), true), page, true);
+    return headed && besides.some(proseLine) ? null : words;
+  };
   const lookedAt = (t: TocEntry) => FRONT_TITLE.test(t.title) || /^(preface|afterword|introduction)$/i.test(t.title);
+  /** Entries named and placed as chapters: the first and last of them bound the story. */
+  const plain = toc.map((t) => !FRONT_TITLE.test(t.title) && !(!t.frag && isFrontFile(t.path)));
+  const firstPlain = plain.indexOf(true);
+  const lastPlain = plain.lastIndexOf(true);
+  /** Short pages left out by their name and size alone, though they hold some text. */
+  const leftOut: string[] = [];
+  /** An entry's own part of its file: from its place to the next entry's there, as its chapter would run. */
+  const pageOf = (i: number): AnyNode[] => {
+    const t = toc[i];
+    let end: Element | null = null;
+    for (let j = i + 1; j < toc.length && toc[j].path === t.path && !end; j++) end = marker(toc[j].path, toc[j].frag);
+    return nodesBetween(bodyOf(t.path), marker(t.path, t.frag), end);
+  };
   // Front matter is told by where an entry is and what it holds; a title alone never makes a chapter
   // front matter. FanFicFare and FicHub name their own pages' files; their chapters are called
   // whatever the author called them.
-  const isFrontEntry = (t: TocEntry): boolean => {
+  const isFrontEntry = (t: TocEntry, i: number): boolean => {
     if (!t.frag && isFrontFile(t.path)) return true;
     if (!lookedAt(t) || generator === 'fanficfare') return false;
     if (isAo3) {
@@ -354,12 +391,32 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
       if (part) return part !== 'chapters';
       if (/^(preface|afterword)$/i.test(t.title)) return true;
     }
-    if (/^introduction$/i.test(t.title)) return fieldsPage(t.path);
-    if (generator === 'fichub') return false;
-    return FRONT_TITLE.test(t.title) && littlePage(t.path);
+    const page = pageOf(i);
+    if (/^introduction$/i.test(t.title)) return fieldsPage(page);
+    if (generator === 'fichub' || !FRONT_TITLE.test(t.title)) return false;
+    // Contents, fields and a copyright page are front matter wherever they are. Anything else named
+    // so is a chapter between chapters ("Information", a drabble) unless it has no prose at all (a
+    // second book's cover or title page in an omnibus), and before or after them a short page (a
+    // cover, a title page) unless it holds a real amount of text.
+    if (linkPage(page) || fieldsPage(page)) return true;
+    // One called "Copyright" may run long; under another name ("Title Page") it's only the notice.
+    const besides = copyrightPage(page, 1000, /^copyright$/i.test(t.title) ? Infinity : 150);
+    if (besides != null) {
+      if (besides >= 40) leftOut.push(t.title);
+      return true;
+    }
+    if (firstPlain >= 0 && firstPlain < i && i < lastPlain && blockText(page).split('\n').some(proseLine)) return false;
+    const words = wordsIn(page);
+    if (words >= 300) return false;
+    if (words >= 40) leftOut.push(t.title);
+    return true;
   };
   for (const t of toc) if (lookedAt(t)) await loadDoc(t.path);
   const frontEntries = new Set(toc.filter(isFrontEntry));
+  if (leftOut.length) {
+    const names = leftOut.map((t) => `“${t}”`).join(', ').replace(/, ([^,]*)$/, ' and $1');
+    warnings.push(`Left out ${names}, ${leftOut.length === 1 ? 'a short page' : 'short pages'} that looked like front matter.`);
+  }
   /**
    * A file after a front-matter entry's own (before the next entry) is more of it when it's AO3's
    * preface or afterword split in two, or more links or fields; else it's text (an untitled prologue).
@@ -367,7 +424,7 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   const moreFront = (p: string) => {
     if (isFrontFile(p)) return true;
     if (isAo3) return findOne((e) => /^(preface|chapters|afterword)$/.test(e.attribs.id ?? ''), bodyOf(p).children, true)?.attribs.id !== 'chapters';
-    return linkPage(p) || fieldsPage(p);
+    return linkPage(bodyOf(p).children) || fieldsPage(bodyOf(p).children);
   };
   const frontPaths = new Set<string>();
   for (let i = 0; i < toc.length; i++) {
@@ -465,6 +522,8 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   const pending: Pending[] = [];
   let done = 0;
   let leadTaken = false;
+  /** Words besides a notice on a copyright page the lead left out (see copyrightPage). */
+  let leadLeftOut = false;
   let unplaced = 0;
   await stepper.step(0, total);
   for (let k = 0; k < segments.length; k++) {
@@ -482,7 +541,10 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
         const p = spine[s];
         if (frontPaths.has(p) || used.has(p)) continue;
         await loadDoc(p);
-        append(lead, takeAll(bodyOf(p)));
+        // A copyright page the contents don't list ("All rights reserved…") isn't the book's text.
+        const besides = copyrightPage(bodyOf(p).children, 300);
+        if (besides == null) append(lead, takeAll(bodyOf(p)));
+        else if (besides >= 40) leadLeftOut = true;
         consume(p);
       }
       if (start) append(lead, splitBefore(bodyOf(seg.from.path), start));
@@ -530,18 +592,17 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
   /**
    * Text before the first chapter: a chapter of its own when there's a real amount of it or it
    * starts with a chapter heading ("Prologue"), else left out with a warning when it isn't a few
-   * words of title page.
+   * words of title page (nor a copyright page that is only the notice).
    */
   function takeLead(box: Element) {
     const words = wordsIn(box.children);
-    if (!words) return;
-    const heading = textOf(findOne((e) => /^h[1-3]$/.test(e.name) && !!textOf(e), box.children, true));
-    const firstLine = blockText(box.children).split('\n')[0] ?? '';
-    const named = isChapterHeading(heading) ? heading : isChapterHeading(firstLine) && firstLine.length <= 60 ? firstLine : '';
+    const heading = words ? textOf(findOne((e) => /^h[1-3]$/.test(e.name) && !!textOf(e), box.children, true)) : '';
+    const firstLine = words ? (blockText(box.children).split('\n')[0] ?? '') : '';
+    const named = isChapterHeading(heading, true) ? heading : isChapterHeading(firstLine) && firstLine.length <= 60 ? firstLine : '';
     if (words >= 150 || named) {
       const c = takeChapter(named || heading || 'Introduction', box, pending.length + 1);
       if (c) pending.push(c);
-    } else if (words >= 20) warnings.push('Some text before the first chapter in the table of contents was left out.');
+    } else if (words >= 20 || leadLeftOut) warnings.push('Some text before the first chapter in the table of contents was left out.');
   }
 
   /** A chapter's title, notes (AO3) and sanitized body out of its nodes. */

@@ -158,6 +158,7 @@ describe('a local story', () => {
       complete: false,
       published: Date.UTC(2020, 0, 2) / 1000,
       updated: Date.UTC(2020, 1, 3) / 1000,
+      local: { chapters: 3, updated: Date.UTC(2020, 1, 3) / 1000 },
     });
   });
 
@@ -306,8 +307,10 @@ describe('linking a file to its AO3 story', () => {
       downloadedChapters: [1, 2, 3],
       complete: false,
       inLibrary: true,
-      local: { origin, sourceUrl: 'https://archiveofourown.org/works/123', dir: 'imports/ao3_123' },
+      // The file's own chapter count and date: whether it's AO3's current text (see linkedFileVersion).
+      local: { origin, sourceUrl: 'https://archiveofourown.org/works/123', dir: 'imports/ao3_123', chapters: 3 },
     });
+    expect(stories()[key].local).not.toHaveProperty('updated');
     expect(stories()[key].notify).toBeUndefined();
     expect(rows(key).map(([n]) => n)).toEqual([1, 2, 3]);
   });

@@ -9,7 +9,8 @@
 // Anything else is a web page someone saved, and gets reader mode (readability.ts): the article
 // without the site around it, cut into chapters where it clearly has chapter headings ("Chapter
 // 3", "Prologue"…). A page that is just a story (no menus, no sidebars) is taken whole, and a page
-// where reader mode finds nothing falls back to its whole body minus what is clearly furniture.
+// where reader mode finds nothing, or leaves out chapters or text that isn't the site's, falls back
+// to its whole body minus what is clearly furniture.
 
 import { render } from 'dom-serializer';
 import { isTag, type AnyNode, type Document, type Element, type ParentNode } from 'domhandler';
@@ -26,7 +27,6 @@ import {
   blockText,
   boxOf,
   dropRepeatedTitle,
-  hasContent,
   isChapterHeading,
   labeledFields,
   parseMarkup,
@@ -69,6 +69,10 @@ async function eachPart(root: ParentNode, markers: AnyNode[], stepper: Stepper, 
   return front;
 }
 
+/** Headings of a site's own sections after a story: about the author, more stories, comments, sharing. */
+const SITE_SECTION =
+  /^(?:about (?:the|this) (?:author|writer)|(?:the )?author(?:'s|’s)? (?:bio|biography|profile)|(?:you (?:might|may|could) (?:also )?(?:like|enjoy)|more (?:stories|works|fics?|posts) (?:like this|by|from)|related (?:posts|stories|works|fics?)|recommended(?: for you| reading)?|other (?:stories|works) by)\b.*|(?:\d+ )?(?:comments?|reviews?|responses?|replies)(?: \(\d+\))?|leave a (?:comment|review|reply|kudos)\b.*|(?:share|like) this(?: story| post)?|share|tags|categories|archives|recent posts|popular (?:posts|stories)|follow (?:me|us)\b.*|subscribe\b.*|support (?:me|the author)\b.*)[:.!]?$/i;
+
 /** h1–h3 headings that cut the text into chapters, or null when it clearly has none. */
 function chapterHeadings(root: ParentNode, relaxed = false): Element[] | null {
   const byLevel = new Map<string, Element[]>();
@@ -80,14 +84,15 @@ function chapterHeadings(root: ParentNode, relaxed = false): Element[] | null {
   }
   let best: Element[] | null = null;
   for (const list of byLevel.values()) {
-    const like = list.filter((h) => isChapterHeading(textOf(h)));
+    const like = list.filter((h) => isChapterHeading(textOf(h), true));
     let chosen = like;
     if (relaxed) chosen = list;
     else if (like.length >= list.length * 0.6) {
       // Mostly chapter-like ("Chapter 1", "Chapter 2", "The Ball", "Chapter 4"): every heading of
-      // that level cuts, but a short section after the story ("About the author") isn't a chapter.
+      // that level cuts, but a short section of the site after the story ("About the author")
+      // isn't a chapter. A short last chapter ("Five Years Later") is.
       chosen = list.slice();
-      while (chosen.length && !like.includes(chosen[chosen.length - 1]) && wordsUntil(chosen[chosen.length - 1], root) < 150) chosen.pop();
+      while (chosen.length && SITE_SECTION.test(textOf(chosen[chosen.length - 1])) && wordsUntil(chosen[chosen.length - 1], root) < 150) chosen.pop();
     }
     if (chosen.length >= 2 && (relaxed || like.length >= 2) && (!best || chosen.length > best.length)) best = chosen;
   }
@@ -346,7 +351,7 @@ function textLengths(root: ParentNode): { all: number; links: number } {
 /** Class and id words of page furniture: menus, headers and footers, sidebars, comments, sharing, ads. */
 const FURNITURE_WORD =
   /^(?:comments?|commentlist|sidebar|nav|navbar|navigation|menu|breadcrumbs?|footer|site-header|masthead|share|sharing|social|related|advert(?:isement)?|ads|cookie|banner|promo|subscribe|newsletter|widgets?|widget-area|secondary)$/;
-/** "no-sidebar", "has-sidebar": a page's layout, not its furniture. */
+/** "no-sidebar", "has-sidebar", "ast-no-sidebar": a page's layout, not its furniture. */
 const LAYOUT_PREFIX = /^(?:no|has|with|without|hide|hidden|show|is|not|toggle)$/;
 
 /** A class or id names furniture: the word itself, or a word starting or ending it ("sidebar-left", "site-footer"). */
@@ -354,30 +359,46 @@ function furnitureToken(token: string): boolean {
   if (FURNITURE_WORD.test(token)) return true;
   const parts = token.split(/[-_]/);
   if (parts.length < 2) return false;
-  return FURNITURE_WORD.test(parts[0]) || (FURNITURE_WORD.test(parts[parts.length - 1]) && !LAYOUT_PREFIX.test(parts[0]));
+  const layout = LAYOUT_PREFIX.test(parts[0]) || LAYOUT_PREFIX.test(parts[parts.length - 2]);
+  return FURNITURE_WORD.test(parts[0]) || (FURNITURE_WORD.test(parts[parts.length - 1]) && !layout);
 }
 
 /** More signs of a site around the text (Blogger's and Tumblr's #header, tag lists, notes, replies), too common inside stories to remove. */
 const CHROME_WORD = /^(?:header|tags|notes|reply|permalink)$/;
 
-const tokensOf = (e: Element) => `${e.attribs.id ?? ''} ${e.attribs.class ?? ''}`.toLowerCase().split(/\s+/).filter(Boolean);
+/**
+ * An element's class and id words. <body> and <html> have none here: themes describe the whole
+ * page's layout on them ("right-sidebar", "footer-widgets", WordPress's "sidebar"), not furniture.
+ */
+const tokensOf = (e: Element) => (e.name === 'body' || e.name === 'html' ? [] : `${e.attribs.id ?? ''} ${e.attribs.class ?? ''}`.toLowerCase().split(/\s+/).filter(Boolean));
 
 const isFurniture = (e: Element) => tokensOf(e).some(furnitureToken);
 
 /** Inside a menu, sidebar, footer or comments: a heading there never names a chapter. */
 function inFurniture(e: Element): boolean {
-  for (let p: ParentNode | null = e.parent; p && isTag(p); p = p.parent) {
+  for (let p: ParentNode | null = e.parent; p && isTag(p) && p.name !== 'body' && p.name !== 'html'; p = p.parent) {
     if (/^(nav|aside|footer|menu)$/.test(p.name) || NOISE_ROLE.test(p.attribs.role ?? '') || isFurniture(p)) return true;
   }
   return false;
 }
 
+/** Text that is mostly links: a site's name and menu, a tag list, "Reply · Permalink". */
+function linkHeavy(e: Element): boolean {
+  const t = textLengths(e);
+  return t.all > 0 && t.links / t.all >= 0.5;
+}
+
 /**
  * Signs that a page has a site around its text: menus, sidebars, comments (as elements, roles, or
- * classes and ids, which older blogs and archives use instead), link lists, much link text.
+ * classes and ids, which older blogs and archives use instead), link lists, much link text. A
+ * "header", "notes" or "tags" class is a sign only on links ("#header" with the blog's name and
+ * menu, a list of tags): a story's own title block and author's notes don't make a page noisy.
  */
 function isNoisy(body: ParentNode): boolean {
-  const chrome = (e: Element) => tokensOf(e).some((t) => furnitureToken(t) || CHROME_WORD.test(t));
+  const chrome = (e: Element) => {
+    const tokens = tokensOf(e);
+    return tokens.some(furnitureToken) || (tokens.some((t) => CHROME_WORD.test(t)) && linkHeavy(e));
+  };
   const furniture = (e: Element) => /^(nav|header|footer|aside|form|menu)$/.test(e.name) || NOISE_ROLE.test(e.attribs.role ?? '') || chrome(e);
   if (findOne(furniture, body.children, true)) return true;
   const linkList = (e: Element) => {
@@ -390,7 +411,7 @@ function isNoisy(body: ParentNode): boolean {
   return all > 0 && links / all > 0.2;
 }
 
-const hasChapterHeading = (e: Element) => !!findOne((h) => /^h[1-3]$/.test(h.name) && isChapterHeading(textOf(h)), e.children, true);
+const hasChapterHeading = (e: Element) => !!findOne((h) => /^h[1-3]$/.test(h.name) && isChapterHeading(textOf(h), true), e.children, true);
 
 /**
  * Page furniture removed without reader mode: menus, headers and footers, sidebars, comments. The
@@ -414,6 +435,96 @@ function lightClean(body: ParentNode): boolean {
   if (total && total - dropped < total * 0.4) return false;
   for (const e of drop) removeElement(e);
   return true;
+}
+
+/**
+ * What reader mode leaves out by its own rules before it looks for the article: Readability's
+ * "unlikely candidates" (its pattern, less the words it lets back in) and bylines.
+ */
+const READER_DROPS = /-ad-|banner|breadcrumbs|combx|comment|community|disqus|extra|footer|header|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|pagination|pager|popup|byline|author|dateline/i;
+const READER_KEEPS = /and|article|body|column|content|main|shadow/i;
+
+/** Text reader mode is right to leave out: furniture, site chrome, bylines. */
+function skippedByReader(e: Element): boolean {
+  if (/^(nav|header|footer|aside|form|menu)$/.test(e.name) || NOISE_ROLE.test(e.attribs.role ?? '')) return true;
+  const tokens = tokensOf(e);
+  if (tokens.some((t) => furnitureToken(t) || CHROME_WORD.test(t))) return true;
+  const match = tokens.join(' ');
+  return READER_DROPS.test(match) && !READER_KEEPS.test(match);
+}
+
+/**
+ * The words in each node under `root` and in `root` itself, counted once from the bottom up (so in
+ * a time in step with the page's size, however deep it nests). `counted`: the text nodes to count.
+ */
+function wordCounts(root: ParentNode, counted?: (t: AnyNode & { data: string }) => boolean): Map<AnyNode, number> {
+  const counts = new Map<AnyNode, number>();
+  const stack: { n: AnyNode; done: boolean }[] = root.children.map((n) => ({ n, done: false }));
+  while (stack.length) {
+    const { n, done } = stack.pop()!;
+    if (n.type === 'text') {
+      const t = n as AnyNode & { data: string };
+      counts.set(n, counted && !counted(t) ? 0 : (t.data.match(/\S+/g) ?? []).length);
+    } else if (!isTag(n) || n.name === 'script' || n.name === 'style') counts.set(n, 0);
+    else if (done) counts.set(n, n.children.reduce((sum, c) => sum + counts.get(c)!, 0));
+    else {
+      stack.push({ n, done: true });
+      for (const c of n.children) stack.push({ n: c, done: false });
+    }
+  }
+  counts.set(root, root.children.reduce((sum, c) => sum + counts.get(c)!, 0));
+  return counts;
+}
+
+/** Elements whose text is never the story's: reader mode and the sanitizer remove form controls. */
+const NO_PROSE = /^(?:script|style|select|option|button|textarea)$/;
+
+/** Words of text outside links and form controls under `root`, less the elements `skip` names. */
+function proseWords(root: ParentNode, skip?: (e: Element) => boolean): number {
+  let words = 0;
+  const stack: { n: AnyNode; link: boolean }[] = root.children.map((n) => ({ n, link: false }));
+  while (stack.length) {
+    const { n, link } = stack.pop()!;
+    if (n.type === 'text') {
+      if (!link) words += ((n as { data: string }).data.match(/\S+/g) ?? []).length;
+    } else if (isTag(n) && !NO_PROSE.test(n.name) && !skip?.(n)) {
+      for (const c of n.children) stack.push({ n: c, link: link || n.name === 'a' });
+    }
+  }
+  return words;
+}
+
+const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * Whether an element of `body` holds most of the article's text: the story's container, however
+ * it's classed (a <form> around the whole page, a "header" wrapper around the story).
+ */
+function storyContainer(article: ParentNode, body: ParentNode): (e: Element) => boolean {
+  const lines = new Set<string>();
+  const counts = wordCounts(article);
+  for (const [n, words] of counts) {
+    // A few words at least: "Next", "Chapter 1" or the title might be in the menu as well.
+    if (n.type === 'text' && words >= 4) lines.add(squash((n as { data: string }).data));
+  }
+  const held = wordCounts(body, (t) => lines.has(squash(t.data)));
+  const all = held.get(body)!;
+  return (e) => all > 0 && (held.get(e) ?? 0) >= all / 2;
+}
+
+/**
+ * Reader mode kept the story: its article holds (nearly) all the page's text that isn't furniture,
+ * chrome, form controls or links. It sometimes keeps only the longest block of a page cut into
+ * blocks ("The Ball" in one <div>, "Homecoming" in the next), and leaving out a few hundred words
+ * of story silently is worse than keeping some of the site. What it's right to leave out (notes
+ * under a post, a long comment thread, a menu) isn't counted, however long, unless the story is
+ * in it.
+ */
+function keepsTheStory(article: ParentNode, body: ParentNode): boolean {
+  const container = storyContainer(article, body);
+  const want = proseWords(body, (e) => skippedByReader(e) && !container(e));
+  const missing = want - proseWords(article);
+  return missing <= Math.max(40, Math.min(want * 0.05, 250));
 }
 
 /** Classes and ids of a site's own name and header ("site-title", Blogger's div.header, Tumblr's #header). */
@@ -445,17 +556,29 @@ function titleHeading(body: ParentNode): string {
 
 /** The words of each unit, and the units a long text without headings is cut at. */
 function partsOf(box: Element): { units: AnyNode[]; starts: number[]; words: number } {
-  // Cut inside the wrapper the text is in (<div id="content"><div class="entry">…).
+  // Cut inside the wrapper the text is in (<div id="content"><div class="entry">…), past a title
+  // block beside it (<div><h1>…</h1><p>by …</p></div><div>the text</div>): the child holding
+  // nearly all the words, and the child of that… What's beside each is a unit of its own, so an
+  // old page's unclosed <font> before each paragraph (each one inside the one before) is cut at
+  // its paragraphs too.
+  const count = wordCounts(box);
+  const units: AnyNode[] = [];
+  const after: AnyNode[][] = [];
   let at: ParentNode = box;
   for (;;) {
-    const kids: AnyNode[] = at.children.filter(hasContent);
-    if (kids.length === 1 && isTag(kids[0]) && !/^(p|blockquote|pre|table|ul|ol|dl)$/.test(kids[0].name)) at = kids[0];
-    else break;
+    const total = count.get(at)!;
+    const i = total ? at.children.findIndex((n) => isTag(n) && count.get(n)! >= total * 0.8) : -1;
+    const big = at.children[i] as Element | undefined;
+    if (!big || /^(p|blockquote|pre|table|ul|ol|dl)$/.test(big.name)) break;
+    units.push(...at.children.slice(0, i));
+    after.push(at.children.slice(i + 1));
+    at = big;
   }
-  const units = at.children.slice();
-  const counts = units.map((n) => wordsIn([n]));
+  units.push(...at.children);
+  for (let k = after.length - 1; k >= 0; k--) units.push(...after[k]);
+  const counts = units.map((n) => count.get(n)!);
   const isBreak = (i: number) => isTag(units[i]) && ((units[i] as Element).name === 'hr' || SCENE_BREAK.test(textOf(units[i])));
-  return { units, starts: splitParts(counts, isBreak), words: counts.reduce((a, b) => a + b, 0) };
+  return { units, starts: splitParts(counts, isBreak), words: count.get(box)! };
 }
 
 /** Pages up to this size get reader mode; it's slow on a phone past that, so bigger ones get lightClean. */
@@ -493,16 +616,16 @@ async function webPage(doc: Document, size: number, stepper: Stepper, images: Im
     const article = readArticle(body.children, head);
     const articleDoc = article && article.length >= 200 ? parseMarkup(article.content) : null;
     // Reader mode has to keep every chapter heading the page has (it sometimes picks one chapter).
-    const like = (r: ParentNode) => findAll((e) => /^h[1-6]$/.test(e.name) && isChapterHeading(textOf(e)), r.children).length;
+    const like = (r: ParentNode) => findAll((e) => /^h[1-6]$/.test(e.name) && isChapterHeading(textOf(e), true), r.children).length;
     const pageLike = like(body);
-    if (articleDoc && (pageLike < 2 || like(articleDoc) >= pageLike)) {
+    if (articleDoc && (pageLike < 2 || like(articleDoc) >= pageLike) && keepsTheStory(articleDoc, body)) {
       root = articleDoc;
       generator = 'readability';
       title = article?.title || title;
       byline = article?.byline || byline;
       published = article?.publishedTime || published;
     } else {
-      // Reader mode found nothing, or left chapters out: the page minus its furniture.
+      // Reader mode found nothing, or left chapters or text out: the page minus its furniture.
       if (!lightClean(body) || !articleDoc) warnings.push(whole);
     }
   } else if (noisy && !lightClean(body)) warnings.push(whole);

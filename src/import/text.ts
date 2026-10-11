@@ -13,7 +13,7 @@
 import { chapterFromHtml, partsWarning, sanitizeFragment, splitParts, Stepper, type BookDraft } from './build';
 import { decodeBytesAsync } from './decode';
 import { findStoryUrl } from './detect';
-import { CHAPTER_HEADING, isChapterHeading, labeledFields, ROMAN_HEADING, SCENE_BREAK } from './dom';
+import { CHAPTER_HEADING, doubtfulNumeral, isChapterHeading, labeledFields, ROMAN_HEADING, romanValue, SCENE_BREAK } from './dom';
 import { fieldTags, languageName, parseComplete, parseDate, plainSummary } from './meta';
 import type { ImportedChapter } from './types';
 
@@ -60,12 +60,13 @@ export function inlineMarkdown(s: string): string {
   h = h.replace(/\\([\\`*_{}[\]()#+\-.!~>|])/g, (_m, c: string) => keep(c));
   h = h.replace(/`([^`]+)`/g, (_m, c: string) => keep(`<code>${c}</code>`));
   // Link targets may hold one level of parentheses ("…/Foo_(bar)"); texts and titles are bounded,
-  // so a line full of "[" or "](" can't make the patterns retry the rest of the line from each.
-  const target = String.raw`\(\s*([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)(?:\s+[^)]{0,300})?\)`;
-  h = h.replace(new RegExp(String.raw`!\[([^\]]{0,500})\]` + target, 'g'), (_m, alt: string, url: string) =>
+  // and a text never runs past another "[", so a line full of "[" or "](" can't make the patterns
+  // read on through the rest of the line from each one.
+  const target = String.raw`\(\s*([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)(?:\s+[^\s()][^()]{0,300}|\s*)\)`;
+  h = h.replace(new RegExp(String.raw`!\[([^[\]]{0,500})\]` + target, 'g'), (_m, alt: string, url: string) =>
     /^https?:\/\//i.test(url) ? keep(`<img src="${quoteSafe(url)}" alt="${quoteSafe(alt)}">`) : alt,
   );
-  h = h.replace(new RegExp(String.raw`\[([^\]]{1,500})\]` + target, 'g'), (_m, text: string, url: string) =>
+  h = h.replace(new RegExp(String.raw`\[([^[\]]{1,500})\]` + target, 'g'), (_m, text: string, url: string) =>
     /^(https?:|mailto:)/i.test(url) ? `<a href="${quoteSafe(url)}">${text}</a>` : text,
   );
   h = pairs(pairs(h, '**', 'strong'), '__', 'strong', true);
@@ -151,6 +152,18 @@ interface Section {
 
 const BYLINE = /^(?:by|author|written by)\s*:?\s+(.+)$/i;
 
+/**
+ * The author a byline names: a few words, not a sentence ("by Quiet Owl", "by J. R. Smith Jr.",
+ * never "By the time she arrived, it was dark." or a wrapped line "by the dog that had found her").
+ */
+function bylineAuthor(line: string | undefined): string | undefined {
+  const name = line?.trim().match(BYLINE)?.[1].trim();
+  if (!name || name.length > 60 || name.split(/\s+/).length > 6) return undefined;
+  // Sentence punctuation at the end, unless it closes an initial or "Jr.".
+  if (/[!?,;:…"”’]$/.test(name) || (/\.$/.test(name) && !/(?:^|\s)\S{1,3}\.$/.test(name))) return undefined;
+  return name;
+}
+
 export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper: Stepper): Promise<BookDraft> {
   const decoded = await decodeBytesAsync(bytes, {}, stepper.pause);
   const warnings: string[] = [];
@@ -177,7 +190,8 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
       continue;
     }
     const t = l.trim();
-    if (!blank(lines[i - 1]) || !isChapterHeading(t) || t.length > 80) continue;
+    // A lone numeral before words that read like dialogue ("I - I don't know.") is weighed below.
+    if (!blank(lines[i - 1]) || !(isChapterHeading(t) || (doubtfulNumeral(t) && isChapterHeading(t, true))) || t.length > 80) continue;
     if (blank(lines[i + 1])) starts.push({ at: i, end: i, title: t });
     else if (/^[^:.!?]*\d+\s*$|^(chapter|part)\s+\w+$/i.test(t) && lines[i + 1].trim().length <= 60 && blank(lines[i + 2]) && !/[.,;]$/.test(lines[i + 1].trim())) {
       // "Chapter 1" with its title on the next line.
@@ -187,6 +201,21 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
   }
   // A Roman numeral alone ("I", "V.") is a heading only where others are ("II", "III"…).
   const roman = fff ? [] : starts.filter((s) => ROMAN_HEADING.test(s.title) && !CHAPTER_HEADING.test(s.title));
+  // A lone I, V, X, L or C before words that may be dialogue ("I - I don't know.", "I. It begins")
+  // is one only in its place in the run: right after the numeral before it, or right before the
+  // one after it when it isn't inside the chapter of its own number (a stammer in chapter I).
+  for (let k = 0, prev: number | undefined; k < roman.length; k++) {
+    const n = romanValue(roman[k].title);
+    if (doubtfulNumeral(roman[k].title)) {
+      const next = roman[k + 1] ? romanValue(roman[k + 1].title) : undefined;
+      if (!(prev === n - 1 || (next === n + 1 && prev !== n))) {
+        starts.splice(starts.indexOf(roman[k]), 1);
+        roman.splice(k--, 1);
+        continue;
+      }
+    }
+    prev = n;
+  }
   if (roman.length === 1) starts.splice(starts.indexOf(roman[0]), 1);
   const useHeadings = fff ? starts.length >= 1 : starts.length >= 2;
   const header = useHeadings ? lines.slice(0, starts[0].at) : lines;
@@ -221,16 +250,17 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
   const firstIdx = header.findIndex((l) => !blank(l));
   if (firstIdx >= 0) {
     const first = header[firstIdx].trim();
-    // A title stands alone, or has its byline right under it ("Title" / "by Author").
-    const alone = blank(header[firstIdx + 1]) || (BYLINE.test(header[firstIdx + 1].trim()) && blank(header[firstIdx + 2]));
+    // A title stands alone, or has its byline right under it ("Title" / "by Author"): a short line,
+    // not the first line of a wrapped paragraph whose next line happens to start with "by".
+    const alone = blank(header[firstIdx + 1]) || (first.length <= 60 && !!bylineAuthor(header[firstIdx + 1]) && blank(header[firstIdx + 2]));
     const looksLikeTitle = first.length <= 100 && !/[.,;!?"”]$/.test(first) && !/^\w[\w ]*:\s/.test(first) && alone;
     if (looksLikeTitle && (useHeadings || header.slice(firstIdx + 1).some((l) => !blank(l)))) {
       title = first;
       bodyStart = firstIdx + 1;
       const by = header.slice(bodyStart).findIndex((l) => !blank(l));
-      const byLine = by >= 0 ? header[bodyStart + by].trim().match(BYLINE) : null;
-      if (byLine && byLine[1].length <= 80) {
-        author = byLine[1].trim();
+      const name = by >= 0 ? bylineAuthor(header[bodyStart + by]) : undefined;
+      if (name) {
+        author = name;
         bodyStart += by + 1;
       }
     }
@@ -478,7 +508,7 @@ export async function parseMarkdownFile(bytes: Uint8Array, fileName: string, ste
   }
   const introLines = blocks.slice(0, 6).flatMap((b) => (b.t === 'p' ? b.lines : []));
   const fields = labeledFields(introLines.join('\n'));
-  const by = introLines.map((l) => l.trim().match(BYLINE)?.[1]).find(Boolean);
+  const by = introLines.map(bylineAuthor).find(Boolean);
   const author = front.author ?? fields.Author ?? by;
   const tags = (front.tags ?? '')
     .replace(/^\[|\]$/g, '')

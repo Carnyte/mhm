@@ -190,6 +190,35 @@ export function takeAll(parent: ParentNode): AnyNode[] {
 }
 
 /**
+ * The whole subtrees under `root` from `from` (its start when null) up to `to` (its end when null),
+ * in document order, left where they are: what a DOM Range between the two holds, for reading.
+ */
+export function nodesBetween(root: ParentNode, from: AnyNode | null, to: AnyNode | null): AnyNode[] {
+  const chain = (n: AnyNode | null) => {
+    const s = new Set<AnyNode>();
+    for (let p = n?.parent ?? null; p && p !== root; p = p.parent) s.add(p);
+    return s;
+  };
+  const aboveFrom = chain(from);
+  const aboveTo = chain(to);
+  const out: AnyNode[] = [];
+  let started = !from;
+  // Down the two chains only: every other node is taken or passed over whole.
+  const walk = (nodes: AnyNode[]): boolean => {
+    for (const n of nodes) {
+      if (n === to) return true;
+      if (!started && n === from) started = true;
+      if (aboveTo.has(n) || (!started && aboveFrom.has(n))) {
+        if (walk((n as ParentNode).children)) return true;
+      } else if (started) out.push(n);
+    }
+    return false;
+  };
+  walk(root.children);
+  return out;
+}
+
+/**
  * Cuts everything before `marker` (in document order) out of `root` and returns it (detached),
  * wrapped in copies of the elements it sat in: like a DOM Range from the start of `root` to
  * `marker`. What stays in `root` starts at `marker`, inside its original ancestors. Nodes are
@@ -238,12 +267,61 @@ export const CHAPTER_HEADING =
  */
 export const ROMAN_HEADING = /^[IVXLC]{1,8}(?:\.?$|[.:)]\s+\S|\s+[-–—]\s+\S)/;
 
-export function isChapterHeading(s: string): boolean {
+/** "1-Storm", "2.Home", "3:After": a number run into a capitalised title (never "10-year-old", "5...", "1.5"). */
+const NUMBER_RUN_ON = /^\d{1,4}[.:)\-–—]\p{Lu}/u;
+
+/** A heading element's number may run into its title in any case ("1-storm", "2.home"), as it always could. */
+const NUMBER_HEADING = /^\d{1,4}\s*[.:)\-–—]\s*\S/;
+
+/** The words a title leaves in lower case ("Out of the Woods", "Down with the Ship"). */
+const MINOR_WORD = /^(?:a|an|the|and|or|but|nor|for|so|yet|of|in|on|at|to|by|up|as|off|per|via|with|from|into|onto|over|upon)$/i;
+
+/** Every word that matters starts with a capital: "The Long Road", not "I don't know". */
+function titleCased(s: string): boolean {
+  const words = s.match(/\p{L}[\p{L}'’]*/gu) ?? [];
+  return words.every((w, i) => /^\p{Lu}/u.test(w) || (i > 0 && MINOR_WORD.test(w)));
+}
+
+/**
+ * A lone I, V, X, L or C before words that could be a line of dialogue rather than a title: "I -
+ * I don't know.", "V – very well", "C - can you hear me?", "I — never mind", "I. It begins" (they
+ * repeat the letter, as a stammer does, run on in lower case or end a sentence). "I - The Storm",
+ * "V. Home" and "I — The Girl Who Lived" read as titles.
+ */
+export function doubtfulNumeral(s: string): boolean {
+  const lone = s.trim().match(/^([IVXLC])(?:[.:)]|\s+[-–—])\s+(\S.*)$/);
+  if (!lone) return false;
+  const rest = lone[2];
+  if (/[.!?,;:…]["”’')\]]*$/.test(rest) || !/^[\p{Lu}\p{N}"“‘'(]/u.test(rest)) return true;
+  const first = rest.match(/\p{L}/u)?.[0] ?? '';
+  return first.toUpperCase() === lone[1] && !titleCased(rest);
+}
+
+/** "I - I don't know.": the spaced dash a stammer or an interruption is written with. */
+const LONE_DASH = /^[IVXLC]\s+[-–—]\s/;
+
+/**
+ * A line or heading that names a chapter. `element`: the text of an h1–h6, which is a heading
+ * already, so a number may run into its title ("1-storm") and "I - it begins" is a title; a line
+ * of plain text needs the stricter forms ("1. Storm", "1 - Storm", "1-Storm"), as "10-year-old",
+ * "5..." and "I - I don't know." are prose (a text file weighs such a line against the headings
+ * around it: see parseTextFile).
+ */
+export function isChapterHeading(s: string, element = false): boolean {
   const t = s.trim();
-  if (t.length > 120 || !(CHAPTER_HEADING.test(t) || ROMAN_HEADING.test(t))) return false;
+  if (t.length > 120 || !(CHAPTER_HEADING.test(t) || ROMAN_HEADING.test(t) || NUMBER_RUN_ON.test(t) || (element && NUMBER_HEADING.test(t)))) return false;
+  if (!element && LONE_DASH.test(t) && doubtfulNumeral(t)) return false;
   // A sentence isn't a heading: "Extra credit was given.", "1. The first rule is never to …".
   if (/[.!?,;:]$/.test(t) && t.length > 30) return false;
   return !(/^(?:\d{1,4}|[IVXLC]{1,8})\s*[.:)\-–—]\s*\S/i.test(t) && t.length > 60);
+}
+
+const ROMAN_DIGIT: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100 };
+
+/** The number a Roman numeral heading starts with: "XIV. The Storm" → 14. */
+export function romanValue(s: string): number {
+  const digits = (s.trim().match(/^[IVXLC]+/)?.[0] ?? '').split('').map((c) => ROMAN_DIGIT[c]);
+  return digits.reduce((n, d, i) => (d < (digits[i + 1] ?? 0) ? n - d : n + d), 0);
 }
 
 /** A scene break: "* * *", "***", "---", "~~~", "###", "o0o0o", "=-=-=". */

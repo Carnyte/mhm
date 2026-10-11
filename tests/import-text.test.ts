@@ -2,6 +2,7 @@
 // paragraphs (FanFicFare's TXT), files without chapters kept whole, Markdown's own syntax.
 
 import { parseImport } from '../src/import';
+import { isChapterHeading } from '../src/import/dom';
 import { inlineMarkdown } from '../src/import/text';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -299,6 +300,104 @@ describe('what a text file can hold without fooling the importer', () => {
     expect(paras(without.chapters[0].html)).toHaveLength(5);
   });
 
+  it('keeps stammers and interruptions after a spaced dash as text: "I - I don’t know."', async () => {
+    const lines = (...l: string[]) => bytes(l.join('\n\n'));
+    // No chapters: nothing is cut, nothing is lost (the opening paragraph included).
+    const without = await parseImport(lines('The Harbour', p('She turned to me.'), "I - I don't know.", p('Silence.'), "I - I'm sorry.", p('She left.')), 'stutter3.txt');
+    expect(without.chapters).toHaveLength(1);
+    expect(paras(without.chapters[0].html)).toEqual([p('She turned to me.'), "I - I don't know.", p('Silence.'), "I - I'm sorry.", p('She left.')]);
+    expect(without.words).toBe(61);
+    // Real chapters: no extra ones from the same lines.
+    const chaptered = await parseImport(
+      lines('Chapter 1', p('She turned to me.'), "I - I don't know.", p('Silence.'), 'Chapter 2', p('Morning.'), "I — I'm sorry", 'Chapter 3', p('Night.'), 'C - can you hear me?', 'V – very well.'),
+      'stutter4.txt',
+    );
+    expect(chaptered.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3']);
+    expect(text(chaptered.chapters[2].html)).toContain('C - can you hear me? V – very well.');
+    for (const line of ["I - I don't know.", "I — I'm sorry.", 'V – very well.', 'C - can you hear me?', "I - I'm sorry", "I - It's fine", 'I — never mind.', 'I - no']) {
+      expect([line, isChapterHeading(line)]).toEqual([line, false]);
+      // In an h1–h6 it's a heading all the same ("I - it begins").
+      expect([line, isChapterHeading(line, true)]).toEqual([line, true]);
+    }
+    // Numbered titles still are headings, a lone numeral's too when it reads as a title.
+    for (const line of ['I - The Storm', 'I — The girl who lived', 'V - Vengeance', 'I. The Storm', 'I: Arrival', 'II - home', 'IV. The Storm', 'XII', 'I'])
+      expect([line, isChapterHeading(line)]).toEqual([line, true]);
+    const roman = await parseImport(lines('Storm', 'I - The Beginning', p('One.'), 'II - The Storm', p('Two.'), 'III - The Calm', p('Three.')), 'storm.txt');
+    expect(roman.chapters.map((c) => c.title)).toEqual(['I - The Beginning', 'II - The Storm', 'III - The Calm']);
+    // A stammer inside a book with Roman headings is text too, in chapter I or any other.
+    const inRoman = await parseImport(
+      lines('Storm', 'I - The Storm', p('One.'), "I - I don't know.", p('Still one.'), 'II - The Calm', p('Two.'), 'III - The End', p('Three.'), "I - I'm sorry.", p('Still three.'), 'IV - Four', p('Four.'), 'V - The Fifth', p('Five.'), 'V – very well.', p('Still five.'), 'VI - Six', p('Six.')),
+      'storm2.txt',
+    );
+    expect(inRoman.chapters.map((c) => c.title)).toEqual(['I - The Storm', 'II - The Calm', 'III - The End', 'IV - Four', 'V - The Fifth', 'VI - Six']);
+    expect(text(inRoman.chapters[0].html)).toContain("I - I don't know.");
+    expect(text(inRoman.chapters[2].html)).toContain("I - I'm sorry.");
+    expect(text(inRoman.chapters[4].html)).toContain('V – very well.');
+    // "I. I see." between paragraphs is text, never two chapters with the opening dropped.
+    const talk = await parseImport(lines('Talk', p('She turned to me.'), 'I. I see.', p('Silence.'), 'I: no.', p('She left.')), 'talk.txt');
+    expect(talk.chapters).toHaveLength(1);
+    expect(paras(talk.chapters[0].html)).toEqual([p('She turned to me.'), 'I. I see.', p('Silence.'), 'I: no.', p('She left.')]);
+  });
+
+  it('reads a lone I, V or X as a heading in its place among the others, whatever its title', async () => {
+    const words = (tag: string, n: number) => Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ') + '.';
+    const book = (title: string | null, heads: string[], n: number) =>
+      bytes([...(title ? [title] : []), ...heads.flatMap((h, i) => [h, words(`C${i + 1}w`, n)])].join('\n\n'));
+    const titles = (b: { chapters: { title: string }[] }) => b.chapters.map((c) => c.title);
+    for (const line of ['I. It begins', 'I. In which Harry finds a dog', 'I. Into the woods', 'I. the storm', 'I. Who Are You?', 'I. Run!', 'V. The End.', 'I. I will survive', 'I) It ends', 'I. I see.', 'I: no.'])
+      expect([line, isChapterHeading(line)]).toEqual([line, true]);
+    // Short chapters: chapter I is neither dropped nor merged.
+    const small = await parseImport(book('Small Things', ['I. It begins', 'II. Then it rains', 'III. It ends'], 100), 'small.txt');
+    expect([small.words, titles(small)]).toEqual([300, ['I. It begins', 'II. Then it rains', 'III. It ends']]);
+    const lower = await parseImport(book('lowercase', ['I. the storm', 'II. the calm', 'III. the end'], 100), 'lc.txt');
+    expect([lower.words, titles(lower)]).toEqual([300, ['I. the storm', 'II. the calm', 'III. the end']]);
+    const dash = await parseImport(book('Home', ['I - home', 'II - away', 'III - back'], 100), 'home.txt');
+    expect([dash.words, titles(dash)]).toEqual([300, ['I - home', 'II - away', 'III - back']]);
+    // Long chapters: chapter I isn't an "Introduction" with its heading for a paragraph.
+    const dog = await parseImport(book('Dog Days', ['I. In which Harry finds a dog', 'II. In which the dog finds Harry', 'III. In which nobody is happy'], 200), 'dog.txt');
+    expect([dog.words, titles(dog)]).toEqual([600, ['I. In which Harry finds a dog', 'II. In which the dog finds Harry', 'III. In which nobody is happy']]);
+    // No title line: chapter I's heading isn't the book's title.
+    const woods = await parseImport(book(null, ['I. Into the woods', 'II. Out of the woods', 'III. Home again'], 300), 'woods.txt');
+    expect([woods.title, titles(woods)]).toEqual(['woods', ['I. Into the woods', 'II. Out of the woods', 'III. Home again']]);
+    // V after IV, however it's written.
+    const six = await parseImport(book('Six', ['I. The Start', 'II. Two', 'III. Three', 'IV. Four', 'V. visions of home', 'VI. Six'], 200), 'six.txt');
+    expect(titles(six)).toEqual(['I. The Start', 'II. Two', 'III. Three', 'IV. Four', 'V. visions of home', 'VI. Six']);
+    expect(six.chapters[3].words).toBe(200);
+    // Numbering that starts again in each part.
+    const parts = await parseImport(book('Parts', ['Part One', 'I. It begins', 'II. Then', 'Part Two', 'I. It returns', 'II. And again'], 40), 'parts.txt');
+    expect(titles(parts)).toEqual(['Part One', 'I. It begins', 'II. Then', 'Part Two', 'I. It returns', 'II. And again']);
+  });
+
+  it('reads a number run into its title as a heading, but not "10-year-old" or "5..."', async () => {
+    for (const [a, b, c] of [
+      ['1-Storm', '2-Home', '3-After'],
+      ['1.Storm', '2.Home', '3.After'],
+      ['1:Storm', '2:Home', '3:After'],
+    ]) {
+      const book = await parseImport(bytes(['S', a, p('One.'), b, p('Two.'), c, p('Three.')].join('\n\n')), 'n.txt');
+      expect(book.chapters.map((ch) => ch.title)).toEqual([a, b, c]);
+    }
+    const prose = await parseImport(bytes(['S', p('One.'), '10-year-old', p('Two.'), '5...', p('Three.'), '1.5', p('Four.')].join('\n\n')), 'prose.txt');
+    expect(prose.chapters).toHaveLength(1);
+    expect(paras(prose.chapters[0].html)).toHaveLength(7);
+  });
+
+  it('takes a title’s byline only when it names someone, never a wrapped line of the story', async () => {
+    const rain = 'She walked home through the rain, past the shops and the station, followed\nby the dog that had found her that morning.\n\nAt the door she paused and looked\nback at the road, wondering where it had come from.\n';
+    const book = await parseImport(bytes(rain), 'rain.txt');
+    expect(book).toMatchObject({ title: 'rain', authors: [] });
+    expect(book.words).toBe(39);
+    expect(text(book.chapters[0].html)).toContain('followed by the dog that had found her that morning.');
+    // "By …" opening the story after its title is text, not an author.
+    const by = await parseImport(bytes('The Harbour\n\nBy the time she arrived, the lanterns were out.\n\nShe waited.\n'), 'harbour.txt');
+    expect(by).toMatchObject({ title: 'The Harbour', authors: [] });
+    expect(paras(by.chapters[0].html)).toEqual(['By the time she arrived, the lanterns were out.', 'She waited.']);
+    const initials = await parseImport(bytes('The Harbour\nby J. R. Smith Jr.\n\nShe waited.\n\nThen she left.\n'), 'harbour.txt');
+    expect(initials).toMatchObject({ title: 'The Harbour', authors: ['J. R. Smith Jr.'] });
+    const md = await parseImport(bytes('# The Harbour\n\nBy the time she arrived, the lanterns were out.\n'), 'harbour.md');
+    expect(md.authors).toEqual([]);
+  });
+
   it('takes Roman numerals for headings only where there are several of them', async () => {
     const book = await parseImport(bytes(['Storm', 'I', p('One.'), 'II', p('Two.'), 'III. The Calm', p('Three.')].join('\n\n')), 'storm.txt');
     expect(book.chapters.map((c) => c.title)).toEqual(['I', 'II', 'III. The Calm']);
@@ -348,5 +447,26 @@ describe('what a text file can hold without fooling the importer', () => {
     expect(inlineMarkdown('**bold** and **more** but **open')).toBe('<strong>bold</strong> and <strong>more</strong> but **open');
     expect(inlineMarkdown('~~gone~~ and snake__case__name and __strong__')).toBe('<del>gone</del> and snake__case__name and <strong>strong</strong>');
     expect(inlineMarkdown('***both***')).toBe('<em><strong>both</strong></em>');
+  });
+
+  it('reads lines full of "[", "![" or link starts just under the length limit in linear time', async () => {
+    // Each line is just under the 20,000 characters past which inline Markdown is skipped.
+    for (const unit of ['[', '![', '[a ', '[a](b c ', '[a](b' + ' '.repeat(300), '[' + 'x'.repeat(499)]) {
+      const line = unit.repeat(Math.floor(19_990 / unit.length));
+      const started = Date.now();
+      for (let i = 0; i < 20; i++) inlineMarkdown(line);
+      expect(Date.now() - started).toBeLessThan(400);
+    }
+    const file = `Title\n\n${Array.from({ length: 100 }, () => '['.repeat(19_990)).join('\n\n')}\n`;
+    const started = Date.now();
+    await parseImport(bytes(file), 'brackets.md');
+    expect(Date.now() - started).toBeLessThan(1500);
+    // Links still work, with a title, with parentheses in the address; a title in parentheses
+    // isn't half read.
+    expect(inlineMarkdown('[link](https://a.com "Title") and ![alt](https://a.com/x.png)')).toBe('<a href="https://a.com">link</a> and <img src="https://a.com/x.png" alt="alt">');
+    expect(inlineMarkdown('[w](https://en.wikipedia.org/wiki/Foo_(bar)) [s]( https://a.com )')).toBe(
+      '<a href="https://en.wikipedia.org/wiki/Foo_(bar)">w</a> <a href="https://a.com">s</a>',
+    );
+    expect(inlineMarkdown('[x](https://a.com (t))')).toBe('[x](https://a.com (t))');
   });
 });

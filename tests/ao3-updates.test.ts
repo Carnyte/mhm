@@ -57,7 +57,7 @@ import { checkForUpdates, checkStore, dueSources, MAX_QUIET_REDOWNLOADS, runBack
 import { downloadStory } from '../src/features/downloads';
 import { resetAo3Session } from '../src/sources/ao3/adapter';
 import { toKey } from '../src/sources/keys';
-import { libraryStore, type LibraryStory } from '../src/state/library';
+import { libraryStore, linkedFileVersion, type LibraryStory } from '../src/state/library';
 import { settingsStore, updateSettings } from '../src/state/settings';
 import { fixture, navigatePage, on, requests, resetFake, route } from './helpers/fakeAo3';
 
@@ -172,8 +172,23 @@ describe('AO3 update checks', () => {
     expect(lib['ao3:13'].lastCheckedAt).toBeGreaterThan(0);
   });
 
+  /** A linked file of work 77: its chapter count and Updated date (AO3's search shows 08 Oct 2026). */
+  const linkedFile = (chapters: number, updated: number) => ({
+    kind: 'epub' as const,
+    fileName: 'w.epub',
+    importedAt: 1,
+    size: 1,
+    contentHash: 'h',
+    dir: 'imports/ao3_77',
+    images: {},
+    origin: { source: 'ao3' as const, remoteId: '77', key: toKey('ao3', '77') },
+    chapters,
+    updated,
+  });
+  const oct8 = Date.UTC(2026, 9, 8, 12) / 1000;
+
   it('takes a copy linked from an imported file as current, then notices later edits', async () => {
-    const local = { kind: 'epub' as const, fileName: 'w.epub', importedAt: 1, size: 1, contentHash: 'h', dir: 'imports/ao3_77', images: {}, origin: { source: 'ao3' as const, remoteId: '77', key: toKey('ao3', '77') } };
+    const local = linkedFile(3, oct8);
     mockSite = { '77': [3, 100] };
     seed([work('77', { downloaded: true, downloadedChapters: [1, 2, 3], local })]);
     await checkForUpdates({ quiet: true });
@@ -185,6 +200,26 @@ describe('AO3 update checks', () => {
     updateSettings({ lastUpdateCheck: undefined, lastUpdateCheckBySource: undefined });
     await checkForUpdates({ quiet: true });
     expect((downloadStory as jest.Mock).mock.calls.map((c) => c[0].key)).toEqual(['ao3:77']);
+  });
+
+  it('never takes a linked file older than AO3’s text as current, nor re-downloads it unasked', async () => {
+    mockSite = { '77': [3, 100] };
+    // Updated before AO3's last revision (the author edited chapters since).
+    seed([work('77', { downloaded: true, downloadedChapters: [1, 2, 3], local: linkedFile(3, Date.UTC(2026, 0, 5, 12) / 1000) })]);
+    await checkForUpdates({ quiet: true });
+    expect(stories()['ao3:77'].downloadedVersion).toBeUndefined();
+    expect(stories()['ao3:77'].version).toBe(100);
+    expect(downloadStory).not.toHaveBeenCalled();
+    // Fewer chapters than AO3 has, or no date in the file: not current either.
+    for (const local of [linkedFile(2, oct8), { ...linkedFile(3, oct8), updated: undefined }]) {
+      seed([work('77', { chapters: 3, downloaded: true, downloadedChapters: [1, 2, 3], local })]);
+      updateSettings({ lastUpdateCheck: undefined, lastUpdateCheckBySource: undefined });
+      await checkForUpdates({ quiet: true });
+      expect(stories()['ao3:77'].downloadedVersion).toBeUndefined();
+    }
+    expect(linkedFileVersion({ local: linkedFile(3, oct8), downloaded: true }, { chapters: 3, updated: oct8, version: 100 })).toBe(100);
+    expect(linkedFileVersion({ local: linkedFile(3, oct8 + 86_400), downloaded: true }, { chapters: 3, updated: oct8, version: 100 })).toBe(100);
+    expect(linkedFileVersion({ local: linkedFile(3, oct8), downloaded: true, downloadedVersion: 90 }, { chapters: 3, updated: oct8, version: 100 })).toBeUndefined();
   });
 
   it('keeps FanFiction.net on its own per-story check alongside', async () => {

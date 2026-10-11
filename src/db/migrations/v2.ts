@@ -106,6 +106,8 @@ export function normalizeLocal(raw: unknown): LocalOrigin | undefined {
     out.origin = { source: o.source, remoteId: o.remoteId, key: o.key };
   }
   if (Array.isArray(raw.identifiers)) out.identifiers = raw.identifiers.filter(isStr).slice(0, 20);
+  if (Number.isInteger(raw.chapters) && (raw.chapters as number) >= 0) out.chapters = raw.chapters;
+  if (typeof raw.updated === 'number' && Number.isFinite(raw.updated)) out.updated = raw.updated;
   if (isStr(raw.original) && IMPORT_FILE.test(raw.original)) out.original = raw.original;
   if (isStr(raw.cover) && IMPORT_FILE.test(raw.cover)) out.cover = raw.cover;
   if (isObj(raw.images)) {

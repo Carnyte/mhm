@@ -289,6 +289,166 @@ describe('reader mode on the pages people save', () => {
     expect(book.warnings[0]).toMatch(/^FicShelf found no chapter headings in this file, so its 38,673 words were split into \d parts\.$/);
   });
 
+  it('leaves a story’s own title block and notes out of reader mode, and never lets reader mode drop a section', async () => {
+    const sections = (wrap: (i: number, s: string) => string, names = ['The Ball', 'Homecoming', 'Snow', 'After']) =>
+      [20, 3, 3, 3].map((n, i) => wrap(i + 1, `<h2>${names[i]}</h2>${lorem(`Sect${i + 1}`, n)}`)).join('');
+    const kept = (book: { chapters: { html: string }[] }) => {
+      const all = text(book.chapters.map((c) => c.html).join(''));
+      return [1, 2, 3, 4].filter((i) => all.includes(`Sect${i} sentence 3 `));
+    };
+    // A page that is only a story, in blocks: a "header" or "notes" class doesn't make it a web page.
+    const header = await parseImport(bytes(page(`<div id="header"><h1>The Long Road</h1><p>by Me</p></div>${sections((i, s) => `<div id="c${i}">${s}</div>`)}`)), 'h.html');
+    expect(header.generator).toBeUndefined();
+    expect(kept(header)).toEqual([1, 2, 3, 4]);
+    expect(text(header.chapters[0].html)).toContain('by Me');
+    const notes = await parseImport(bytes(page(`<h1>The Long Road</h1>${sections((i, s) => `<div id="c${i}">${s}</div><div class="notes"><p>Note ${i}</p></div>`)}`)), 'n.html');
+    expect(notes.generator).toBeUndefined();
+    expect(kept(notes)).toEqual([1, 2, 3, 4]);
+    // On a real web page reader mode runs, but when it keeps only the longest block the page minus
+    // its furniture is taken instead.
+    const nav = `<nav><a href="/">NOISENAV Home</a> <a href="/about">About</a></nav>`;
+    const site = await parseImport(bytes(page(`${nav}<div id="header"><h1>The Long Road</h1><p>by Me</p></div>${sections((i, s) => `<div id="c${i}">${s}</div>`)}`)), 's.html');
+    expect(kept(site)).toEqual([1, 2, 3, 4]);
+    expect(noiseIn(site)).toEqual([]);
+    expect(site.warnings).toEqual([]);
+    const headless = await parseImport(bytes(page(`${nav}<h1>The Long Road</h1><div>${lorem('Sect1', 20)}</div><div>${lorem('Sect2', 3)}</div><div class="notes"><p>Thanks for reading</p></div>`)), 'x.html');
+    expect(kept(headless)).toEqual([1, 2]);
+    // When reader mode does keep it all, it's used.
+    const even = await parseImport(bytes(page(`${nav}<h1>The Long Road</h1>${[1, 2, 3, 4].map((i) => `<div id="c${i}"><h2>Part ${'ABCD'[i - 1]}</h2>${lorem(`Sect${i}`, 8)}</div>`).join('')}`)), 'e.html');
+    expect(even.generator).toBe('readability');
+    expect(kept(even)).toEqual([1, 2, 3, 4]);
+    // A <form> or a "header" wrapper around the whole story is the story's, not furniture: a block
+    // reader mode leaves out inside it still counts.
+    for (const [open, close] of [
+      ['<form method="post" action="./story.aspx" id="form1">', '</form>'],
+      ['<div class="header-wrap">', '</div>'],
+    ]) {
+      const wrapped = await parseImport(bytes(page(`${nav}${open}<h1>The Long Road</h1>${sections((i, s) => `<div id="c${i}">${s}</div>`)}${close}`)), 'w.html');
+      expect([open, kept(wrapped)]).toEqual([open, [1, 2, 3, 4]]);
+      expect(noiseIn(wrapped)).toEqual([]);
+    }
+  });
+
+  it('leaves notes and comments under a post out, however many there are', async () => {
+    const story = (n: number) => lorem('Ficlet', n);
+    const blogs = ['quietowl', 'lantern-reader', 'moonlitsandwich', 'fandomtrash', 'teacup-fics'];
+    // Tumblr's older themes: likes and reblogs in <ol class="notes">, each <li> a "note".
+    const note = (i: number) => {
+      const blog = blogs[i % blogs.length];
+      const who = `<a rel="nofollow" class="avatar_frame" href="https://${blog}.tumblr.com/"><img src="a.png" class="avatar" alt=""></a><span class="action"><a href="https://${blog}.tumblr.com/" class="tumblelog">${blog}</a>`;
+      return i % 3
+        ? `<li class="note like tumblelog_${blog}">${who} NOISELIKE likes this</span></li>`
+        : `<li class="note reblog tumblelog_${blog}">${who} NOISEREBLOG reblogged this from <a href="https://quietowl.tumblr.com/">quietowl</a> and added:</span><blockquote><a href="https://${blog}.tumblr.com/post/${i}">this is so good I cried</a></blockquote></li>`;
+    };
+    const tumblr = (paras: number, notes: number) =>
+      page(`<div id="container"><div id="header"><h1 id="blog-title"><a href="/">quietowl</a></h1><div id="description">NOISEBLOG writing blog. she/her. mostly fic, sometimes feelings, and my ask box is always open.</div><ul id="nav"><li><a href="/ask">ask</a></li><li><a href="/archive">archive</a></li></ul></div>
+      <div id="posts"><div class="post text"><h2 class="title">The Long Road</h2><div class="body">${story(paras)}</div>
+      <div class="post-meta"><a href="/post/1">March 3rd, 2019</a> <span class="tags"><a href="/tagged/fic">#fic</a> <a href="/tagged/mine">#my writing</a></span> <a href="/post/1#notes">${notes} notes</a></div>
+      <div id="notes-container"><ol class="notes">${Array.from({ length: notes }, (_, i) => note(i)).join('\n')}</ol></div></div></div><div id="footer">NOISEFOOTER theme by someone</div></div>`);
+    for (const [paras, notes] of [
+      [12, 50],
+      [24, 80],
+      [70, 400],
+    ]) {
+      const book = await parseImport(bytes(tumblr(paras, notes)), 'tumblr.html');
+      expect([paras, notes, book.generator, book.words, noiseIn(book)]).toEqual([paras, notes, 'readability', paras * 23, []]);
+    }
+    // A comment thread longer than the story, its comments not classed one by one.
+    const comment = (i: number) => `<div class="c"><p><a href="/u/${i}">Reader ${i}</a> wrote:</p><p>NOISECOMMENT ${'more please, this was lovely and I want to know what happens next '.repeat(3)}</p></div>`;
+    const blog = page(`<nav><a href="/">Home</a> <a href="/fic">Fic</a></nav><div class="post"><h1>The Long Road</h1>${story(20)}</div><div class="comments"><h3>40 Comments</h3>${Array.from({ length: 40 }, (_, i) => comment(i)).join('')}</div>`);
+    const book = await parseImport(bytes(blog), 'blog.html');
+    expect([book.generator, book.words, noiseIn(book)]).toEqual(['readability', 20 * 23, []]);
+  });
+
+  it('leaves a chapter menu’s options out of what reader mode has to keep', async () => {
+    const titles = ['Departure', 'The Ford at Dawn', 'Rain on the Road', 'A Letter from Home', 'The Inn of the Grey Fox', 'Crossing the Pass'];
+    const select = (n: number) =>
+      `<div align="center"><select name="chapter" onchange="go(this)">${Array.from({ length: n }, (_, i) => `<option value="${i + 1}">${i + 1}. NOISEOPTION ${titles[i % titles.length]} (Part ${Math.floor(i / 6) + 1})</option>`).join('')}</select> <button>NOISEBUTTON Go to chapter</button></div>`;
+    for (const n of [12, 30]) {
+      const html = page(
+        `<div id="header"><a href="index.php"><img src="banner.jpg" alt="Archive"></a></div><nav id="menu"><a href="index.php">Home</a> <a href="search.php">Search</a> <a href="browse.php">Browse</a></nav>
+        <div id="container"><div id="pagetitle"><a href="viewstory.php?sid=1">The Long Road</a> by <a href="viewuser.php?uid=5">NOISEBYLINE Quiet Owl</a></div>${select(n)}
+        <div id="story">${lorem('Road', 60)}</div>
+        <div id="prev"><a href="?chapter=2">« NOISEPREV Previous Chapter</a></div><div id="next"><a href="?chapter=4">Next Chapter »</a></div>
+        <div class="respond">[<a href="reviews.php">NOISEREVIEWS Reviews</a> - <a href="reviews.php">12</a>] <a href="#">Table of Contents</a> [<a href="report.php">Report This</a>]</div>${select(n)}</div>`,
+        'The Long Road by Quiet Owl :: Archive',
+      );
+      const book = await parseImport(bytes(html), 'viewstory.html');
+      expect([n, book.generator, book.words, noiseIn(book)]).toEqual([n, 'readability', 60 * 23, []]);
+    }
+  });
+
+  it('reads a WordPress page whatever layout classes its theme puts on <body>', async () => {
+    const wp = (cls: string, n: number) =>
+      `<!DOCTYPE html><html><head><title>The Long Road – Quiet Owl Writes</title></head><body class="${cls}"><header id="masthead"><p class="site-title"><a href="/">Quiet Owl Writes</a></p><nav><a href="/">NOISENAV Home</a><a href="/a">About</a></nav></header>
+      <div id="content"><main><article><h1 class="entry-title">The Long Road</h1><div class="entry-content">${[1, 2, 3].map((k) => `<h2>Chapter ${k}</h2>${lorem(`Road${k}`, n)}`).join('')}</div></article></main>
+      <aside id="secondary"><ul><li><a href="/1">NOISESIDE one</a></li></ul></aside></div><footer>NOISEFOOTER</footer></body></html>`;
+    for (const cls of ['single', 'single right-sidebar', 'ast-no-sidebar', 'ast-right-sidebar', 'footer-widgets', 'sidebar', 'content-right-sidebar']) {
+      const book = await parseImport(bytes(wp(cls, 5)), 'wp.html');
+      expect([cls, book.title, book.chapters.map((c) => c.title)]).toEqual([cls, 'The Long Road', ['Chapter 1', 'Chapter 2', 'Chapter 3']]);
+    }
+    // Over 1 MB (no reader mode): still three chapters, not one.
+    for (const cls of ['single right-sidebar', 'footer-widgets']) {
+      const big = wp(cls, 3000);
+      expect(big.length).toBeGreaterThan(1_000_000);
+      const book = await parseImport(bytes(big), 'wp.html');
+      expect([cls, book.title, book.chapters.map((c) => c.title)]).toEqual([cls, 'The Long Road', ['Chapter 1', 'Chapter 2', 'Chapter 3']]);
+      expect(noiseIn(book)).toEqual([]);
+    }
+  });
+
+  it('cuts a long page into parts when its text sits beside a title block', async () => {
+    const scenes = Array.from({ length: 12 }, (_, n) => lorem(`Scene${n + 1}`, 140)).join('<p>* * *</p>');
+    const book = await parseImport(bytes(page(`<div><h1>Long Night</h1><p>by Me</p></div><div>${scenes}</div>`, 'Long Night')), 'long.html');
+    expect(book.chapters.length).toBeGreaterThan(1);
+    expect(book.chapters.map((c) => c.title)).toEqual(book.chapters.map((_, i) => `Part ${i + 1}`));
+    for (const c of book.chapters) expect(c.words).toBeLessThanOrEqual(21_000);
+    expect(book.words).toBe(12 * 140 * 23 + 11 * 3 + 2);
+    expect(book.warnings).toEqual([expect.stringMatching(/^FicShelf found no chapter headings in this file, so its 38,675 words were split into \d parts\.$/)]);
+  });
+
+  it('cuts an old page with a tag left open before each paragraph into parts, in a time in step with its size', async () => {
+    // Each unclosed <font> (or <div>) holds the rest of the page: 2,000 of them nest 2,000 deep.
+    for (const open of ['<font face="Verdana" size="2">', '<div class="para">']) {
+      const paras = Array.from({ length: 2000 }, (_, i) => `${open}<p>Para${i} ${'word '.repeat(39)}</p>`).join('\n');
+      const started = Date.now();
+      const book = await parseImport(bytes(page(`<h1>Old Story</h1>${paras}`, 'Old Story')), 'old.html');
+      expect(Date.now() - started).toBeLessThan(3000);
+      expect(book.words).toBe(80_000);
+      expect(book.chapters.map((c) => c.title)).toEqual(['Part 1', 'Part 2', 'Part 3', 'Part 4']);
+      expect(book.chapters.map((c) => c.words)).toEqual([20_000, 20_000, 20_000, 20_000]);
+      expect(text(book.chapters[3].html)).toContain('Para1999 word');
+    }
+  });
+
+  it('cuts at numbered headings however the number meets the title', async () => {
+    for (const fmt of ['N-Title', 'N.Title', 'N:Title', 'N.title', 'N - Title', 'N) Title']) {
+      const h = (n: number, t: string) => fmt.replace('N', String(n)).replace(/title/i, (m) => (m === 'title' ? t.toLowerCase() : t));
+      const html = page(`<h1>S</h1>${['Storm', 'Home', 'After'].map((t, i) => `<h2>${h(i + 1, t)}</h2>${lorem(t, 4)}`).join('')}`, 'S');
+      const book = await parseImport(bytes(html), 'n.html');
+      expect(book.chapters.map((c) => c.title)).toEqual(['Storm', 'Home', 'After'].map((t, i) => h(i + 1, t)));
+    }
+    // A Roman numeral heading's title may read like a sentence: in an <h2> it's a heading.
+    for (const heads of [
+      ['I. In which it starts', 'II. In which it ends'],
+      ['I - it begins', 'II - it ends'],
+      ['I. I will survive', 'II. Who Are You?'],
+    ]) {
+      const book = await parseImport(bytes(page(`<h1>S</h1>${heads.map((t, i) => `<h2>${t}</h2>${lorem(`R${i}`, 4)}`).join('')}`, 'S')), 'r.html');
+      expect(book.chapters.map((c) => c.title)).toEqual(heads);
+    }
+  });
+
+  it('keeps a short last chapter, and leaves out only the site’s own sections after the story', async () => {
+    const tale = (last: string, words: string) => page(`<h1>Tale</h1>${[1, 2, 3].map((k) => `<h2>Chapter ${k}</h2>${lorem(`Tale${k}`, 12)}`).join('')}<h2>${last}</h2><p>${words}</p>`, 'Tale');
+    const epilogue = await parseImport(bytes(tale('Five Years Later', 'They met again at the harbour, older now, and neither of them said a word about the storm.')), 'tale.html');
+    expect(epilogue.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3', 'Five Years Later']);
+    for (const junk of ['About the author', 'You might also like', 'Comments', '3 Comments', 'Leave a kudos!', 'Share this:']) {
+      const book = await parseImport(bytes(tale(junk, 'The author lives by a river.')), 'tale.html');
+      expect([junk, book.chapters.map((c) => c.title)]).toEqual([junk, ['Chapter 1', 'Chapter 2', 'Chapter 3']]);
+    }
+  });
+
   it('takes pictures written into the page out of the text, under the size limit', async () => {
     const small = `data:image/png;base64,${b64(png(200))}`;
     const big = `data:image/png;base64,${'A'.repeat(7_200_000)}`;
