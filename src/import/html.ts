@@ -27,6 +27,7 @@ import {
   blockText,
   boxOf,
   dropRepeatedTitle,
+  isBlock,
   isChapterHeading,
   labeledFields,
   parseMarkup,
@@ -513,16 +514,60 @@ function storyContainer(article: ParentNode, body: ParentNode): (e: Element) => 
 }
 
 /**
+ * Story text where comments go (a fic "continued in the comments" past a journal's length limit, a
+ * kink meme's fills): the words of each passage of 300 or more under `block`, an element whose words
+ * (outside links and form controls) mostly sit in paragraphs, as a story's do: children with no
+ * block inside and no link. A thread of comments isn't one, each comment a block of its own with
+ * its commenter's link, however long it runs; nor is a list of notes, each one short.
+ */
+function passageWords(block: Element): number {
+  const words = new Map<AnyNode, number>();
+  /** Elements that are, or hold, a link or a block: not a paragraph of a story. */
+  const notProse = new Set<AnyNode>();
+  // Counted once from the bottom up, as wordCounts does.
+  const stack: { n: AnyNode; link: boolean; done: boolean }[] = [{ n: block, link: false, done: false }];
+  while (stack.length) {
+    const { n, link, done } = stack.pop()!;
+    if (n.type === 'text') words.set(n, link ? 0 : ((n as { data: string }).data.match(/\S+/g) ?? []).length);
+    else if (!isTag(n) || NO_PROSE.test(n.name)) words.set(n, 0);
+    else if (done) {
+      words.set(n, n.children.reduce((sum, c) => sum + words.get(c)!, 0));
+      if (n.name === 'a' || n.children.some((c) => notProse.has(c) || (isTag(c) && isBlock(c)))) notProse.add(n);
+    } else {
+      stack.push({ n, link, done: true });
+      for (const c of n.children) stack.push({ n: c, link: link || n.name === 'a', done: false });
+    }
+  }
+  let passages = 0;
+  const todo: AnyNode[] = [block];
+  while (todo.length) {
+    const e = todo.pop()!;
+    const all = words.get(e)!;
+    if (!isTag(e) || all < 300) continue;
+    const prose = e.children.reduce((sum, c) => sum + (notProse.has(c) ? 0 : words.get(c)!), 0);
+    if (prose >= all * 0.75) passages += all;
+    else for (const c of e.children) todo.push(c);
+  }
+  return passages;
+}
+
+/**
  * Reader mode kept the story: its article holds (nearly) all the page's text that isn't furniture,
  * chrome, form controls or links. It sometimes keeps only the longest block of a page cut into
  * blocks ("The Ball" in one <div>, "Homecoming" in the next), and leaving out a few hundred words
  * of story silently is worse than keeping some of the site. What it's right to leave out (notes
  * under a post, a long comment thread, a menu) isn't counted, however long, unless the story is
- * in it.
+ * in it, or story text is: long passages of it posted as comments.
  */
 function keepsTheStory(article: ParentNode, body: ParentNode): boolean {
   const container = storyContainer(article, body);
-  const want = proseWords(body, (e) => skippedByReader(e) && !container(e));
+  let posted = 0;
+  const skip = (e: Element) => {
+    if (!skippedByReader(e) || container(e)) return false;
+    posted += passageWords(e);
+    return true;
+  };
+  const want = proseWords(body, skip) + posted;
   const missing = want - proseWords(article);
   return missing <= Math.max(40, Math.min(want * 0.05, 250));
 }

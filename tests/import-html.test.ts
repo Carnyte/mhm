@@ -360,6 +360,39 @@ describe('reader mode on the pages people save', () => {
     expect([book.generator, book.words, noiseIn(book)]).toEqual(['readability', 20 * 23, []]);
   });
 
+  it('keeps story text posted as comments: a fic continued in the comments, a kink meme’s fills', async () => {
+    // Dreamwidth's markup: the journal's header and menu, the entry, then the comments.
+    const header = `<div id="header"><h1 id="title"><a href="/">quietowl</a></h1><ul class="nav"><li><a href="/">Recent Entries</a></li><li><a href="/archive">Archive</a></li><li><a href="/tag">Tags</a></li></ul></div>`;
+    const entry = (title: string, body: string) =>
+      `<div id="content"><div class="entry-wrapper"><div class="entry"><h3 class="entry-title"><a href="/123.html">${title}</a></h3><div class="datetime">Mar. 3rd, 2015</div><div class="entry-content">${body}</div><ul class="entry-management-links"><li><a href="#">Edit</a></li></ul></div></div>`;
+    const comment = (who: string, title: string, body: string) =>
+      `<div class="comment-thread"><div class="comment-wrapper"><div class="comment"><div class="inner"><div class="header"><h4 class="comment-title">${title}</h4><div class="comment-poster"><a href="/~${who}">${who}</a></div><div class="datetime">2015-03-03 08:00 pm (UTC)</div></div><div class="contents"><div class="comment-content">${body}</div></div><ul class="comment-interaction-links"><li><a href="#">Link</a></li><li><a href="#">Reply</a></li></ul></div></div></div></div>`;
+    const readers = Array.from({ length: 6 }, (_, i) => comment(`reader${i}`, '', '<p>NOISECOMMENT Oh this is lovely, I can’t wait to see what happens next! Thank you for writing.</p>')).join('');
+    const kept = (book: { chapters: { html: string }[] }, labels: string[]) => labels.filter((l) => text(book.chapters.map((c) => c.html).join('')).includes(`${l} sentence 9 `));
+    for (const form of ['', '<form id="qrform" action="/talkpost_do"><textarea name="body"></textarea><button>Post comment</button></form>']) {
+      const continued = page(
+        `<div id="canvas">${header}${entry('Fic: The Long Road (1/2)', `<p>Part 2 is in the comments because of the length limit.</p>${lorem('PartOne', 40)}`)}<div id="comments"><h2>Comments</h2>${comment('quietowl', 'Part 2', lorem('PartTwo', 40))}${readers}</div>${form}</div></div>`,
+        'quietowl: Fic: The Long Road (1/2)',
+      );
+      const book = await parseImport(bytes(continued), 'dw.html');
+      expect([form, kept(book, ['PartOne', 'PartTwo']), noiseIn(book)]).toEqual([form, ['PartOne', 'PartTwo'], []]);
+    }
+    const prompt = '<p>Post prompts here. One prompt per comment. Fills go in reply to the prompt.</p>';
+    const meme = page(
+      `<div id="canvas">${header}${entry('Round 12 prompt post', prompt)}<div id="comments"><h2>Comments</h2>${comment('anon', 'Prompt: stuck in a lift', '<p>A and B get stuck in a lift. Fluff please.</p>')}${comment('anon', 'FILL: Six Hours (1/2)', lorem('FillOne', 60))}${comment('anon', 'FILL: Six Hours (2/2)', lorem('FillTwo', 60))}${readers}</div></div></div>`,
+      'fandom_kink: Round 12 prompt post',
+    );
+    const fills = await parseImport(bytes(meme), 'kink.html');
+    expect([kept(fills, ['FillOne', 'FillTwo']), noiseIn(fills)]).toEqual([['FillOne', 'FillTwo'], []]);
+    // Comments are still comments, however many, linked to their commenters or not.
+    const plain = (i: number) => `<div class="c"><p><b>Reader ${i}</b> wrote:</p><p>NOISECOMMENT ${'more please, this was lovely and I want to know what happens next '.repeat(3)}</p></div>`;
+    const blog = page(
+      `<nav><a href="/">Home</a> <a href="/fic">Fic</a></nav><div class="post"><h1>The Long Road</h1>${lorem('Story', 20)}</div><div class="comments"><h3>40 Comments</h3>${Array.from({ length: 40 }, (_, i) => plain(i)).join('')}</div>`,
+    );
+    const quiet = await parseImport(bytes(blog), 'blog.html');
+    expect([quiet.generator, quiet.words, noiseIn(quiet)]).toEqual(['readability', 20 * 23, []]);
+  });
+
   it('leaves a chapter menu’s options out of what reader mode has to keep', async () => {
     const titles = ['Departure', 'The Ford at Dawn', 'Rain on the Road', 'A Letter from Home', 'The Inn of the Grey Fox', 'Crossing the Pass'];
     const select = (n: number) =>

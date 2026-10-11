@@ -333,10 +333,28 @@ describe('what a text file can hold without fooling the importer', () => {
     expect(text(inRoman.chapters[0].html)).toContain("I - I don't know.");
     expect(text(inRoman.chapters[2].html)).toContain("I - I'm sorry.");
     expect(text(inRoman.chapters[4].html)).toContain('V – very well.');
+    // …and late in the chapter before its number's own heading.
+    const late = await parseImport(
+      lines('Storm', 'I. The Start', p('One.'), 'II. Two', p('Two.'), 'III. Three', p('Three.'), 'IV. Four', p('Four.'), 'V – very well.', p('Still four.'), 'V. Five', p('Five.')),
+      'storm3.txt',
+    );
+    expect(late.chapters.map((c) => c.title)).toEqual(['I. The Start', 'II. Two', 'III. Three', 'IV. Four', 'V. Five']);
+    expect(text(late.chapters[3].html)).toContain('V – very well. Still four.');
     // "I. I see." between paragraphs is text, never two chapters with the opening dropped.
     const talk = await parseImport(lines('Talk', p('She turned to me.'), 'I. I see.', p('Silence.'), 'I: no.', p('She left.')), 'talk.txt');
     expect(talk.chapters).toHaveLength(1);
     expect(paras(talk.chapters[0].html)).toEqual([p('She turned to me.'), 'I. I see.', p('Silence.'), 'I: no.', p('She left.')]);
+  });
+
+  it('weighs a file full of lone-numeral lines in linear time', async () => {
+    const n = 80_000;
+    const file = ['Stammers', ...Array.from({ length: n }, (_, k) => (k % 2 ? 'I - I don’t know.' : 'V – very well.'))].join('\n\n');
+    const started = Date.now();
+    const book = await parseImport(bytes(file), 'stammers.txt');
+    expect(Date.now() - started).toBeLessThan(5000);
+    // None of them is a heading: the text is cut into parts, and all of it is there.
+    expect(book.chapters.every((c) => /^Part \d+$/.test(c.title))).toBe(true);
+    expect(book.words).toBe((n / 2) * 5 + (n / 2) * 4);
   });
 
   it('reads a lone I, V or X as a heading in its place among the others, whatever its title', async () => {

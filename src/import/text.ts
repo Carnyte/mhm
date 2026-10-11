@@ -174,7 +174,7 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
   const fff = head.some((l) => /^Story URL:\s*\S/.test(l)) && head.some((l) => /^(Packaged:|TABLE OF CONTENTS\s*$)/.test(l));
 
   // Chapter headings.
-  const starts: { at: number; end: number; title: string }[] = [];
+  let starts: { at: number; end: number; title: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (i % 4096 === 0) await stepper.pause();
     const l = lines[i];
@@ -203,20 +203,24 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
   const roman = fff ? [] : starts.filter((s) => ROMAN_HEADING.test(s.title) && !CHAPTER_HEADING.test(s.title));
   // A lone I, V, X, L or C before words that may be dialogue ("I - I don't know.", "I. It begins")
   // is one only in its place in the run: right after the numeral before it, or right before the
-  // one after it when it isn't inside the chapter of its own number (a stammer in chapter I).
+  // one after it when it isn't inside the chapter of its own number (a stammer in chapter I), and
+  // never just before a heading of its own number ("V – very well." late in chapter IV, then "V.").
+  // (Marked, then left out in one pass: a file can hold many thousands of such lines.)
+  const notHeadings = new Set<(typeof starts)[number]>();
   for (let k = 0, prev: number | undefined; k < roman.length; k++) {
     const n = romanValue(roman[k].title);
     if (doubtfulNumeral(roman[k].title)) {
       const next = roman[k + 1] ? romanValue(roman[k + 1].title) : undefined;
-      if (!(prev === n - 1 || (next === n + 1 && prev !== n))) {
-        starts.splice(starts.indexOf(roman[k]), 1);
-        roman.splice(k--, 1);
+      if (!(prev === n - 1 || (next === n + 1 && prev !== n)) || next === n) {
+        notHeadings.add(roman[k]);
         continue;
       }
     }
     prev = n;
   }
-  if (roman.length === 1) starts.splice(starts.indexOf(roman[0]), 1);
+  const romanLeft = roman.filter((s) => !notHeadings.has(s));
+  if (romanLeft.length === 1) notHeadings.add(romanLeft[0]);
+  if (notHeadings.size) starts = starts.filter((s) => !notHeadings.has(s));
   const useHeadings = fff ? starts.length >= 1 : starts.length >= 2;
   const header = useHeadings ? lines.slice(0, starts[0].at) : lines;
   let sections: Section[] = useHeadings

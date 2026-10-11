@@ -101,6 +101,9 @@ const BLOCKS = new Set([
   'hr',
 ]);
 
+/** An element that stands on lines of its own (a paragraph, a heading, a list…), as blockText reads it. */
+export const isBlock = (e: Element) => BLOCKS.has(e.name);
+
 /** Text with a line break for every <br> and block, for reading "Key: value" lines. */
 export function blockText(root: AnyNode | AnyNode[]): string {
   let out = '';
