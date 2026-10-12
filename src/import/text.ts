@@ -10,10 +10,10 @@
 // common block syntax (paragraphs, emphasis, headings, rules, quotes, lists, code). Raw HTML in
 // it is shown as text, never as markup.
 
-import { chapterFromHtml, partsWarning, sanitizeFragment, splitParts, Stepper, type BookDraft } from './build';
+import { chapterFromHtml, LEFT_OUT_MIN, openingWarning, partsWarning, sanitizeFragment, splitParts, Stepper, type BookDraft } from './build';
 import { decodeBytesAsync } from './decode';
 import { findStoryUrl } from './detect';
-import { CHAPTER_HEADING, doubtfulNumeral, isChapterHeading, labeledFields, ROMAN_HEADING, romanValue, SCENE_BREAK } from './dom';
+import { bylineAuthor, CHAPTER_HEADING, doubtfulNumeral, isChapterHeading, labeledFields, ROMAN_HEADING, romanValue, SCENE_BREAK } from './dom';
 import { fieldTags, languageName, parseComplete, parseDate, plainSummary } from './meta';
 import type { ImportedChapter } from './types';
 
@@ -150,20 +150,6 @@ interface Section {
   lines: string[];
 }
 
-const BYLINE = /^(?:by|author|written by)\s*:?\s+(.+)$/i;
-
-/**
- * The author a byline names: a few words, not a sentence ("by Quiet Owl", "by J. R. Smith Jr.",
- * never "By the time she arrived, it was dark." or a wrapped line "by the dog that had found her").
- */
-function bylineAuthor(line: string | undefined): string | undefined {
-  const name = line?.trim().match(BYLINE)?.[1].trim();
-  if (!name || name.length > 60 || name.split(/\s+/).length > 6) return undefined;
-  // Sentence punctuation at the end, unless it closes an initial or "Jr.".
-  if (/[!?,;:…"”’]$/.test(name) || (/\.$/.test(name) && !/(?:^|\s)\S{1,3}\.$/.test(name))) return undefined;
-  return name;
-}
-
 export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper: Stepper): Promise<BookDraft> {
   const decoded = await decodeBytesAsync(bytes, {}, stepper.pause);
   const warnings: string[] = [];
@@ -204,14 +190,16 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
   // A lone I, V, X, L or C before words that may be dialogue ("I - I don't know.", "I. It begins")
   // is one only in its place in the run: right after the numeral before it, or right before the
   // one after it when it isn't inside the chapter of its own number (a stammer in chapter I), and
-  // never just before a heading of its own number ("V – very well." late in chapter IV, then "V.").
+  // never just before a sure heading of its own number ("V – very well." late in chapter IV, then
+  // "V. Five"; "V. Vows are made." before the stammer "V – very well." is chapter V's).
   // (Marked, then left out in one pass: a file can hold many thousands of such lines.)
   const notHeadings = new Set<(typeof starts)[number]>();
   for (let k = 0, prev: number | undefined; k < roman.length; k++) {
     const n = romanValue(roman[k].title);
     if (doubtfulNumeral(roman[k].title)) {
-      const next = roman[k + 1] ? romanValue(roman[k + 1].title) : undefined;
-      if (!(prev === n - 1 || (next === n + 1 && prev !== n)) || next === n) {
+      const after = roman[k + 1];
+      const next = after ? romanValue(after.title) : undefined;
+      if (!(prev === n - 1 || (next === n + 1 && prev !== n)) || (next === n && !doubtfulNumeral(after.title))) {
         notHeadings.add(roman[k]);
         continue;
       }
@@ -301,9 +289,12 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
     }
   } else {
     await stepper.step(0, sections.length);
-    // Text before the first chapter that isn't the title page is a chapter of its own.
+    // Text before the first chapter that isn't the title page is a chapter of its own when there's a
+    // real amount of it; else it's left out, and that's said.
     const intro = fff ? [] : header.slice(bodyStart).filter((l) => !/^\s*\w[\w ]*:\s/.test(l));
-    if (words(intro) >= 150) add('Introduction', intro);
+    const introWords = words(intro);
+    if (introWords >= 150) add('Introduction', intro);
+    else if (introWords >= LEFT_OUT_MIN) warnings.push(openingWarning(introWords));
     for (let k = 0; k < sections.length; k++) {
       add(sections[k].title, sections[k].lines);
       await stepper.step(k + 1, sections.length);
@@ -501,8 +492,10 @@ export async function parseMarkdownFile(bytes: Uint8Array, fileName: string, ste
   } else {
     const starts = blocks.map((b, i) => (b.t === 'h' && b.level === chapterLevel ? i : -1)).filter((i) => i >= 0);
     const intro = blocks.slice(0, starts[0]).filter((b) => !(b.t === 'h' && b.level < chapterLevel));
-    const introText = intro.flatMap((b) => (b.t === 'p' ? b.lines : []));
-    if (words(introText) >= 150) add('Introduction', intro);
+    const introWords = words(intro.flatMap((b) => (b.t === 'p' ? b.lines : [])));
+    // A real amount of it is a chapter; else it's left out, and that's said.
+    if (introWords >= 150) add('Introduction', intro);
+    else if (introWords >= LEFT_OUT_MIN) warnings.push(openingWarning(introWords));
     await stepper.step(0, starts.length);
     for (let k = 0; k < starts.length; k++) {
       const h = blocks[starts[k]] as Extract<Block, { t: 'h' }>;

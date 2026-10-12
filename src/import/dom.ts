@@ -132,6 +132,20 @@ export function blockText(root: AnyNode | AnyNode[]): string {
     .join('\n');
 }
 
+const BYLINE = /^(?:by|author|written by)\s*:?\s+(.+)$/i;
+
+/**
+ * The author a byline names: a few words, not a sentence ("by Quiet Owl", "by J. R. Smith Jr.",
+ * never "By the time she arrived, it was dark." or a wrapped line "by the dog that had found her").
+ */
+export function bylineAuthor(line: string | undefined): string | undefined {
+  const name = line?.trim().match(BYLINE)?.[1].trim();
+  if (!name || name.length > 60 || name.split(/\s+/).length > 6) return undefined;
+  // Sentence punctuation at the end, unless it closes an initial or "Jr.".
+  if (/[!?,;:…"”’]$/.test(name) || (/\.$/.test(name) && !/(?:^|\s)\S{1,3}\.$/.test(name))) return undefined;
+  return name;
+}
+
 const FIELD_KEYS =
   'Status|Published|Updated|Completed|Packaged|Words|Chapters|Rating|Category|Categories|Genre|Genres|Characters|Relationships|Pairings|Fandom|Fandoms|Series|Warnings|Language|Summary|Story URL|Source|Original source|Author URL|Author|By';
 const FIELD_LINE = new RegExp(`^(${FIELD_KEYS})\\s*:\\s*(.*)$`, 'i');
@@ -236,8 +250,10 @@ export function splitBefore(root: ParentNode, marker: AnyNode): AnyNode[] {
     const node = chain[i];
     const parent = node.parent as ParentNode;
     const at = parent.children.indexOf(node);
-    const before = parent.children.slice(0, at);
-    setChildren(parent, parent.children.slice(at));
+    // What stays keeps its links (only its first node loses the one before): cutting a file into
+    // many chapters takes a time in step with its size, not with chapters × nodes.
+    const before = parent.children.splice(0, at);
+    if (at) parent.children[0].prev = null;
     if (i > 0 && carried.length) {
       // The ancestor `node` was split: its first half is a copy holding what came before.
       const half = shallowClone(node as Element);

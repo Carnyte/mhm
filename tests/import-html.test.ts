@@ -360,7 +360,7 @@ describe('reader mode on the pages people save', () => {
     expect([book.generator, book.words, noiseIn(book)]).toEqual(['readability', 20 * 23, []]);
   });
 
-  it('keeps story text posted as comments: a fic continued in the comments, a kink meme’s fills', async () => {
+  it('says when it leaves out running text in the comments: a fic continued there, a kink meme’s fills', async () => {
     // Dreamwidth's markup: the journal's header and menu, the entry, then the comments.
     const header = `<div id="header"><h1 id="title"><a href="/">quietowl</a></h1><ul class="nav"><li><a href="/">Recent Entries</a></li><li><a href="/archive">Archive</a></li><li><a href="/tag">Tags</a></li></ul></div>`;
     const entry = (title: string, body: string) =>
@@ -368,14 +368,16 @@ describe('reader mode on the pages people save', () => {
     const comment = (who: string, title: string, body: string) =>
       `<div class="comment-thread"><div class="comment-wrapper"><div class="comment"><div class="inner"><div class="header"><h4 class="comment-title">${title}</h4><div class="comment-poster"><a href="/~${who}">${who}</a></div><div class="datetime">2015-03-03 08:00 pm (UTC)</div></div><div class="contents"><div class="comment-content">${body}</div></div><ul class="comment-interaction-links"><li><a href="#">Link</a></li><li><a href="#">Reply</a></li></ul></div></div></div></div>`;
     const readers = Array.from({ length: 6 }, (_, i) => comment(`reader${i}`, '', '<p>NOISECOMMENT Oh this is lovely, I can’t wait to see what happens next! Thank you for writing.</p>')).join('');
+    const commentsLeftOut = (n: number) => `Left out the page’s comments, with about ${n.toLocaleString('en-US')} words of running text in them: if part of the story was posted as a comment, it isn’t in this book.`;
     const kept = (book: { chapters: { html: string }[] }, labels: string[]) => labels.filter((l) => text(book.chapters.map((c) => c.html).join('')).includes(`${l} sentence 9 `));
     for (const form of ['', '<form id="qrform" action="/talkpost_do"><textarea name="body"></textarea><button>Post comment</button></form>']) {
       const continued = page(
         `<div id="canvas">${header}${entry('Fic: The Long Road (1/2)', `<p>Part 2 is in the comments because of the length limit.</p>${lorem('PartOne', 40)}`)}<div id="comments"><h2>Comments</h2>${comment('quietowl', 'Part 2', lorem('PartTwo', 40))}${readers}</div>${form}</div></div>`,
         'quietowl: Fic: The Long Road (1/2)',
       );
+      // Reader mode keeps the entry, without the comments; the warning says how much running text was in them.
       const book = await parseImport(bytes(continued), 'dw.html');
-      expect([form, kept(book, ['PartOne', 'PartTwo']), noiseIn(book)]).toEqual([form, ['PartOne', 'PartTwo'], []]);
+      expect([form, book.generator, kept(book, ['PartOne', 'PartTwo']), noiseIn(book), book.warnings]).toEqual([form, 'readability', ['PartOne'], [], [commentsLeftOut(920)]]);
     }
     const prompt = '<p>Post prompts here. One prompt per comment. Fills go in reply to the prompt.</p>';
     const meme = page(
@@ -383,14 +385,14 @@ describe('reader mode on the pages people save', () => {
       'fandom_kink: Round 12 prompt post',
     );
     const fills = await parseImport(bytes(meme), 'kink.html');
-    expect([kept(fills, ['FillOne', 'FillTwo']), noiseIn(fills)]).toEqual([['FillOne', 'FillTwo'], []]);
+    expect([kept(fills, ['FillOne', 'FillTwo']), noiseIn(fills), fills.warnings]).toEqual([['FillOne'], [], [commentsLeftOut(1380)]]);
     // Comments are still comments, however many, linked to their commenters or not.
     const plain = (i: number) => `<div class="c"><p><b>Reader ${i}</b> wrote:</p><p>NOISECOMMENT ${'more please, this was lovely and I want to know what happens next '.repeat(3)}</p></div>`;
     const blog = page(
       `<nav><a href="/">Home</a> <a href="/fic">Fic</a></nav><div class="post"><h1>The Long Road</h1>${lorem('Story', 20)}</div><div class="comments"><h3>40 Comments</h3>${Array.from({ length: 40 }, (_, i) => plain(i)).join('')}</div>`,
     );
     const quiet = await parseImport(bytes(blog), 'blog.html');
-    expect([quiet.generator, quiet.words, noiseIn(quiet)]).toEqual(['readability', 20 * 23, []]);
+    expect([quiet.generator, quiet.words, noiseIn(quiet), quiet.warnings]).toEqual(['readability', 20 * 23, [], []]);
   });
 
   it('leaves a chapter menu’s options out of what reader mode has to keep', async () => {

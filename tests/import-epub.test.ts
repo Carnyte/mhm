@@ -587,12 +587,12 @@ describe('EPUBs that used to lose or repeat text', () => {
     ]);
     const c = await parseImport(few, 'few.epub');
     expect(c.chapters.map((ch) => ch.title)).toEqual(['Chapter 1', 'Chapter 2']);
-    expect(c.warnings).toEqual(['Some text before the first chapter in the table of contents was left out.']);
+    expect(c.warnings).toEqual(['Some text before the first chapter in the table of contents was left out (about 27 words).']);
   });
 
   it('tells front matter by what it holds and where it is, not by its size alone', async () => {
     const legal = `<p>Copyright © 2020 A. All rights reserved.</p>${para('No part of this book may be reproduced in any form without permission of the publisher', 20)}`;
-    // A long copyright page in the contents is still front matter.
+    // A long copyright page in the contents is still front matter, and how much of it there was is said.
     const copy = simple({ 'copy.xhtml': legal, 'c1.xhtml': para('One', 2), 'c2.xhtml': para('Two', 2) }, [
       ['Copyright', 'copy.xhtml'],
       ['Chapter 1', 'c1.xhtml'],
@@ -600,7 +600,7 @@ describe('EPUBs that used to lose or repeat text', () => {
     ]);
     const a = await parseImport(copy, 'copy.epub');
     expect(a.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2']);
-    expect(a.warnings).toEqual([]);
+    expect(a.warnings).toEqual(['Left out “Copyright”, a short page that looked like front matter (about 347 words).']);
     // A short chapter called "Information" between chapters is a chapter (a drabble, 100 words).
     const drabble = simple({ 'c1.xhtml': para('One', 4), 'c2.xhtml': para('The drabble goes', 25), 'c3.xhtml': para('Three', 4) }, [
       ['Chapter 1', 'c1.xhtml'],
@@ -640,7 +640,7 @@ describe('EPUBs that used to lose or repeat text', () => {
     ]);
     const e = await parseImport(info, 'info.epub');
     expect(e.chapters.map((ch) => ch.title)).toEqual(['Chapter 1', 'Chapter 2']);
-    expect(e.warnings).toEqual(['Left out “Information”, a short page that looked like front matter.']);
+    expect(e.warnings).toEqual(['Left out “Information”, a short page that looked like front matter (about 60 words).']);
   });
 
   it('takes a page for a copyright notice only when it is little else, and says when one held more', async () => {
@@ -701,9 +701,9 @@ describe('EPUBs that used to lose or repeat text', () => {
     const quiet = await parseImport(simple({ 'rights.xhtml': rights, ...chapters }, listed), 'rights.epub');
     expect([titles(quiet), quiet.warnings]).toEqual([['Chapter 1', 'Chapter 2'], []]);
     const loud = await parseImport(simple({ 'rights.xhtml': rights + thanks, ...chapters }, listed), 'rights.epub');
-    expect([titles(loud), loud.warnings]).toEqual([['Chapter 1', 'Chapter 2'], ['Some text before the first chapter in the table of contents was left out.']]);
+    expect([titles(loud), loud.warnings]).toEqual([['Chapter 1', 'Chapter 2'], ['Some text before the first chapter in the table of contents was left out (about 87 words).']]);
     const named = await parseImport(simple({ 'copy.xhtml': rights + thanks, ...chapters }, [['Copyright', 'copy.xhtml'], ...listed]), 'copy.epub');
-    expect([titles(named), named.warnings]).toEqual([['Chapter 1', 'Chapter 2'], ['Left out “Copyright”, a short page that looked like front matter.']]);
+    expect([titles(named), named.warnings]).toEqual([['Chapter 1', 'Chapter 2'], ['Left out “Copyright”, a short page that looked like front matter (about 87 words).']]);
   });
 
   it('reads the part of a file between two places without moving anything', () => {
@@ -765,7 +765,8 @@ describe('EPUBs that used to lose or repeat text', () => {
       ['Chapter 2', 'c2.xhtml'],
     ];
     const titles = (b: { chapters: { title: string; words: number }[] }) => b.chapters.map((c) => `${c.title}(${c.words})`);
-    // A second book's copyright page between the chapters of an omnibus, and one at the end.
+    // A second book's copyright page between the chapters of an omnibus, and one at the end (said
+    // from 40 words up).
     const fanfic = '<p>Copyright © 2020 Quiet Owl. This is a work of fan fiction. All characters belong to their respective owners.</p>';
     const between = await parseImport(
       simple({ 'c1.xhtml': chapters['c1.xhtml'], 'copy.xhtml': fanfic, 'c2.xhtml': chapters['c2.xhtml'] }, [listed[0], ['Copyright', 'copy.xhtml'], listed[1]]),
@@ -774,7 +775,7 @@ describe('EPUBs that used to lose or repeat text', () => {
     expect([titles(between), between.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], []]);
     const longer = `<p>Copyright © 2020 Quiet Owl. This is a work of fan fiction; all characters belong to their respective owners and no profit is made. Please do not repost or translate without asking first, and do not upload to other sites or apps.</p>`;
     const atEnd = await parseImport(simple({ ...chapters, 'copy.xhtml': longer }, [...listed, ['Copyright', 'copy.xhtml']]), 'end.epub');
-    expect([titles(atEnd), atEnd.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], []]);
+    expect([titles(atEnd), atEnd.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], ['Left out “Copyright”, a short page that looked like front matter (about 42 words).']]);
     // An untitled opening the contents don't list, after the author's notice: the story's, with
     // or without a disclaimer.
     for (const prose of [words('Pro', 200), [0, 1, 2, 3].map((k) => words(`Pro${k}x`, 70)).join('')]) {
@@ -782,14 +783,14 @@ describe('EPUBs that used to lose or repeat text', () => {
       expect(titles(book)[0]).toMatch(/^Introduction\((208|288)\)$/);
       expect(book.warnings).toEqual([]);
     }
-    // A real copyright page is still only that.
+    // A real copyright page is still only that, and how much of it there was is said.
     const legal =
       '<p>Copyright © 2020 by Quiet Owl. All rights reserved.</p><p>No part of this publication may be reproduced, stored or transmitted in any form without prior written permission of the author.</p><p>This is a work of fiction. Names, characters, places and incidents are products of the author’s imagination or are used fictitiously. Any resemblance to actual persons is coincidental.</p><p>Cover art by Some Artist.</p><p>First edition, 2020.</p>';
     const rights = await parseImport(simple({ 'copy.xhtml': legal, ...chapters }, listed), 'rights.epub');
-    expect([titles(rights), rights.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], []]);
+    expect([titles(rights), rights.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], ['Some text before the first chapter in the table of contents was left out (about 66 words).']]);
   });
 
-  it('keeps an untitled prologue on a title page, and only the title and byline go', async () => {
+  it('keeps an untitled prologue on a title page that runs on into chapter 1, and only the title and byline go', async () => {
     const words = (tag: string, n: number) => `<p>${Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ')}.</p>`;
     const titles = (b: { chapters: { title: string; words: number }[] }) => b.chapters.map((c) => `${c.title}(${c.words})`);
     for (const [entry, notice] of [
@@ -809,7 +810,7 @@ describe('EPUBs that used to lose or repeat text', () => {
       expect([entry, notice, titles(book), book.warnings]).toEqual([entry, notice, ['Introduction(200)', 'Chapter 1(300)', 'Chapter 2(300)'], []]);
       expect(text(book.chapters[0].html).trim()).toMatch(/^Pro0 .* Pro199\.$/);
     }
-    // (in a file of its own too)
+    // In a file of its own it can't be told from a summary: it's left out, and how much is said.
     const own = await parseImport(
       simple({ 'tp.xhtml': `<h1>The Long Road</h1><p>by A</p>${words('Pro', 250)}`, 'c1.xhtml': words('One', 300), 'c2.xhtml': words('Two', 300) }, [
         ['Title Page', 'tp.xhtml'],
@@ -818,7 +819,7 @@ describe('EPUBs that used to lose or repeat text', () => {
       ]),
       'own.epub',
     );
-    expect([titles(own), own.warnings]).toEqual([['Introduction(250)', 'Chapter 1(300)', 'Chapter 2(300)'], []]);
+    expect([titles(own), own.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], ['Left out “Title Page”, a short page that looked like front matter (about 255 words).']]);
     // A short summary on one is left out, and that's said.
     const summary = await parseImport(
       simple({ 'tp.xhtml': `<h1>The Long Road</h1><p>by A</p>${words('Sum', 60)}`, 'c1.xhtml': words('One', 300), 'c2.xhtml': words('Two', 300) }, [
@@ -828,7 +829,7 @@ describe('EPUBs that used to lose or repeat text', () => {
       ]),
       'sum.epub',
     );
-    expect([titles(summary), summary.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], ['Left out “Title Page”, a short page that looked like front matter.']]);
+    expect([titles(summary), summary.warnings]).toEqual([['Chapter 1(300)', 'Chapter 2(300)'], ['Left out “Title Page”, a short page that looked like front matter (about 65 words).']]);
     // (each name once, however many pages have it)
     const twice = await parseImport(
       simple({ 'a.xhtml': words('Sum', 60), 'b.xhtml': words('Note', 60), 'c1.xhtml': words('One', 300), 'c2.xhtml': words('Two', 300) }, [
@@ -839,7 +840,7 @@ describe('EPUBs that used to lose or repeat text', () => {
       ]),
       'twice.epub',
     );
-    expect(twice.warnings).toEqual(['Left out “Information”, short pages that looked like front matter.']);
+    expect(twice.warnings).toEqual(['Left out “Information”, short pages that looked like front matter (about 120 words).']);
   });
 
   it('keeps all of a story whose first entry is a cover or title page in the same file', async () => {

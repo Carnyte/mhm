@@ -246,6 +246,15 @@ export function splitParts(words: number[], isBreak: (i: number) => boolean, can
   return starts;
 }
 
+/** Text left out with fewer words than this needs no warning: a title, a byline, a credit line. */
+export const LEFT_OUT_MIN = 40;
+
+/** "about 1,234 words", for a warning that says how much was left out. */
+export const aboutWords = (words: number) => `about ${formatFull(words)} words`;
+
+/** Text before the first chapter heading too short to be a chapter of its own ("Introduction") is left out: this says so. */
+export const openingWarning = (words: number) => `Some text before the first chapter heading was left out (${aboutWords(words)}).`;
+
 export const partsWarning = (words: number, parts: number) =>
   `FicShelf found no chapter headings in this file, so its ${formatFull(words)} words were split into ${parts} parts.`;
 

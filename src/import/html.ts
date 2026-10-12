@@ -21,7 +21,7 @@ import { parseDownload } from '../sources/ao3/parsers/download';
 import { parseWorkPage } from '../sources/ao3/parsers/work';
 import { workUrl } from '../sources/ao3/urls';
 import type { Tag } from '../sources/types';
-import { chapterFromHtml, finishChapter, ImageTable, partsWarning, sanitizeFragment, splitParts, Stepper, type BookDraft } from './build';
+import { aboutWords, chapterFromHtml, finishChapter, ImageTable, LEFT_OUT_MIN, openingWarning, partsWarning, sanitizeFragment, splitParts, Stepper, type BookDraft } from './build';
 import { decodeBytesAsync } from './decode';
 import {
   blockText,
@@ -418,9 +418,10 @@ const hasChapterHeading = (e: Element) => !!findOne((h) => /^h[1-3]$/.test(h.nam
  * Page furniture removed without reader mode: menus, headers and footers, sidebars, comments. The
  * story is never taken with it: an element holding chapter headings or much of the page's text
  * (a <form> around the whole page, a wrapper classed "content-area no-sidebar") stays, and when
- * what would be left is a small part of the page, nothing is removed. Returns whether it cleaned.
+ * what would be left is a small part of the page, nothing is removed. Returns whether it cleaned,
+ * and the running text it removed with the comments (see commentProse).
  */
-function lightClean(body: ParentNode): boolean {
+function lightClean(body: ParentNode): { cleaned: boolean; commented: number } {
   const total = textLengths(body).all;
   const drop = new Set<Element>();
   let dropped = 0;
@@ -433,9 +434,10 @@ function lightClean(body: ParentNode): boolean {
     drop.add(e);
     dropped += len;
   }
-  if (total && total - dropped < total * 0.4) return false;
+  if (total && total - dropped < total * 0.4) return { cleaned: false, commented: 0 };
+  const commented = commentProse(drop);
   for (const e of drop) removeElement(e);
-  return true;
+  return { cleaned: true, commented };
 }
 
 /**
@@ -498,10 +500,11 @@ function proseWords(root: ParentNode, skip?: (e: Element) => boolean): number {
 const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 /**
- * Whether an element of `body` holds most of the article's text: the story's container, however
- * it's classed (a <form> around the whole page, a "header" wrapper around the story).
+ * How many of the article's words each element of `body` holds, and whether it holds most of them:
+ * the story's container, however it's classed (a <form> around the whole page, a "header" wrapper
+ * around the story).
  */
-function storyContainer(article: ParentNode, body: ParentNode): (e: Element) => boolean {
+function storyContainer(article: ParentNode, body: ParentNode): { held: Map<AnyNode, number>; container: (e: Element) => boolean } {
   const lines = new Set<string>();
   const counts = wordCounts(article);
   for (const [n, words] of counts) {
@@ -510,15 +513,16 @@ function storyContainer(article: ParentNode, body: ParentNode): (e: Element) => 
   }
   const held = wordCounts(body, (t) => lines.has(squash(t.data)));
   const all = held.get(body)!;
-  return (e) => all > 0 && (held.get(e) ?? 0) >= all / 2;
+  return { held, container: (e) => all > 0 && (held.get(e) ?? 0) >= all / 2 };
 }
 
 /**
- * Story text where comments go (a fic "continued in the comments" past a journal's length limit, a
- * kink meme's fills): the words of each passage of 300 or more under `block`, an element whose words
- * (outside links and form controls) mostly sit in paragraphs, as a story's do: children with no
- * block inside and no link. A thread of comments isn't one, each comment a block of its own with
- * its commenter's link, however long it runs; nor is a list of notes, each one short.
+ * Running text in comments, which may be the story's (a fic "continued in the comments" past a
+ * journal's length limit, a kink meme's fills) or a long review: the words of each passage of 300
+ * or more under `block`, an element whose words (outside links and form controls) mostly sit in
+ * paragraphs, as a story's do: children with no block inside and no link. A thread of short
+ * comments isn't one, each comment a block of its own with its commenter's link, however long the
+ * thread runs; nor is a list of notes.
  */
 function passageWords(block: Element): number {
   const words = new Map<AnyNode, number>();
@@ -551,25 +555,51 @@ function passageWords(block: Element): number {
   return passages;
 }
 
+/** Classes and ids of a comment section: "comments", "comment-thread", "commentlist", Disqus. */
+const COMMENT_TOKEN = /comment|disqus/;
+
+/** The outermost comment sections in `e`, `e` itself when it is one. */
+function commentSections(e: Element): Element[] {
+  const out: Element[] = [];
+  const stack: AnyNode[] = [e];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (!isTag(n)) continue;
+    if (tokensOf(n).some((t) => COMMENT_TOKEN.test(t))) out.push(n);
+    else for (const c of n.children) stack.push(c);
+  }
+  return out;
+}
+
+/** Running text in the comment sections among `dropped` (see passageWords), less what `held` says is kept. */
+function commentProse(dropped: Iterable<Element>, held?: Map<AnyNode, number>): number {
+  let words = 0;
+  for (const e of dropped) for (const c of commentSections(e)) words += Math.max(0, passageWords(c) - (held?.get(c) ?? 0));
+  return words;
+}
+
+/** Says that the page's comments were left out with running text in them: it may be the story's. */
+const commentsWarning = (words: number) =>
+  `Left out the page’s comments, with ${aboutWords(words)} of running text in them: if part of the story was posted as a comment, it isn’t in this book.`;
+
 /**
  * Reader mode kept the story: its article holds (nearly) all the page's text that isn't furniture,
  * chrome, form controls or links. It sometimes keeps only the longest block of a page cut into
  * blocks ("The Ball" in one <div>, "Homecoming" in the next), and leaving out a few hundred words
  * of story silently is worse than keeping some of the site. What it's right to leave out (notes
  * under a post, a long comment thread, a menu) isn't counted, however long, unless the story is
- * in it, or story text is: long passages of it posted as comments.
+ * in it. `commented`: the running text it left out of the comments (see commentProse).
  */
-function keepsTheStory(article: ParentNode, body: ParentNode): boolean {
-  const container = storyContainer(article, body);
-  let posted = 0;
-  const skip = (e: Element) => {
+function keepsTheStory(article: ParentNode, body: ParentNode): { keeps: boolean; commented: number } {
+  const { held, container } = storyContainer(article, body);
+  const skipped: Element[] = [];
+  const want = proseWords(body, (e) => {
     if (!skippedByReader(e) || container(e)) return false;
-    posted += passageWords(e);
+    skipped.push(e);
     return true;
-  };
-  const want = proseWords(body, skip) + posted;
+  });
   const missing = want - proseWords(article);
-  return missing <= Math.max(40, Math.min(want * 0.05, 250));
+  return { keeps: missing <= Math.max(40, Math.min(want * 0.05, 250)), commented: commentProse(skipped, held) };
 }
 
 /** Classes and ids of a site's own name and header ("site-title", Blogger's div.header, Tumblr's #header). */
@@ -657,23 +687,34 @@ async function webPage(doc: Document, size: number, stepper: Stepper, images: Im
   const noisy = isNoisy(body);
   await stepper.pause();
   const whole = 'Reader mode couldn’t find the story on this page, so the whole page was imported.';
+  /** Running text left out with the page's comments (see commentProse). */
+  let commented = 0;
   if (noisy && size <= READER_MODE_MAX) {
     const article = readArticle(body.children, head);
     const articleDoc = article && article.length >= 200 ? parseMarkup(article.content) : null;
     // Reader mode has to keep every chapter heading the page has (it sometimes picks one chapter).
     const like = (r: ParentNode) => findAll((e) => /^h[1-6]$/.test(e.name) && isChapterHeading(textOf(e), true), r.children).length;
     const pageLike = like(body);
-    if (articleDoc && (pageLike < 2 || like(articleDoc) >= pageLike) && keepsTheStory(articleDoc, body)) {
+    const kept = articleDoc && (pageLike < 2 || like(articleDoc) >= pageLike) ? keepsTheStory(articleDoc, body) : null;
+    if (articleDoc && kept?.keeps) {
       root = articleDoc;
       generator = 'readability';
       title = article?.title || title;
       byline = article?.byline || byline;
       published = article?.publishedTime || published;
+      commented = kept.commented;
     } else {
       // Reader mode found nothing, or left chapters or text out: the page minus its furniture.
-      if (!lightClean(body) || !articleDoc) warnings.push(whole);
+      const clean = lightClean(body);
+      if (!clean.cleaned || !articleDoc) warnings.push(whole);
+      commented = clean.commented;
     }
-  } else if (noisy && !lightClean(body)) warnings.push(whole);
+  } else if (noisy) {
+    const clean = lightClean(body);
+    if (!clean.cleaned) warnings.push(whole);
+    commented = clean.commented;
+  }
+  if (commented) warnings.push(commentsWarning(commented));
   // "Story Title - Chapter 1 - Site Name" in <title>: the page's own heading is the cleaner title
   // (never the site's name).
   const isSite = siteName && pageHeading.toLowerCase() === siteName.toLowerCase();
@@ -683,11 +724,13 @@ async function webPage(doc: Document, size: number, stepper: Stepper, images: Im
   let front: AnyNode[] = [];
   if (headings) {
     ({ front, chapters } = await chaptersAtHeadings(root, headings, stepper, images));
-    // Text before the first chapter heading is a chapter when there's a real amount of it.
-    if (wordsIn(front) >= 150) {
+    // Text before the first chapter heading is a chapter when there's a real amount of it; else
+    // it's left out, and that's said.
+    const frontWords = wordsIn(front);
+    if (frontWords >= 150) {
       const c = finishChapter('Introduction', boxOf(front), images);
       if (c) chapters.unshift(c);
-    }
+    } else if (frontWords >= LEFT_OUT_MIN) warnings.push(openingWarning(frontWords));
   } else {
     const box = boxOf(takeAll(root));
     dropRepeatedTitle(box, [title ?? '', pageHeading]);
