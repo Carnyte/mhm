@@ -43,7 +43,25 @@ export function wordsIn(nodes: AnyNode[]): number {
 /** Visible text, whitespace collapsed. */
 export const textOf = (n: AnyNode | AnyNode[] | null | undefined) => (n ? textContent(n).replace(/\s+/g, ' ').trim() : '');
 
-export const parseXml = (s: string) => parseDocument(s, { xmlMode: true, decodeEntities: true });
+const XML: ParserOptions = { xmlMode: true, decodeEntities: true };
+
+export const parseXml = (s: string) => parseDocument(s, XML);
+
+/** Fed to the parser in slices, awaiting `pause` between them. */
+async function parseInSlices(s: string, options: ParserOptions, pause: () => Promise<void>): Promise<Document> {
+  const handler = new DomHandler(undefined, options);
+  const parser = new Parser(handler, options);
+  const SLICE = 256 * 1024;
+  for (let i = 0; i < s.length; i += SLICE) {
+    parser.write(s.slice(i, i + SLICE));
+    await pause();
+  }
+  parser.end();
+  return handler.root;
+}
+
+/** parseXml for a file that can be big (a table of contents of thousands of entries), with pauses. */
+export const parseXmlAsync = (s: string, pause: () => Promise<void>) => parseInSlices(s, XML, pause);
 
 const markupOptions = (xhtml: boolean): ParserOptions => ({ decodeEntities: true, lowerCaseTags: true, lowerCaseAttributeNames: true, recognizeSelfClosing: xhtml });
 
@@ -61,17 +79,9 @@ export function parseMarkup(s: string, xhtml = false): Document {
   return dropPrefixes(parseDocument(s, markupOptions(xhtml)));
 }
 
-/** parseMarkup for a whole file: fed to the parser in slices, awaiting `pause` between them. */
+/** parseMarkup for a whole file, with pauses (see parseInSlices). */
 export async function parseMarkupAsync(s: string, pause: () => Promise<void>, xhtml = false): Promise<Document> {
-  const handler = new DomHandler(undefined, markupOptions(xhtml));
-  const parser = new Parser(handler, markupOptions(xhtml));
-  const SLICE = 256 * 1024;
-  for (let i = 0; i < s.length; i += SLICE) {
-    parser.write(s.slice(i, i + SLICE));
-    await pause();
-  }
-  parser.end();
-  return dropPrefixes(handler.root);
+  return dropPrefixes(await parseInSlices(s, markupOptions(xhtml), pause));
 }
 
 const BLOCKS = new Set([
@@ -104,13 +114,14 @@ const BLOCKS = new Set([
 /** An element that stands on lines of its own (a paragraph, a heading, a list…), as blockText reads it. */
 export const isBlock = (e: Element) => BLOCKS.has(e.name);
 
-/** Text with a line break for every <br> and block, for reading "Key: value" lines. */
-export function blockText(root: AnyNode | AnyNode[]): string {
+/** Text with a line break for every <br> and block, for reading "Key: value" lines; `skip`: elements left out, text and all. */
+export function blockText(root: AnyNode | AnyNode[], skip?: (e: Element) => boolean): string {
   let out = '';
   const walk = (nodes: AnyNode[]) => {
     for (const n of nodes) {
       if (isText(n)) out += n.data.replace(/\s+/g, ' ');
       else if (isTag(n)) {
+        if (skip?.(n)) continue;
         if (n.name === 'br') out += '\n';
         else if (n.name === 'td' || n.name === 'th') {
           out += ' ';
@@ -264,6 +275,46 @@ export function splitBefore(root: ParentNode, marker: AnyNode): AnyNode[] {
   return detached(carried);
 }
 
+/**
+ * Cuts everything from `marker` (in document order) to the end of `root` out of `root` and returns
+ * it (detached), as splitBefore does what comes before: an ancestor of the marker goes whole when
+ * nothing of it is left before the marker, else a copy of it holds what was cut from it.
+ */
+function splitFrom(root: ParentNode, marker: AnyNode): AnyNode[] {
+  const chain: AnyNode[] = [];
+  for (let n: AnyNode | null = marker; n && n !== root; n = n.parent) chain.push(n);
+  if (chain[chain.length - 1]?.parent !== root) return [];
+  let carried: AnyNode[] = [];
+  for (let i = 0; i < chain.length; i++) {
+    const node = chain[i];
+    const parent = node.parent as ParentNode;
+    // From the end: what's cut is what follows, so finding and cutting take a time in step with it.
+    const at = parent.children.lastIndexOf(node);
+    const whole = i === 0 || !(node as ParentNode).children.length;
+    const after = parent.children.splice(whole ? at : at + 1);
+    if (parent.children.length) parent.children[parent.children.length - 1].next = null;
+    if (i > 0) {
+      const holder = whole ? (node as ParentNode) : shallowClone(node as Element);
+      setChildren(holder, carried);
+      if (!whole) after.unshift(holder);
+    }
+    carried = after;
+  }
+  return detached(carried);
+}
+
+/**
+ * `root` cut at each of `markers` (in document order): what comes before the first, then each
+ * marker up to the next. Cut from the end, so it takes a time in step with the size of `root`
+ * (splitBefore again and again, each time cutting the front off what's left, moves all the rest).
+ */
+export function cutAt(root: ParentNode, markers: AnyNode[]): AnyNode[][] {
+  const pieces: AnyNode[][] = [];
+  for (let k = markers.length - 1; k >= 0; k--) pieces.push(splitFrom(root, markers[k]));
+  pieces.push(takeAll(root));
+  return pieces.reverse();
+}
+
 /** A new <div> holding detached nodes (from takeAll / splitBefore). */
 export function boxOf(nodes: AnyNode[] = []): Element {
   const box = new Element('div', {});
@@ -317,7 +368,7 @@ export function doubtfulNumeral(s: string): boolean {
 }
 
 /** "I - I don't know.": the spaced dash a stammer or an interruption is written with. */
-const LONE_DASH = /^[IVXLC]\s+[-–—]\s/;
+export const LONE_DASH = /^[IVXLC]\s+[-–—]\s/;
 
 /**
  * A line or heading that names a chapter. `element`: the text of an h1–h6, which is a heading

@@ -13,7 +13,7 @@
 import { chapterFromHtml, LEFT_OUT_MIN, openingWarning, partsWarning, sanitizeFragment, splitParts, Stepper, type BookDraft } from './build';
 import { decodeBytesAsync } from './decode';
 import { findStoryUrl } from './detect';
-import { bylineAuthor, CHAPTER_HEADING, doubtfulNumeral, isChapterHeading, labeledFields, ROMAN_HEADING, romanValue, SCENE_BREAK } from './dom';
+import { bylineAuthor, CHAPTER_HEADING, doubtfulNumeral, isChapterHeading, labeledFields, LONE_DASH, ROMAN_HEADING, romanValue, SCENE_BREAK } from './dom';
 import { fieldTags, languageName, parseComplete, parseDate, plainSummary } from './meta';
 import type { ImportedChapter } from './types';
 
@@ -53,7 +53,8 @@ const MAX_INLINE_LINE = 20_000;
 
 /** Inline Markdown on one line of text: emphasis, strike, code, links. HTML is escaped first. */
 export function inlineMarkdown(s: string): string {
-  if (s.length > MAX_INLINE_LINE) return esc(s);
+  // (Most lines have none of the marks: they're only escaped.)
+  if (s.length > MAX_INLINE_LINE || !/[\\`*_[~]/.test(s)) return esc(s);
   const kept: string[] = [];
   const keep = (html: string) => `\u0001${kept.push(html) - 1}\u0001`;
   let h = esc(s);
@@ -190,8 +191,10 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
   // A lone I, V, X, L or C before words that may be dialogue ("I - I don't know.", "I. It begins")
   // is one only in its place in the run: right after the numeral before it, or right before the
   // one after it when it isn't inside the chapter of its own number (a stammer in chapter I), and
-  // never just before a sure heading of its own number ("V – very well." late in chapter IV, then
-  // "V. Five"; "V. Vows are made." before the stammer "V – very well." is chapter V's).
+  // never just before a heading of its own number that is surer: one that isn't doubtful ("V –
+  // very well." late in chapter IV, then "V. Five"), or that isn't in the stammer's spaced-dash
+  // form ("V – very well.", then "V. Vows are made."; "V. Vows are made." before "V – very well."
+  // is chapter V's).
   // (Marked, then left out in one pass: a file can hold many thousands of such lines.)
   const notHeadings = new Set<(typeof starts)[number]>();
   for (let k = 0, prev: number | undefined; k < roman.length; k++) {
@@ -199,7 +202,8 @@ export async function parseTextFile(bytes: Uint8Array, fileName: string, stepper
     if (doubtfulNumeral(roman[k].title)) {
       const after = roman[k + 1];
       const next = after ? romanValue(after.title) : undefined;
-      if (!(prev === n - 1 || (next === n + 1 && prev !== n)) || (next === n && !doubtfulNumeral(after.title))) {
+      const surer = next === n && (!doubtfulNumeral(after.title) || (LONE_DASH.test(roman[k].title) && !LONE_DASH.test(after.title)));
+      if (!(prev === n - 1 || (next === n + 1 && prev !== n)) || surer) {
         notHeadings.add(roman[k]);
         continue;
       }

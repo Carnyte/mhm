@@ -857,7 +857,7 @@ describe('EPUBs that used to lose or repeat text', () => {
       ['Cover', 'index_split_000.html'],
       ['The Long Road', 'index_split_000.html#story'],
     ];
-    const oneShot = await parseImport(simple(split, toc), 'split.epub');
+    const oneShot = await parseImport(simple(split, toc, '<dc:title>The Long Road</dc:title><dc:creator>Quiet Owl</dc:creator>'), 'split.epub');
     expect([titles(oneShot), oneShot.warnings]).toEqual([['The Long Road(4000)'], []]);
     expect(text(oneShot.chapters[0].html)).toMatch(/^ PartA0 .* PartD999\. $/);
     // When the files after it open with headings, the contents left those out: each file is a chapter.
@@ -877,12 +877,12 @@ describe('EPUBs that used to lose or repeat text', () => {
     expect(titles(listedOne)).toEqual(['The Long Road(2003)', 'Author’s Notes(200)', 'Outtake(300)', 'Art(300)']);
     expect(text(listedOne.chapters[0].html)).toContain(' Story0 ');
     expect(listedOne.warnings).toEqual(['The table of contents didn’t match the text, so each file became a chapter.']);
-    // Short unheaded files after it run on in its chapter.
+    // Short unheaded files after it run on in its chapter, when the book says it's that one chapter.
     const short = await parseImport(
       simple({ 'story.xhtml': extras['story.xhtml'], 'b1.xhtml': words('X', 50), 'b2.xhtml': words('Y', 50), 'b3.xhtml': words('Z', 50) }, [
         ['Title Page', 'story.xhtml'],
         ['The Long Road', 'story.xhtml#start'],
-      ]),
+      ], '<dc:title>The Long Road</dc:title><dc:creator>Quiet Owl</dc:creator>'),
       'short.epub',
     );
     expect(titles(short)).toEqual(['The Long Road(2150)']);

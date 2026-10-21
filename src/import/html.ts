@@ -26,6 +26,7 @@ import { decodeBytesAsync } from './decode';
 import {
   blockText,
   boxOf,
+  cutAt,
   dropRepeatedTitle,
   isBlock,
   isChapterHeading,
@@ -33,7 +34,6 @@ import {
   parseMarkup,
   parseMarkupAsync,
   SCENE_BREAK,
-  splitBefore,
   takeAll,
   textOf,
   wordsIn,
@@ -57,14 +57,14 @@ function stripActive(root: ParentNode) {
 }
 
 /**
- * Cuts `root` at each marker, one piece at a time (each starting with its marker), handing each to
- * `take` with a pause in between. Returns what came before the first marker.
+ * Cuts `root` at each marker (each piece starting with its marker), handing each piece to `take`
+ * with a pause in between. Returns what came before the first marker.
  */
 async function eachPart(root: ParentNode, markers: AnyNode[], stepper: Stepper, take: (part: AnyNode[], i: number) => void): Promise<AnyNode[]> {
-  const front = splitBefore(root, markers[0]);
+  const [front, ...parts] = cutAt(root, markers);
   await stepper.step(0, markers.length);
-  for (let i = 0; i < markers.length; i++) {
-    take(i + 1 < markers.length ? splitBefore(root, markers[i + 1]) : takeAll(root), i);
+  for (let i = 0; i < parts.length; i++) {
+    take(parts[i], i);
     await stepper.step(i + 1, markers.length);
   }
   return front;
@@ -737,10 +737,10 @@ async function webPage(doc: Document, size: number, stepper: Stepper, images: Im
     // A long text is cut into parts (see splitParts), each finished in its own step.
     const { units, starts, words } = partsOf(box);
     if (starts.length > 1) warnings.push(partsWarning(words, starts.length));
+    const pieces = cutAt(box, starts.slice(1).map((i) => units[i]));
     await stepper.step(0, starts.length);
     for (let k = 0; k < starts.length; k++) {
-      const piece = k + 1 < starts.length ? splitBefore(box, units[starts[k + 1]]) : takeAll(box);
-      const c = finishChapter(starts.length > 1 ? `Part ${k + 1}` : title || 'Chapter 1', boxOf(piece), images);
+      const c = finishChapter(starts.length > 1 ? `Part ${k + 1}` : title || 'Chapter 1', boxOf(pieces[k]), images);
       if (c) chapters.push(c);
       await stepper.step(k + 1, starts.length);
     }

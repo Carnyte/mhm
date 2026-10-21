@@ -1,6 +1,6 @@
 // The import corpus: every scenario the import reviews and verifier rounds turned up, rebuilt from
 // synthetic text, with the result that is right. Each case is named after the repro script that
-// found it (vp/ rv/ r1/ r2/ r3/) and its case letter.
+// found it (vp/ rv/ r1/ r2/ r3/ r4/) and its case letter.
 //
 // Where the trees disagreed, `why` says which result is right and why, by these rules:
 //   1. Never lose story text silently: what a rule leaves out (front matter, comments, page
@@ -11,10 +11,14 @@
 //   3. Prefer removing or narrowing a rule over adding one.
 //   4. No synchronous stretch over about a second for inputs under the size limits.
 // Trees named in `why`: 44a9f71 (import wired into the app), 16eaf18 (first review fixes), the
-// round-1 tree (never committed), 99f38f9 (verifier rounds 1 and 2), 3212230 (round 3).
+// round-1 tree (never committed), 99f38f9 (verifier rounds 1 and 2), 3212230 (round 3), 49442b7
+// (this corpus, checked by verifier round 4).
 
 import { buildEpub, nav, ncx, png, xhtml } from './helpers/epub';
 import { allParts, epub, inOrder, lines, para, paras, runCase, words, type Case } from './helpers/corpus';
+
+/** A one-shot's own metadata: the book title is the contents entry's (as in Calibre's split of an AO3 one-shot). */
+const ONE_SHOT_META = '<dc:title>The Long Road</dc:title><dc:creator>Quiet Owl</dc:creator>';
 
 const X = 'application/xhtml+xml';
 const NCX = 'application/x-dtbncx+xml';
@@ -253,7 +257,7 @@ const corpus: [string, Case[]][] = [
         chapters: ['Chapter 1', 'Chapter 2'],
         words: [50, 50],
         lacks: ['LEGAL0 '],
-        leftOut: 322,
+        leftOut: { words: 322, of: /“Copyright”/ },
       },
       {
         name: 'vp/epub1 f: a 100-word drabble titled "Information" between chapters',
@@ -1322,7 +1326,7 @@ asleep in his chair with the last lantern still burning there.
         chapters: chapters(2),
         words: [300, 300],
         lacks: ['NOTE0 '],
-        leftOut: 80,
+        leftOut: { words: 80, of: /“Information”/ },
       },
       {
         name: 'r1/epub3 s1: one file holding a title page, then #c1 and #c2',
@@ -1350,6 +1354,8 @@ asleep in his chair with the last lantern still burning there.
       const txt = (title: string | null, heads: string[], n: number) => lines(...(title ? [title, ''] : []), ...heads.flatMap((h, i) => [h, '', p(`C${i + 1}w`, n), '']));
       const romanWhy = 'The round-1 tree rejected sentence-case and lower-case titles after a lone I or V: chapter I lost its heading (and under 150 words, its text) (v2.1).';
       const nine = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'];
+      const mirrorWhy =
+        'r3/p8 turned round: 3212230 gets it right; 99f38f9 and 49442b7 make the stammer chapter V’s heading and the real one text, moving the end of chapter IV into V. Of two doubtful lines of the same numeral side by side, the one in the stammer’s spaced-dash form ("V – …") is the stammer, whichever comes first.';
       return [
         { name: 'r1/roman dog: "I. In which Harry finds a dog", 200-word chapters', file: 'dog.txt', input: () => txt('Dog Days', ['I. In which Harry finds a dog', 'II. In which the dog finds Harry', 'III. In which nobody is happy'], 200), why: romanWhy, title: 'Dog Days', chapters: ['I. In which Harry finds a dog', 'II. In which the dog finds Harry', 'III. In which nobody is happy'], words: [200, 200, 200] },
         { name: 'r1/roman small: "I. It begins", 100-word drabbles', file: 'small.txt', input: () => txt('Small Things', ['I. It begins', 'II. Then it rains', 'III. It ends'], 100), why: romanWhy, title: 'Small Things', chapters: ['I. It begins', 'II. Then it rains', 'III. It ends'], words: [100, 100, 100] },
@@ -1489,11 +1495,38 @@ asleep in his chair with the last lantern still burning there.
           inChapter: { 9: ['Z0 ', 'X – x-rays, he said.', 'Z2x0 '] },
         },
         {
+          name: 'r4/a2 A: the mirror of r3/p8 A: the stammer "V – very well." late in chapter IV, then "V. Vows are made."',
+          file: 'ma.txt',
+          input: () => lines('Title', '', 'I. The Start', '', p('A', 200), '', 'II. Two', '', p('B', 200), '', 'III. Three', '', p('C', 200), '', 'IV. Four', '', p('D', 100), '', '"V-very well," she said.', '', 'V – very well.', '', p('D2x', 100), '', 'V. Vows are made.', '', p('E', 200), '', 'VI. Six', '', p('F', 200), ''),
+          why: mirrorWhy,
+          chapters: ['I. The Start', 'II. Two', 'III. Three', 'IV. Four', 'V. Vows are made.', 'VI. Six'],
+          words: [200, 200, 200, 208, 200, 200],
+          inChapter: { 3: ['V – very well.', 'D2x0 '], 4: ['E0 '] },
+        },
+        {
+          name: 'r4/a2 B: the mirror of r3/p8 B: the stammer late in chapter IV, then "V. very bad things"',
+          file: 'mb.txt',
+          input: () => lines('Title', '', 'I. The start', '', p('A', 200), '', 'II. Two of them', '', p('B', 200), '', 'III. Three', '', p('C', 200), '', 'IV. Four', '', p('D', 100), '', 'V – very well.', '', p('D2x', 100), '', 'V. very bad things', '', p('E', 200), '', 'VI. Six', '', p('F', 200), ''),
+          why: mirrorWhy,
+          chapters: ['I. The start', 'II. Two of them', 'III. Three', 'IV. Four', 'V. very bad things', 'VI. Six'],
+          words: [200, 200, 200, 204, 200, 200],
+          inChapter: { 3: ['V – very well.', 'D2x0 '] },
+        },
+        {
+          name: 'r4/a2 C: the mirror of r3/p8 C: the stammer "X – x marks the spot!" in chapter IX, then "X. Xavier arrives."',
+          file: 'mc.txt',
+          input: () => lines('Title', '', ...nine.flatMap((r, i) => [`${r}. Chapter Name`, '', p(`K${i}x`, 100), '']), 'X – x marks the spot!', '', p('Z', 50), '', 'X. Xavier arrives.', '', p('T', 100), '', 'XI. Eleven', '', p('U', 100), ''),
+          why: mirrorWhy,
+          chapters: [...nine.map((r) => `${r}. Chapter Name`), 'X. Xavier arrives.', 'XI. Eleven'],
+          words: [100, 100, 100, 100, 100, 100, 100, 100, 156, 100, 100],
+          inChapter: { 8: ['X – x marks the spot!', 'Z0 '], 9: ['T0 '] },
+        },
+        {
           name: 'r2 fixer note (v2.1): a 100-word opening before "Chapter 1" in a TXT',
           file: 'road.txt',
           input: () => lines('The Long Road', '', p('OPEN', 100), '', 'Chapter 1', '', p('A', 200), '', 'Chapter 2', '', p('B', 200), ''),
           why: 'Every tree drops an opening under 150 words before the first heading, silently (noted out of scope in round 2). Rule 1: keep it, or say it was left out.',
-          keptOrWarned: { has: ['OPEN0 ', 'OPEN99'], words: 100 },
+          keptOrWarned: { has: ['OPEN0 ', 'OPEN99'], words: 100, of: /before the first chapter heading/ },
           has: ['A0 ', 'B199'],
         },
         {
@@ -1502,7 +1535,7 @@ asleep in his chair with the last lantern still burning there.
           input: () => lines('# The Long Road', '', p('OPEN', 100), '', '## Chapter 1', '', p('A', 200), '', '## Chapter 2', '', p('B', 200), ''),
           why: 'As the TXT case: Markdown drops an opening of under 150 words before the first heading the same way, in every tree.',
           chapters: chapters(2),
-          keptOrWarned: { has: ['OPEN0 ', 'OPEN99'], words: 100 },
+          keptOrWarned: { has: ['OPEN0 ', 'OPEN99'], words: 100, of: /before the first chapter heading/ },
         },
         {
           name: 'rule 1: a 100-word opening before the first h2 chapter heading in a plain HTML page',
@@ -1510,7 +1543,7 @@ asleep in his chair with the last lantern still burning there.
           input: () => `<html><head><title>The Long Road</title></head><body><h1>The Long Road</h1><p>${p('OPEN', 100)}</p>${[1, 2].map((k) => `<h2>Chapter ${k}</h2><p>${p(`C${k}x`, 200)}</p>`).join('')}</body></html>`,
           why: 'As the TXT case: an HTML page drops an opening of under 150 words before its first chapter heading the same way, in every tree.',
           chapters: chapters(2),
-          keptOrWarned: { has: ['OPEN0 ', 'OPEN99'], words: 100 },
+          keptOrWarned: { has: ['OPEN0 ', 'OPEN99'], words: 100, of: /before the first chapter heading/ },
         },
       ];
     })(),
@@ -1559,7 +1592,7 @@ asleep in his chair with the last lantern still burning there.
         why: '44a9f71 and 16eaf18 left it out silently, the round-1 tree and 99f38f9 with a warning; 3212230 makes it "Introduction". A front page in its own file is indistinguishable from r3/p2’s summaries, so it stays front matter, with a warning that says how much (open item proseFront; rules 2 and 3).',
         chapters: chapters(2),
         words: [300, 300],
-        leftOut: 256,
+        leftOut: { words: 256, of: /“Title Page”/ },
       },
       {
         name: 'r2/e1 4: a shared "Title Page" with a © line, then the 200-word prologue',
@@ -1601,7 +1634,7 @@ asleep in his chair with the last lantern still burning there.
         chapters: chapters(2),
         words: [300, 300],
         lacks: ['reproduced'],
-        leftOut: 66,
+        leftOut: { words: 66, of: /before the first chapter in the table of contents/ },
       },
       {
         name: 'r2/e2 L3: an unlisted © line, dedication and epigraph',
@@ -1624,7 +1657,7 @@ asleep in his chair with the last lantern still burning there.
         chapters: chapters(2),
         words: [300, 300],
         lacks: ['reproduced'],
-        leftOut: 79,
+        leftOut: { words: 79, of: /“Copyright”/ },
       },
       {
         name: 'r2/e2 L5: a listed "Title Page" with title, byline, © and a 120-word summary',
@@ -1633,7 +1666,7 @@ asleep in his chair with the last lantern still burning there.
         why: '44a9f71 and 16eaf18 left it out silently, 99f38f9 on with a warning; rule 1 wants the count.',
         chapters: chapters(2),
         words: [300, 300],
-        leftOut: 130,
+        leftOut: { words: 130, of: /“Title Page”/ },
       },
       {
         name: 'r2/e2 L6: a listed "Copyright" entry between chapters, in a fic’s words',
@@ -1655,7 +1688,7 @@ asleep in his chair with the last lantern still burning there.
         why: 'Every tree leaves it out; only 99f38f9 said so. Rule 1: from LEFT_OUT_MIN words up, say so, with the count.',
         chapters: chapters(2),
         words: [300, 300],
-        leftOut: 42,
+        leftOut: { words: 42, of: /“Copyright”/ },
       },
       ...(
         [
@@ -1764,7 +1797,7 @@ asleep in his chair with the last lantern still burning there.
       {
         name: 'r2/e7 O3: a one-shot [Title Page, The Long Road#start] and three small unheaded files',
         file: 'o3.epub',
-        input: () => epub([['Title Page', 'story.xhtml'], ['The Long Road', 'story.xhtml#start']], { 'story.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><div id="start">${para('STORY', 2000)}</div>`, 'b1.xhtml': para('X', 50), 'b2.xhtml': para('Y', 50), 'b3.xhtml': para('Z', 50) }),
+        input: () => epub([['Title Page', 'story.xhtml'], ['The Long Road', 'story.xhtml#start']], { 'story.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><div id="start">${para('STORY', 2000)}</div>`, 'b1.xhtml': para('X', 50), 'b2.xhtml': para('Y', 50), 'b3.xhtml': para('Z', 50) }, { meta: ONE_SHOT_META }),
         why: '44a9f71 and 99f38f9 kept only the 150 words of the small files; 16eaf18 and 3212230 keep all of it as one chapter (v3.1).',
         chapters: ['The Long Road'],
         words: [2150],
@@ -1785,6 +1818,7 @@ asleep in his chair with the last lantern still burning there.
             epub(
               [['Cover', 'index_split_000.html'], ['The Long Road', 'index_split_000.html#story']],
               Object.fromEntries(tags.map((t, i) => [`index_split_00${i}.html`, i ? para(t, 1000) : `<div><img src="cover.jpg" alt=""/></div><h1>The Long Road</h1><p>by Quiet Owl</p><p id="story">PARTA</p>${para('PARTA', 1000)}`])),
+              { meta: ONE_SHOT_META },
             ),
           why: '44a9f71 and 99f38f9 lost split_000’s 1,000 words of story; 16eaf18 kept them behind a 6-word "Cover" chapter (v3.1).',
           chapters: ['The Long Road'],
@@ -1833,7 +1867,7 @@ asleep in his chair with the last lantern still burning there.
         why: dwWhy,
         has: ['ONE0x0 ', `ONE${a / 100 - 1}x99`],
         lacks: ["can't wait"],
-        keptOrWarned: { has: ['TWO0x0 ', `TWO${b / 100 - 1}x99`], words: b },
+        keptOrWarned: { has: ['TWO0x0 ', `TWO${b / 100 - 1}x99`], words: b, of: /comments/ },
       });
       return [
         {
@@ -1843,7 +1877,7 @@ asleep in his chair with the last lantern still burning there.
           why: dwWhy,
           has: ['ONE0x0 ', 'ONE8x99'],
           lacks: ["can't wait", 'Recent Entries'],
-          keptOrWarned: { has: ['TWO0x0 ', 'TWO8x99'], words: 900 },
+          keptOrWarned: { has: ['TWO0x0 ', 'TWO8x99'], words: 900, of: /comments/ },
         },
         {
           name: 'r2/h1b: the same with a quick-reply <form> after the comments',
@@ -1853,7 +1887,7 @@ asleep in his chair with the last lantern still burning there.
           why: dwWhy,
           has: ['ONE0x0 ', 'ONE8x99'],
           lacks: ["can't wait", 'Recent Entries'],
-          keptOrWarned: { has: ['TWO0x0 ', 'TWO8x99'], words: 900 },
+          keptOrWarned: { has: ['TWO0x0 ', 'TWO8x99'], words: 900, of: /comments/ },
         },
         {
           name: 'r2/h1: a kink meme post, a fill in two 1,500-word comments',
@@ -1861,7 +1895,7 @@ asleep in his chair with the last lantern still burning there.
           input: () => kink('quietowl', 'Fic: The Long Road (1/2)', `${LIFT}${dwComment('anon', 'FILL: Six Hours (1/2)', paras('FILLA', 1500), 2)}${dwComment('anon', 'FILL: Six Hours (2/2)', paras('FILLB', 1500), 3)}${readers(6)}`),
           why: 'As above: 16eaf18 and 99f38f9 kept fill 1 alone, silently.',
           lacks: ["can't wait"],
-          keptOrWarned: { has: ['FILLA0x0 ', 'FILLB14x99'], words: 1500 },
+          keptOrWarned: { has: ['FILLA0x0 ', 'FILLB14x99'], words: 1500, of: /comments/ },
         },
         {
           name: 'r2/h2 P1: a 45,000-word WordPress post with <hr> breaks and comments',
@@ -2008,7 +2042,7 @@ asleep in his chair with the last lantern still burning there.
           why: dwWhy,
           has: ['ONE0x0 ', 'ONE14x99'],
           lacks: ["can't wait"],
-          keptOrWarned: { has: ['TWO0x0 ', 'TWO7x99', 'THREE7x99'], words: 1600 },
+          keptOrWarned: { has: ['TWO0x0 ', 'TWO7x99', 'THREE7x99'], words: 1600, of: /comments/ },
         },
         ...[2, 3, 5].map((parts): Case => {
           const fills = Array.from({ length: parts }, (_, k) => dwComment('anon', `FILL: Six Hours (${k + 1}/${parts})`, paras(`F${k}P`, 700), k + 2)).join('');
@@ -2016,9 +2050,12 @@ asleep in his chair with the last lantern still burning there.
             name: `r3/p6: a kink meme fill in ${parts} comments of 700 words`,
             file: 'kink.html',
             input: () => kink('fandom_kink', 'Round 12 prompt post', `${LIFT}${fills}${readers(4, 'Re: FILL', 7)}`),
-            why: '16eaf18 and 99f38f9 kept one 700-word fill of two or three, silently.',
+            why:
+              parts < 5
+                ? '16eaf18 and 99f38f9 kept one 700-word fill of two or three, silently.'
+                : 'With five fills the comment thread outweighs the post, and every tree keeps it whole: the fills, and the readers’ comments and the prompt with them (not checked here: nothing is lost, and telling a fill from a reader’s comment would take a new rule).',
             ...(parts < 5 ? { lacks: ["can't wait"] } : {}),
-            keptOrWarned: { has: Array.from({ length: parts }, (_, k) => `F${k}P0x0 `), words: 700 * (parts - 1) },
+            keptOrWarned: { has: Array.from({ length: parts }, (_, k) => `F${k}P0x0 `), words: 700 * (parts - 1), of: /comments/ },
           };
         }),
         { name: 'r3/p9 a: a Blogger chapter with four short comments', file: 'a.html', input: () => blogger(paras('STORY', 2500), [0, 1, 2, 3].map(bloggerShort)), title: "Quiet Owl's Fic Corner: Lantern Weather (Chapter 3)", generator: 'readability', total: 2500, lacks: bloggerLacks },
@@ -2036,9 +2073,31 @@ asleep in his chair with the last lantern still burning there.
     })(),
   ],
   [
-    'r3/p1, r3/p10: one chapter entry and several files (open item runsOn)',
+    'r3/p1, r3/p10, r4/a1: one chapter entry and several files (open item runsOn)',
     ((): Case[] => {
       const why = 'Open item runsOn: 44a9f71, 16eaf18 and 99f38f9 make one chapter per file with the mismatch warning; 3212230 runs the files into one "Start" chapter with no warning because no file opens with an h1–h3.';
+      const splitWhy =
+        '49442b7 made a chapter of each file ("x" from <title>) with the mismatch warning when a later file opened with anything but running text; 3212230 keeps one chapter, and 16eaf18 kept the text in one chapter (behind a 6-word front-page chapter). Calibre splits at chapter headings first, so a file that opens with a short line (dialogue, a scene break, "Later that night") is the text running on.';
+      const ao3Split = (first: string) => {
+        const files = {
+          's0.xhtml': xhtml(
+            '<div id="preface"><h2 class="toc-heading">Preface</h2><p class="message"><b>The Long Road</b><br/>Posted originally on the <a href="https://archiveofourown.org/">Archive of Our Own</a> at <a href="https://archiveofourown.org/works/4242">https://archiveofourown.org/works/4242</a>.</p><div class="meta"><dl class="tags"><dt>Rating:</dt><dd>General Audiences</dd><dt>Stats:</dt><dd>Published: 2021-01-02 Words: 9000 Chapters: 1/1</dd></dl><h1>The Long Road</h1><div class="byline">by <a href="x" rel="author">owl</a></div></div></div>',
+          ),
+          's1.xhtml': xhtml(`<div id="chapters" class="userstuff"><h2 class="toc-heading">The Long Road</h2><div class="userstuff">${paras('A', 3000)}</div></div>`),
+          's2.xhtml': xhtml(`<div id="chapters" class="userstuff"><div class="userstuff">${first}${paras('B', 3000)}</div></div>`),
+          's3.xhtml': xhtml(`<div id="chapters" class="userstuff"><div class="userstuff">${paras('C', 3000)}</div></div>`),
+          's4.xhtml': xhtml('<div id="afterword"><h2 class="toc-heading">Afterword</h2><div id="endnotes"><p>End Notes</p><blockquote class="userstuff"><p>Thanks for reading.</p></blockquote></div></div>'),
+        };
+        const names = Object.keys(files);
+        return buildEpub({
+          opfPath: 'content.opf',
+          metadata: '<dc:title>The Long Road</dc:title><dc:creator>owl</dc:creator><dc:publisher>Archive of Our Own</dc:publisher><dc:identifier>https://archiveofourown.org/works/4242</dc:identifier>',
+          manifest: { ncx: ['toc.ncx', NCX], ...Object.fromEntries(names.map((n, i): [string, [string, string]] => [`s${i}`, [n, X]])) },
+          spine: names.map((_, i) => `s${i}`),
+          spineAttrs: 'toc="ncx"',
+          files: { ...files, 'toc.ncx': ncx([['Preface', 's0.xhtml'], ['The Long Road', 's1.xhtml'], ['Afterword', 's4.xhtml']]) },
+        });
+      };
       const start = (files: Record<string, string>) => epub([['Start', Object.keys(files)[0]]], files);
       const sixFiles = (name: (i: number) => string, title: (i: number) => string) => Object.fromEntries(Array.from({ length: 6 }, (_, i) => [name(i), `${title(i)}${paras(`C${i}`, 300, 50)}`]));
       const perFile = (heading: number): Partial<Case> => ({
@@ -2165,20 +2224,119 @@ asleep in his chair with the last lantern still burning there.
           words: [200, 400, 400, 150],
           warn: 'none',
         },
+        ...['<p>“No.”</p>', '<p>* * *</p>', '<p>“Where are you going?”</p>', '<p class="calibre1">Later that night</p>'].map(
+          (first, k): Case => ({
+            name: `r4/a1 E${k + 1}: the r2/e8 Calibre-split one-shot, split_002 opening ${first}`,
+            file: `e${k + 1}.epub`,
+            input: () =>
+              epub([['Cover', 'index_split_000.html'], ['The Long Road', 'index_split_000.html#story']], {
+                'index_split_000.html': `<div><img src="cover.jpg" alt=""/></div><h1>The Long Road</h1><p>by Quiet Owl</p><p id="story">PARTA</p>${paras('PARTA', 1000)}`,
+                'index_split_001.html': paras('PARTB', 1000),
+                'index_split_002.html': first + paras('PARTC', 1000),
+                'index_split_003.html': paras('PARTD', 1000),
+              }, { meta: ONE_SHOT_META }),
+            why: splitWhy,
+            chapters: ['The Long Road'],
+            words: [4003],
+            extra: [inOrder('PARTA0x0 ', 'PARTB0x0 ', 'PARTC0x0 ', 'PARTD9x99.')],
+            warn: 'none',
+          }),
+        ),
+        {
+          name: 'r4/a1 O3b: the r2/e7 O3 one-shot whose second small file opens with “No.”',
+          file: 'o3b.epub',
+          input: () =>
+            epub([['Title Page', 'story.xhtml'], ['The Long Road', 'story.xhtml#start']], {
+              'story.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><div id="start">${para('STORY', 2000)}</div>`,
+              'b1.xhtml': para('X', 50),
+              'b2.xhtml': `<p>“No.”</p>${para('Y', 50)}`,
+              'b3.xhtml': para('Z', 50),
+            }, { meta: ONE_SHOT_META }),
+          why: `${splitWhy} 44a9f71 and 99f38f9 lost the story itself here (as in O3).`,
+          chapters: ['The Long Road'],
+          words: [2151],
+          extra: [inOrder('STORY0 ', 'STORY1999', 'X49.', '“No.”', 'Y49.', 'Z49.')],
+          warn: 'none',
+        },
+        {
+          name: 'r4/a1 D: [The Long Road → index_split_000] over three files, split_001 opening “No.”',
+          file: 'd.epub',
+          input: () =>
+            epub([['The Long Road', 'index_split_000.html']], {
+              'index_split_000.html': `<h1>The Long Road</h1>${paras('A', 1500)}`,
+              'index_split_001.html': `<p class="calibre2">“No.”</p>${paras('B', 1500)}`,
+              'index_split_002.html': paras('C', 1500),
+            }, { meta: ONE_SHOT_META }),
+          why: '16eaf18, 99f38f9 and 49442b7 made a chapter of each file ("x" from <title>) with the mismatch warning; 3212230 keeps one. Calibre splits at chapter headings first, so a file that opens with a short line is the text running on.',
+          chapters: ['The Long Road'],
+          words: [4501],
+          extra: [inOrder('A0x0 ', '“No.”', 'B0x0 ', 'C14x99.')],
+          warn: 'none',
+        },
+        ...[
+          ['N', '<p>“No.”</p>'],
+          ['S', '<p>He ran down the road until the lights of the town were gone behind him.</p>'],
+        ].map(
+          ([id, first]): Case => ({
+            name: `r4/a1 AO3 ${id}: an AO3 one-shot Calibre split into three chapter files, split_002 opening ${first.slice(0, 24)}…`,
+            file: `ao3${id}.epub`,
+            input: () => ao3Split(first),
+            why: 'An AO3 one-shot (Chapters: 1/1) is one chapter wherever Calibre split its text: 16eaf18 and 99f38f9 made a chapter of each file ("x" from <title>) with the mismatch warning, 3212230 keeps one, and 49442b7 did either, by how split_002 opens. Calibre splits AO3’s works at chapter headings (h2.heading), so a file that opens without one is the text running on.',
+            generator: 'ao3',
+            origin: 'ao3:4242',
+            chapters: ['The Long Road'],
+            words: [id === 'N' ? 9001 : 9015],
+            extra: [inOrder('A0x0 ', 'B0x0 ', 'C29x99.')],
+            warn: 'none',
+          }),
+        ),
+        {
+          name: 'r4/a1 C: Start-only TOC, 6 files opening with sentence-like titles (“In which the dog finds Harry.”)',
+          file: 'conv.epub',
+          input: () => start(Object.fromEntries(['Harry finds a dog', 'the dog finds Harry', 'nobody is happy', 'it rains', 'they go home', 'it ends'].map((t, i) => [`ch${i}.xhtml`, `<p>In which ${t}.</p>${paras(`C${i}`, 300, 50)}`]))),
+          why: 'Genuinely ambiguous: a file that opens with a sentence can’t be told from a split one-shot’s text running on. Nothing says this book is one chapter (a lone "Start" isn’t its title, no "Chapters: 1/1"), so, as 44a9f71, 16eaf18 and 99f38f9 did, each file is a chapter, with the mismatch warning (rule 2). A one-shot that says so (AO3 N/S, E1–E4, D) still runs on.',
+          ...perFile(4),
+          words: [304, 305, 304, 303, 304, 303],
+          inChapter: Object.fromEntries(Array.from({ length: 6 }, (_, i) => [i, [`C${i}0x0 `, `C${i}5x49.`]])),
+        },
+        // Verifier probe r5/b1: chapters whose titles are short lines that aren't headings by markup.
+        ...(
+          [
+            ['Calibre DOCX bold named title', (i: number) => `<p class="block_1"><b class="calibre3">${named[i]}</b></p>`],
+            ['strong named title', (i: number) => `<p class="calibre1"><strong>${named[i]}</strong></p>`],
+            ['centred bold named title', (i: number) => `<p style="text-align: center"><b>${named[i]}</b></p>`],
+            ['p.center named title', (i: number) => `<p class="center">${named[i]}</p>`],
+            ['span.chapter-title inside p', (i: number) => `<p class="calibre2"><span class="chapter-title">${named[i]}</span></p>`],
+            ['bold number "One"/"Two"', (i: number) => `<p class="block_1"><b>${['One', 'Two', 'Three', 'Four', 'Five', 'Six'][i]}</b></p>`],
+            ['bold digit "1"', (i: number) => `<p class="block_1"><b>${i + 1}</b></p>`],
+            ['bold "Part n"', (i: number) => `<p class="block_1"><b>Part ${i + 1}</b></p>`],
+          ] as const
+        ).map(
+          ([label, title], k): Case => ({
+            name: `r5/b1 ${k + 1}: Start-only TOC, 6 chapter files, ${label}`,
+            file: `b1-${k + 1}.epub`,
+            input: () => start(Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`index_split_00${i}.html`, `${title(i)}${paras(`C${i}`, 300, 50)}`]))),
+            why: '49442b7, 99f38f9 and 16eaf18 make a chapter of each file with the mismatch warning; the round-6 tree merged them into one "Start" chapter with no warning. Nothing says the book is one chapter, so each file stays one.',
+            count: 6,
+            inChapter: Object.fromEntries(Array.from({ length: 6 }, (_, i) => [i, [`C${i}0x0 `, `C${i}5x49.`]])),
+            warn: /didn’t match/,
+          }),
+        ),
       ];
     })(),
   ],
   [
-    'r3/p2, r3/p11: summaries, blurbs and prologues on front pages (open items proseFront, storyOf)',
+    'r3/p2, r3/p11, r4/a5–a7: summaries, blurbs, prologues and fields on front pages (open items proseFront, storyOf)',
     ((): Case[] => {
       const ownFile = 'Open item proseFront: a front page in its own file stays front matter, as in 44a9f71, 16eaf18 and 99f38f9, with a warning that says how much was left out; 3212230 makes it an "Introduction" chapter.';
       const opening = '<p><i>Godric\'s Hollow, 1981</i></p><p>“Run!”</p><p>“Where?”</p><p>“Anywhere!”</p>';
       const prologue = `${opening}<p>The night was dark and ${words('PRO', 200)}.</p>`;
       const ch = (k: number) => `<h2 id="c${k}">Chapter ${k}</h2>${para(`C${k}x`, 300)}`;
       const keptLines = ["Godric's Hollow, 1981", '“Run!”', '“Where?”', '“Anywhere!”', 'PRO0 ', 'PRO199'];
+      const fieldsWhy = 'Every tree dropped the prologue silently: a page with two "Key: value" lines was front matter before anything else was looked at. Text that shares chapter 1’s file is kept, as in r2/e1 1; the fields are read, not shown.';
       return [
-        { name: 'r3/p2 2a: a "Title Page" file with h1, byline and a 160-word summary', file: '2a.epub', input: () => epub([['Title Page', 'title.xhtml'], ...CH_TOC], { 'title.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><p>${summary(160)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: 166 },
-        { name: 'r3/p2 2b: the same with a "Summary:" label and 200 words', file: '2b.epub', input: () => epub([['Title Page', 'title.xhtml'], ...CH_TOC], { 'title.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><p><b>Summary:</b> ${summary(200)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: 207 },
+        { name: 'r3/p2 2a: a "Title Page" file with h1, byline and a 160-word summary', file: '2a.epub', input: () => epub([['Title Page', 'title.xhtml'], ...CH_TOC], { 'title.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><p>${summary(160)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: { words: 166, of: /“Title Page”/ } },
+        { name: 'r3/p2 2b: the same with a "Summary:" label and 200 words', file: '2b.epub', input: () => epub([['Title Page', 'title.xhtml'], ...CH_TOC], { 'title.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><p><b>Summary:</b> ${summary(200)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: { words: 207, of: /“Title Page”/ } },
         {
           name: 'r3/p2 2c: a "Title Page" sharing chapter 1’s file, with a 160-word summary',
           file: '2c.epub',
@@ -2188,9 +2346,9 @@ asleep in his chair with the last lantern still burning there.
           words: [null, 300, 300],
           inChapter: { 0: ['SUM0x ', 'SUM7x '] },
         },
-        { name: 'r3/p2 2d: a "Cover" file with an image and a 180-word back-cover blurb', file: '2d.epub', input: () => epub([['Cover', 'cov.xhtml'], ...CH_TOC], { 'cov.xhtml': `<img src="c.png" alt=""/><p>${summary(180)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: 180 },
-        { name: 'r3/p2 2e: a "Title Page" file with a 120-word summary', file: '2e.epub', input: () => epub([['Title Page', 'title.xhtml'], ...CH_TOC], { 'title.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><p>${summary(120)}</p>`, ...CH }), why: '44a9f71 and 16eaf18 left it out silently; rule 1 wants the count.', chapters: chapters(2), words: [300, 300], leftOut: 126 },
-        { name: 'r3/p2 2f: an "Information" file before the chapters with 200 words of notes', file: '2f.epub', input: () => epub([['Information', 'info.xhtml'], ...CH_TOC], { 'info.xhtml': `<h1>The Long Road</h1><p>${summary(200)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: 203 },
+        { name: 'r3/p2 2d: a "Cover" file with an image and a 180-word back-cover blurb', file: '2d.epub', input: () => epub([['Cover', 'cov.xhtml'], ...CH_TOC], { 'cov.xhtml': `<img src="c.png" alt=""/><p>${summary(180)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: { words: 180, of: /“Cover”/ } },
+        { name: 'r3/p2 2e: a "Title Page" file with a 120-word summary', file: '2e.epub', input: () => epub([['Title Page', 'title.xhtml'], ...CH_TOC], { 'title.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><p>${summary(120)}</p>`, ...CH }), why: '44a9f71 and 16eaf18 left it out silently; rule 1 wants the count.', chapters: chapters(2), words: [300, 300], leftOut: { words: 126, of: /“Title Page”/ } },
+        { name: 'r3/p2 2f: an "Information" file before the chapters with 200 words of notes', file: '2f.epub', input: () => epub([['Information', 'info.xhtml'], ...CH_TOC], { 'info.xhtml': `<h1>The Long Road</h1><p>${summary(200)}</p>`, ...CH }), why: ownFile, chapters: chapters(2), words: [300, 300], leftOut: { words: 203, of: /“Information”/ } },
         {
           name: 'r3/p11 T1: a shared "Title Page": a place line, three short lines of dialogue, then 200 words',
           file: 't1.epub',
@@ -2200,7 +2358,7 @@ asleep in his chair with the last lantern still burning there.
           words: [null, 300, 300],
           inChapter: { 0: keptLines },
         },
-        { name: 'r3/p11 T2: the same prologue on a "Title Page" in its own file', file: 't2.epub', input: () => epub([['Title Page', 'tp.xhtml'], ['Chapter 1', 'c1.xhtml'], ['Chapter 2', 'c2.xhtml']], { 'tp.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p>${prologue}`, 'c1.xhtml': ch(1), 'c2.xhtml': ch(2) }), why: `${ownFile} (As r2/e1 3.)`, chapters: chapters(2), words: [300, 300], leftOut: 217 },
+        { name: 'r3/p11 T2: the same prologue on a "Title Page" in its own file', file: 't2.epub', input: () => epub([['Title Page', 'tp.xhtml'], ['Chapter 1', 'c1.xhtml'], ['Chapter 2', 'c2.xhtml']], { 'tp.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p>${prologue}`, 'c1.xhtml': ch(1), 'c2.xhtml': ch(2) }), why: `${ownFile} (As r2/e1 3.)`, chapters: chapters(2), words: [300, 300], leftOut: { words: 217, of: /“Title Page”/ } },
         {
           name: 'r3/p11 T3: a shared "Title Page": "Ten years earlier" in bold, then 200 words',
           file: 't3.epub',
@@ -2209,6 +2367,107 @@ asleep in his chair with the last lantern still burning there.
           chapters: [LEAD, ...chapters(2)],
           words: [null, 300, 300],
           inChapter: { 0: ['Ten years earlier', 'PRO0 ', 'PRO199'] },
+        },
+        {
+          name: 'r4/a6 G1: a "Title Page" in its own file with two "Key: value" lines and a 150-word author’s note',
+          file: 'g1.epub',
+          input: () => epub([['Title Page', 'tp.xhtml'], ...CH_TOC], { 'tp.xhtml': `<h1>The Long Road</h1><p>by Quiet Owl</p><p>Fandom: Harry Potter</p><p>Rating: T</p><p>Author's note: ${words('AN', 150)}.</p>`, ...CH }),
+          why: `Every tree left it out silently: a page with two "Key: value" lines was front matter before anything else was looked at. ${ownFile.replace(/;.*/, '.')} (rule 1)`,
+          chapters: chapters(2),
+          words: [300, 300],
+          leftOut: { words: 163, of: /“Title Page”/ },
+        },
+        {
+          name: 'r4/a6 G2: a shared "Title Page" with two "Key: value" lines, then a 200-word prologue',
+          file: 'g2.epub',
+          input: () => sharedTitlePage(`<h1>The Long Road</h1><p>by Quiet Owl</p><p>Fandom: Harry Potter</p><p>Rating: T</p><p>${words('PRO', 200)}.</p>`),
+          why: fieldsWhy,
+          chapters: [LEAD, ...chapters(2)],
+          words: [200, 300, 300],
+          inChapter: { 0: ['PRO0 ', 'PRO199'] },
+          lacks: ['Fandom:'],
+          warn: 'none',
+        },
+        {
+          name: 'r4/a7 G3: a Calibre single file: contents (40 links), then a 150-word foreword before chapter 1',
+          file: 'g3.epub',
+          input: () => {
+            const name = (i: number) => `Chapter ${i + 1}: The Long Road Goes On`;
+            const toc = `<h2 id="toc">Table of Contents</h2>${Array.from({ length: 40 }, (_, i) => `<p><a href="#c${i + 1}">${name(i)}</a></p>`).join('')}`;
+            const body = Array.from({ length: 40 }, (_, i) => `<h2 id="c${i + 1}">${name(i)}</h2>${para(`C${i}x`, 100)}`).join('');
+            return epub([['Table of Contents', 'index.html#toc'], ...Array.from({ length: 40 }, (_, i): [string, string] => [name(i), `index.html#c${i + 1}`])], { 'index.html': `<h1>The Long Road</h1><p>by Quiet Owl</p>${toc}<p>${words('FWD', 150)}.</p>${body}` });
+          },
+          why: '44a9f71, 99f38f9, 3212230 and 49442b7 dropped the foreword silently; 16eaf18 kept it in a 430-word "Table of Contents" chapter, the 40 contents lines with it. The foreword shares chapter 1’s file, so it is kept; the contents entries are not text.',
+          count: 41,
+          words: [null, ...Array.from({ length: 40 }, () => 100)],
+          inChapter: { 0: ['FWD0 ', 'FWD149.'] },
+          lacks: ['Goes On'],
+          warn: 'none',
+        },
+        {
+          name: 'r4/a7 G4: a shared "Title Page" holding a fic’s header (Title, Author, Fandom, Rating, Summary), then a 220-word prologue',
+          file: 'g4.epub',
+          input: () => sharedTitlePage(`<p>Title: The Long Road</p><p>Author: Quiet Owl</p><p>Fandom: Harry Potter</p><p>Rating: PG</p><p>Summary: Two travellers and a dog.</p><hr/><p>${words('PRO', 120)}.</p><p>${words('PRQ', 100)}.</p>`),
+          why: fieldsWhy,
+          chapters: [LEAD, ...chapters(2)],
+          words: [null, 300, 300],
+          inChapter: { 0: ['PRO0 ', 'PRQ99.'] },
+          lacks: ['Fandom:', 'travellers'],
+          warn: 'none',
+        },
+        {
+          name: 'r4/a6 G5: a file no entry names after the "Title Page", with two "Key: value" lines and a 200-word prologue',
+          file: 'g5.epub',
+          input: () => epub([['Title Page', 'tp.xhtml'], ...CH_TOC], { 'tp.xhtml': '<h1>The Long Road</h1><p>by Quiet Owl</p>', 'info.xhtml': `<p>Fandom: Harry Potter</p><p>Rating: T</p><p>${words('PRO', 200)}.</p>`, ...CH }),
+          why: 'Every tree dropped the prologue silently: a file after a front page was more of it when it held two "Key: value" lines. With running text it is a file no entry names, which the lead takes (as r2/e2 L1).',
+          chapters: ['Introduction', ...chapters(2)],
+          words: [null, 300, 300],
+          inChapter: { 0: ['PRO0 ', 'PRO199'] },
+        },
+        ...(['own', 'shared'] as const).map((where): Case => {
+          const name = (i: number) => `In which chapter ${i + 1} happens to everyone.`;
+          const list = (href: (i: number) => string) => `<h2 id="toc">Contents</h2>${Array.from({ length: 30 }, (_, i) => `<p><a href="${href(i)}">${name(i)}</a></p>`).join('')}`;
+          const ch = (i: number) => `<h2 id="c${i + 1}">${name(i)}</h2>${para(`C${i}x`, 100)}`;
+          return {
+            name: `r4 K: a "Contents" page in its ${where} file whose 30 entries read as sentences`,
+            file: `k-${where}.epub`,
+            input: () =>
+              where === 'own'
+                ? epub([['Contents', 'toc.xhtml'], ...Array.from({ length: 30 }, (_, i): [string, string] => [name(i), `c${i + 1}.xhtml`])], { 'toc.xhtml': list((i) => `c${i + 1}.xhtml`), ...Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`c${i + 1}.xhtml`, ch(i)])) })
+                : epub([['Contents', 'all.xhtml#toc'], ...Array.from({ length: 30 }, (_, i): [string, string] => [name(i), `all.xhtml#c${i + 1}`])], { 'all.xhtml': `${list((i) => `#c${i + 1}`)}${Array.from({ length: 30 }, (_, i) => ch(i)).join('')}` }),
+            why: 'Every tree leaves a contents page out (16eaf18 made a 210-word "Contents" chapter of the shared one). Its entries are links, not running text, however they read: no warning.',
+            count: 30,
+            words: Array.from({ length: 30 }, () => 100),
+            warn: 'none',
+          };
+        }),
+        {
+          name: 'r4/a5 D1: a shared "Title Page" set as one <br>-separated block: title, byline, © line, then a 200-word prologue',
+          file: 'd1.epub',
+          input: () => sharedTitlePage(`<div class="front">The Long Road<br/>by Quiet Owl<br/>© 2021 Quiet Owl<br/><br/>${words('PRO', 100)}.<br/><br/>${words('PRQ', 100)}.</div>`),
+          why: '49442b7 left the whole block out (with a count) because it holds a © line; 16eaf18 (Title Page, 210 words) and 3212230 (Introduction) keep it. A block of several lines is a title page’s line only when each of its lines is.',
+          chapters: [LEAD, ...chapters(2)],
+          words: [210, 300, 300],
+          inChapter: { 0: ['PRO0 ', 'PRQ99.'] },
+          warn: 'none',
+        },
+        {
+          name: 'r4/a5 D2: the same block with a "Rating:" line in place of the © line',
+          file: 'd2.epub',
+          input: () => sharedTitlePage(`<div class="front">The Long Road<br/>by Quiet Owl<br/>Rating: T<br/><br/>${words('PRO', 100)}.<br/><br/>${words('PRQ', 100)}.</div>`),
+          why: 'As D1: 16eaf18, 3212230 and 49442b7 keep it.',
+          chapters: [LEAD, ...chapters(2)],
+          words: [208, 300, 300],
+          inChapter: { 0: ['PRO0 ', 'PRQ99.'] },
+          warn: 'none',
+        },
+        {
+          name: 'r4/a5 D3: a shared "Title Page" whose prologue says "copyright" in its first paragraph',
+          file: 'd3.epub',
+          input: () => sharedTitlePage(`<h1>The Long Road</h1><p>by Quiet Owl</p><p>${words('PRO', 100)} and the copyright office was closed.</p><p>${words('PRQ', 100)}.</p>`),
+          why: 'Ambiguous to the rules: 16eaf18 kept it; 99f38f9, 3212230 and 49442b7 leave the page out with a warning, the paragraph read as a notice (49442b7 with the count). Telling a notice from running text that names copyright would take a new rule (rule 3), and nothing is lost silently either way.',
+          has: ['ONE0 ', 'TWO299'],
+          keptOrWarned: { has: ['PRO0 ', 'copyright office', 'PRQ99.'], words: 212, of: /“Title Page”/ },
         },
       ];
     })(),
@@ -2249,19 +2508,19 @@ asleep in his chair with the last lantern still burning there.
           name: 'r3/p7: 30,000 "Part k" entries into one small file at fragments that aren’t there',
           file: 'x.epub',
           input: () => manyEntries(30_000, (k) => `Part ${k}`),
-          why: 'Open item entriesIn: 3212230 copies an array per entry (quadratic): about 5 s here under jest, 0.8 s on 16eaf18.',
+          why: 'Open item entriesIn: 3212230 copies an array per entry (quadratic): about 5 s here under jest, 0.8 s on 16eaf18. 49442b7 read the 30,000-entry NCX in one stretch (about 0.9 s under jest).',
           chapters: chapters(2),
           words: [300, 300],
           warn: /aren’t in the text/,
           ms: 3000,
-          stall: 2000,
+          stall: 1500,
           timeout: 60_000,
         },
         {
           name: 'rule 4: 12,000 "Part k" entries into one file, each at a fragment that is there',
           file: 'x.epub',
           input: () => epub(Array.from({ length: 12_000 }, (_, k): [string, string] => [`Part ${k}`, `a.xhtml#p${k}`]), { 'a.xhtml': Array.from({ length: 12_000 }, (_, k) => `<h2 id="p${k}">Part ${k}</h2><p>${words(`S${k}x`, 20)}.</p>`).join('') }),
-          why: 'Every tree cut the file in a time in step with chapters × nodes (each cut re-linked every node after it): about 6 s here.',
+          why: 'Every tree cut the file in a time in step with chapters × nodes (each cut re-linked every node after it): about 6 s here. 49442b7 still moved every node after each cut (about 1.6 s here under jest); the file is cut once, from its end.',
           count: 12_000,
           total: 240_000,
           ms: 3000,
@@ -2276,7 +2535,7 @@ asleep in his chair with the last lantern still burning there.
           chapters: chapters(2),
           words: [300, 300],
           ms: 3000,
-          stall: 2000,
+          stall: 1500,
           timeout: 60_000,
         },
       ];

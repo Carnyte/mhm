@@ -87,10 +87,10 @@ export interface Case {
   html?: string[];
   /** 'none': no warnings at all; a RegExp: one warning matches it. */
   warn?: RegExp | 'none';
-  /** Text was left out: a warning says so, with about this many words. */
-  leftOut?: number;
-  /** Either all of `has` is in the book, or a warning says about `words` words were left out. */
-  keptOrWarned?: { has: string[]; words: number };
+  /** Text was left out: a warning about it (it matches `of`: the page's name, "comments"…) says so, with about this many words. */
+  leftOut?: { words: number; of: RegExp };
+  /** Either all of `has` is in the book, or a warning about it says about `words` words were left out (see leftOut). */
+  keptOrWarned?: { has: string[]; words: number; of: RegExp };
   /** Must finish within this many ms, with no synchronous stretch longer than `stall` ms. */
   ms?: number;
   stall?: number;
@@ -102,12 +102,14 @@ export interface Case {
 
 const near = (got: number, want: number) => Math.abs(got - want) <= Math.max(5, want * 0.03);
 
-/** A warning that says text was left out, naming a word count within a factor of 2 of `n`. */
-export function leftOutWarning(warnings: string[], n: number): string | undefined {
-  return warnings.find((w) => /\bleft out\b/i.test(w) && [...w.matchAll(/(\d[\d,]*)\s+words?\b/gi)].some((m) => {
-    const said = Number(m[1].replace(/,/g, ''));
-    return said >= n / 2 && said <= n * 2;
-  }));
+/** A warning that says text was left out, about what `of` matches, naming about `n` words (5 words or 5%). */
+export function leftOutWarning(warnings: string[], n: number, of: RegExp): string | undefined {
+  return warnings.find(
+    (w) =>
+      /\bleft out\b/i.test(w) &&
+      of.test(w) &&
+      [...w.matchAll(/(\d[\d,]*)\s+words?\b/gi)].some((m) => Math.abs(Number(m[1].replace(/,/g, '')) - n) <= Math.max(5, n * 0.05)),
+  );
 }
 
 /** Runs `fn`, timing it and its longest stretch without a turn of the event loop. */
@@ -131,7 +133,7 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ value: T; ms: number; s
 
 /** Imports the case's file and checks the book against everything the case states, in one diff. */
 export async function runCase(c: Case): Promise<void> {
-  const asked = c.leftOut ?? c.keptOrWarned?.words;
+  const asked = c.leftOut?.words ?? c.keptOrWarned?.words;
   if (asked !== undefined && asked < LEFT_OUT_MIN) throw new Error(`${c.name}: under ${LEFT_OUT_MIN} words needs no warning`);
   const input = c.input();
   const data = typeof input === 'string' ? bytes(input) : input;
@@ -175,14 +177,14 @@ export async function runCase(c: Case): Promise<void> {
   }
   if (c.warn === 'none') put('warnings', book.warnings, []);
   else if (c.warn) put('warning', book.warnings.some((w) => (c.warn as RegExp).test(w)) ? c.warn : book.warnings, c.warn);
-  if (c.leftOut !== undefined) {
-    const label = `says ~${c.leftOut} words were left out`;
-    put('left out', leftOutWarning(book.warnings, c.leftOut) ? label : book.warnings, label);
+  if (c.leftOut) {
+    const label = `says ~${c.leftOut.words} words of ${c.leftOut.of} were left out`;
+    put('left out', leftOutWarning(book.warnings, c.leftOut.words, c.leftOut.of) ? label : book.warnings, label);
   }
   if (c.keptOrWarned) {
-    const { has, words: n } = c.keptOrWarned;
+    const { has, words: n, of } = c.keptOrWarned;
     const lost = has.filter((m) => !all.includes(m));
-    const ok = !lost.length || leftOutWarning(book.warnings, n);
+    const ok = !lost.length || leftOutWarning(book.warnings, n, of);
     put('kept or warned', ok ? 'ok' : { lost, warnings: book.warnings }, 'ok');
   }
   if (c.ms !== undefined) put('ms', ms < c.ms ? `< ${c.ms}` : ms, `< ${c.ms}`);
