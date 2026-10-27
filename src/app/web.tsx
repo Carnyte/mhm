@@ -1,17 +1,17 @@
 // In-app browser for fanfiction.net pages. Shares cookies with the bridge, so anything done here
 // (logging in, Doc Manager, publishing, settings) uses the same session as the rest of the app.
 
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { IconButton, T } from '../components/ui';
-import { FFN_ORIGIN } from '../ffn/constants';
-import { absolute, parseLink } from '../ffn/urls';
-import { ffnKey } from '../sources/ffn/map';
+import { openLinkHit } from '../features/actions';
+import { absolute } from '../ffn/urls';
 import { bridge } from '../net/bridge';
 import { loginPrefillScript } from '../net/bridgeScript';
-import { FFN_WEBVIEW_PROPS, isMobileSiteUrl, toDesktopUrl } from '../net/webviewConfig';
+import { FFN_WEBVIEW_PROPS } from '../net/webviewConfig';
+import { acceptsCookieMessage, decideNavigation } from '../net/webPolicy';
 import { useTheme } from '../theme';
 
 export default function WebScreen() {
@@ -80,43 +80,33 @@ export default function WebScreen() {
         onMessage={(e) => {
           try {
             const m = JSON.parse(e.nativeEvent.data);
-            if (m.type === 'cookies') bridge.updateCookies(m.cookies ?? '');
+            // Any page can post messages; only fanfiction.net's cookies belong in the bridge.
+            if (m.type === 'cookies' && acceptsCookieMessage(e.nativeEvent.url)) bridge.updateCookies(m.cookies ?? '');
           } catch {
             /* ignore */
           }
         }}
         onShouldStartLoadWithRequest={(req) => {
-          const url = req.url;
-          const top = (req as { isTopFrame?: boolean }).isTopFrame !== false;
-          if (!top) return true;
-          // The mobile site has no login page (it's a 404); open the desktop page instead, once.
-          if (isMobileSiteUrl(url)) {
-            const desktop = toDesktopUrl(url);
-            if (!redirected.current.has(desktop)) {
+          const d = decideNavigation(req.url, 'ffn', { isTopFrame: (req as { isTopFrame?: boolean }).isTopFrame, navigationType: req.navigationType });
+          switch (d.action) {
+            case 'allow':
+              return true;
+            case 'redirect': {
+              // The mobile site has no login page (it's a 404); open the desktop page instead, once.
+              const desktop = d.url!;
+              if (redirected.current.has(desktop)) return true;
               redirected.current.add(desktop);
               setTimeout(() => ref.current?.injectJavaScript(`location.replace(${JSON.stringify(desktop)}); true;`), 0);
               return false;
             }
-            return true;
-          }
-          // Open stories and profiles natively.
-          if (url.startsWith(FFN_ORIGIN) && req.navigationType === 'click') {
-            const t = parseLink(url);
-            if (t?.kind === 'story') {
-              router.push({ pathname: '/story/[id]', params: { id: ffnKey(t.id) } });
+            case 'native':
+              // Stories and profiles open on their screens.
+              openLinkHit(d.hit!);
               return false;
-            }
-            if (t?.kind === 'user') {
-              router.push({ pathname: '/user/[id]', params: { id: String(t.id) } });
+            default:
+              Linking.openURL(req.url).catch(() => {});
               return false;
-            }
           }
-          // Allow fanfiction.net, Cloudflare, and the OAuth providers used by the login page.
-          if (/^https:\/\/([a-z0-9-]+\.)*(fanfiction\.net|fictionpress\.com|cloudflare\.com|google\.com|gstatic\.com|facebook\.com|x\.com|twitter\.com|amazon\.com|microsoftonline\.com|live\.com|microsoft\.com|recaptcha\.net)\//i.test(url) || url === 'about:blank') {
-            return true;
-          }
-          Linking.openURL(url).catch(() => {});
-          return false;
         }}
       />
       {loading && (

@@ -10,8 +10,8 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 5cc19e8
-base_commit_date: 2026-10-21
+base_commit: 1cca7be
+base_commit_date: 2026-10-27
 commits_at_base: 164
 updated: 2026-10-27
 next_task: P-CLIP
@@ -127,10 +127,10 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 
 ### 1.1 Preflight (do first in the next session)
 
-- [ ] PRE-1 Add `jest.setTimeout(30_000);` at the top of `tests/import-screen.test.tsx` (cold-cache
+- [x] PRE-1 Add `jest.setTimeout(30_000);` at the top of `tests/import-screen.test.tsx` (cold-cache
       timeout cascade). Optionally give `tests/sanitize.test.ts:163` more headroom (for example
-      3000 ms).
-- [ ] PRE-2 Fix stale docs:
+      3000 ms). (1cca7be)
+- [x] PRE-2 Fix stale docs (1cca7be):
   - `PLAN.md` §4 (`npm test # unit tests (712)`) and §5 ("712 unit tests") → the current count;
   - `INSTALL.md` intro line 7 ("Nobody has run a full iPhone build of this branch yet") → the user
     has built and run it since 2026-10-06;
@@ -139,10 +139,10 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
   - `README.md` Verification row `npx expo-doctor | 21 / 21` → 20/21 with the patch drift noted,
     or fix the drift (PRE-4);
   - INSTALL "The file-import update": add "check the scheme is still Release" after prebuild.
-- [ ] PRE-3 `scripts/live-check.ts`: any `--source` other than `ao3` silently runs the FFN check
+- [x] PRE-3 `scripts/live-check.ts`: any `--source` other than `ao3` silently runs the FFN check
       (`target = … : 'ffn'`, line ~288). Reject unknown values with a message (a `wp` branch comes
-      in P4).
-- [ ] PRE-4 (only bundled with the next native change, never on its own) `npx expo install --check`
+      in P4). (1cca7be)
+- [ ] PRE-4 (skipped in P-CLIP, a JS-only phase; only bundled with the next native change, never on its own) `npx expo install --check`
       to clear the 11 patch mismatches (`expo` 57.0.27 → ~57.0.31, `expo-router` 57.0.25 → ~57.0.29,
       `jest-expo` 57.0.5 → ~57.0.6, …). These are native packages, so this makes the user's next
       update a prebuild (T2). Not needed for P-CLIP; do not do it in a JS-only phase.
