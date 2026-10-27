@@ -46,11 +46,14 @@ const secondsToMs = (s: number | undefined) => (s ? s * 1000 : undefined);
 
 const SCRIPTISH = new Set(['script', 'style', 'noscript', 'template', 'iframe', 'object', 'embed', 'svg', 'math', 'link', 'meta', 'base', 'canvas']);
 
-/** Removes scripts, styles and hidden elements, in place. */
+/**
+ * Removes scripts, styles and hidden elements, in place. `data-fs-hidden` marks what a page hid
+ * when it was clipped (see src/net/clipScript.ts); files never have it.
+ */
 function stripActive(root: ParentNode) {
   for (const e of findAll((x) => SCRIPTISH.has(x.name), root.children)) removeElement(e);
   for (const e of findAll(
-    (x) => x.attribs.hidden !== undefined || x.attribs['aria-hidden'] === 'true' || /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/i.test(x.attribs.style ?? ''),
+    (x) => x.attribs.hidden !== undefined || x.attribs['data-fs-hidden'] !== undefined || x.attribs['aria-hidden'] === 'true' || /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/i.test(x.attribs.style ?? ''),
     root.children,
   ))
     removeElement(e);
@@ -760,8 +763,8 @@ async function webPage(doc: Document, size: number, stepper: Stepper, images: Im
   };
 }
 
-/** Which kind of page it is, and its book. */
-async function parsePage(html: string, stepper: Stepper, images: ImageTable): Promise<BookDraft> {
+/** Which kind of page it is, and its book (a saved file's, or a page clipped in the browser). */
+export async function parseHtmlPage(html: string, stepper: Stepper, images: ImageTable): Promise<BookDraft> {
   if (/<div id="chapters"/.test(html) && /<div id="preface"/.test(html) && /archiveofourown\.org/i.test(html)) return ao3Download(html, stepper, images);
   // A page saved from AO3 (its title ends "[Archive of Our Own]"): a work, or AO3's notice instead of one.
   if (/id="workskin"/.test(html) || /\[Archive of Our Own\]\s*<\/title>/i.test(html)) {
@@ -780,7 +783,7 @@ export async function parseHtmlFile(bytes: Uint8Array, stepper: Stepper): Promis
   const decoded = await decodeBytesAsync(bytes, { html: true }, stepper.pause);
   // Pictures written into the page (saved "as a single file") become the book's own.
   const images = new ImageTable(() => undefined);
-  const draft = await parsePage(decoded.text, stepper, images);
+  const draft = await parseHtmlPage(decoded.text, stepper, images);
   if (decoded.replaced) draft.warnings.unshift('Some characters couldn’t be read: the file may use a text encoding FicShelf doesn’t know.');
   draft.images = images.list;
   draft.warnings.push(...images.warnings());

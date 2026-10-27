@@ -16,6 +16,7 @@ import { parseMarkdownFile, parseTextFile } from './text';
 import { ImportError, MAX_INPUT_BYTES, type ImportedBook, type ImportOptions } from './types';
 
 export { imageMime, imageRef, parseImageRef, replaceImageRefs } from './build';
+export { asOneChapter, CLIP_EMPTY, cleanClipUrl, parseClip, type ClipOptions } from './clip';
 export { decodeBytes, type DecodedText } from './decode';
 export { detectOrigin, originUrl } from './detect';
 export { sniffFile, type SniffResult } from './sniff';

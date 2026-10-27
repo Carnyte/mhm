@@ -6,8 +6,8 @@ import type { Tag } from '../sources/types';
 
 export type ImportKind = 'epub' | 'html' | 'txt' | 'md';
 
-/** The tool that made the file, when it can be told. */
-export type ImportGenerator = 'ao3' | 'fichub' | 'fanficfare' | 'calibre' | 'ffn' | 'readability';
+/** The tool that made the file, when it can be told ('clip': a page clipped in the in-app browser). */
+export type ImportGenerator = 'ao3' | 'fichub' | 'fanficfare' | 'calibre' | 'ffn' | 'readability' | 'clip';
 
 export interface ImportedChapter {
   title: string;

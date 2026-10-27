@@ -10,7 +10,7 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 1cca7be
+base_commit: 03e4a59
 base_commit_date: 2026-10-27
 commits_at_base: 164
 updated: 2026-10-27
@@ -312,10 +312,10 @@ User flow:
    bookmarks, collections.
 
 Checklist:
-- [ ] CLIP-1 `src/net/webPolicy.ts` (new, pure, no RN imports): `webMode(url) → 'ffn' | 'open'`
+- [x] CLIP-1 `src/net/webPolicy.ts` (new, pure, no RN imports): `webMode(url) → 'ffn' | 'open'`
       (fanfiction.net / fictionpress.com → `ffn`); `decideNavigation(url, mode, {isTopFrame, navigationType})
       → {action: 'allow'|'block'|'external'|'ask'|'native', hit?, message?}`; `acceptsCookieMessage(url)`;
-      the FFN allowlist regex moved here unchanged.
+      the FFN allowlist regex moved here unchanged. (03e4a59)
 - [ ] CLIP-2 `src/app/web.tsx` two modes:
   - `ffn` mode (param `path`, or `url` on fanfiction.net / fictionpress.com): today's behaviour unchanged
     (allowlist, `FFN_WEBVIEW_PROPS`, mobile redirect, cookie push, login prefill, native story/user links);
@@ -326,8 +326,8 @@ Checklist:
     ask "Open in another app?" before `Linking.openURL`; host always shown; FFN / AO3 / Wattpad links
     tapped inside go through `resolveLink` and open natively; no `loginPrefillScript`;
   - new params `url`, `clipFor`; bottom bar with host + Clip; Clip disabled while a capture is pending.
-- [ ] CLIP-3 Accept `{type:'cookies'}` messages only when `acceptsCookieMessage(e.nativeEvent.url)`
-      (fanfiction.net). Closes today's any-page hole.
+- [x] CLIP-3 Accept `{type:'cookies'}` messages only when `acceptsCookieMessage(e.nativeEvent.url)`
+      (fanfiction.net). Closes today's any-page hole. (03e4a59)
 - [ ] CLIP-4 `src/net/clipScript.ts` (new): `clipScript(nonce: string, maxChars: number): string`,
       `CLIP_MESSAGE = 'ficshelf-clip'`, `MAX_CLIP_CHARS = 10_000_000` (see data/API details).
 - [ ] CLIP-5 `src/import/html.ts`: export `parseHtmlPage(html, stepper, images)` (today's `parsePage`);
@@ -530,7 +530,7 @@ Novelpia findings (2026-10-21; Clip's first target and test site; structure only
       `Key-Pair-Id`, `Policy`, `Expires` and fragments, keeps `?chapter=3`, lower-cases the host;
       `isNativeHost` covers `www.fanfiction.net`, `m.fanfiction.net`, `fictionpress.com`,
       `archiveofourown.org`, `ao3.org`, `www.wattpad.com`, `m.wattpad.com`.
-- [ ] CLIP-T3 `tests/web-policy.test.ts`: `ffn` mode equals today's allowlist decisions; `open` mode
+- [x] CLIP-T3 `tests/web-policy.test.ts` (03e4a59): `ffn` mode equals today's allowlist decisions; `open` mode
       allows https, blocks http with a message, blocks `javascript:` / `data:` / `blob:` / `file:`,
       `mailto:` → `ask`; FFN / AO3 links → `native`; non-top frames allowed; `acceptsCookieMessage`
       true only for fanfiction.net.
