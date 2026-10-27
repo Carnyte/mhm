@@ -10,30 +10,34 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 5cc19e8
-commits_at_base: 164 (137 unrelated legacy commits + 27 FicShelf commits from 695e10d)
-updated: 2026-10-21
+base_commit: ca4749f
+commits_at_base: 175 (137 unrelated legacy commits + 38 FicShelf commits from 695e10d)
+updated: 2026-10-27
 next_work: FEATURES.md
-next_task: P4
+next_task: P-CLIP2 (automatic clipping; top priority, no Wattpad until clipping is perfect)
 stack:
-  expo: 57.0.27
+  expo: 57.0.31
+  expo_modules_core: 57.0.24
+  expo_modules_jsi: 57.1.3 (needed for Xcode 27 / Swift 6.4)
   react_native: 0.86.3 (Hermes)
   react: 19.2.3
-  expo_router: 57.0.25
+  expo_router: 57.0.29
   expo_sqlite: 57.0.4
   react_native_webview: 13.16.1
   typescript: 6.0.3
-  jest: 29.7.0 (preset jest-expo 57.0.5)
+  jest: 29.7.0 (preset jest-expo 57.0.6)
+  ios_precompiled_expo_modules: off (app.json expo-build-properties ios.usePrecompiledModules false)
   node_required: ">=22.13"
 platform_target: iPhone, sideloaded with a free Apple ID from Xcode on the user's Mac
-size_at_base: "172 TS/TSX files in src/ (28,584 lines; 46 route files); 51 test files (13,957 lines incl. helpers and fixtures)"
+size_at_base: "179 TS/TSX files in src/; 57 test files"
 checks_at_base:
   tsc: clean
-  jest: "51 suites, 1088 passed + 1 todo"
+  jest: "57 suites, 1153 passed + 1 todo"
   import_corpus: "299 passed + 1 todo"
   lint: "clean, check-keys: ok"
-  expo_export_ios: "bundles 1565 modules; entry-*.hbc about 4.8 MB"
-  expo_doctor: "20/21 (11 patch mismatches)"
+  expo_export_ios: "bundles; entry-*.hbc about 4.9 MB"
+  expo_doctor: "21/21"
+  clip_check: "npx tsx scripts/clip-check.ts: 28/28 (headless Chromium, synthetic pages)"
   live_check_ao3: "5/5 (last run during P3; not re-run since, to keep load off AO3)"
   live_check_ffn: "17/17 (last recorded)"
 ---
@@ -74,13 +78,17 @@ single user sideloads it from source.
 - **Reader** (themes, fonts, paged / scroll, bookmarks, find, progress), **audiobook** (on-device
   TTS incl. Piper add-on voices, lock screen, sleep timer, skip author's notes), **library**
   (history, shelves, collections, downloads, backups), **updates** (foreground and background checks, local notifications).
-- **Wattpad**: link parsing only; reading is the next planned site after Clip.
+- **Clip this page** (built 2026-10-27, works on the phone): FicShelf's in-app browser opens any
+  https site; Clip saves what the page shows as text, as a new local story or its next chapter.
+  Next: P-CLIP2, automatic clipping ("Clip & next", "Clip the next N chapters").
+- **Wattpad**: link parsing only; reading (P4) is **on hold** until the user says clipping is perfect.
 
 Goals and principles (from the user's requests and the design):
 - A modern replacement for the official FFN app, then one app for the user's other sites ("it will
   also feature wattpad and ao3", 2026-10-08; "hopefully any future website", 2026-10-21).
 - Order chosen by the user (2026-10-08): AO3 first, reading before login, import before Wattpad;
-  updated 2026-10-21: "Clip this page" next, before Wattpad.
+  updated 2026-10-21: "Clip this page" next, before Wattpad; updated 2026-10-27: automatic clipping
+  (P-CLIP2) is the top priority, "we're not doign anything wattpad until we perfect clipping feature".
 - Be polite to every site; never get around access control; keep "Open on <site>" one tap away;
   no site logos; "unofficial, not affiliated" wording.
 - Never lose story text silently. Never lose the user's library (safe migrations, backups, "don't delete the app").
@@ -107,6 +115,11 @@ and listen. Imports EPUB, HTML, text and Markdown story files."
   while", "skip the summary"); pastes Xcode output; sometimes quotes a step they're on.
 - Given ranked options (AskUserQuestion, 2026-10-08), they pick the recommended ones.
 - Never put the user's email, real name or username, bundle id, cookies or tokens in docs, code or commits.
+- On sites' terms for clipping, the user decides for their own reading (2026-10-27: "i want you to
+  do it, regardless of TOS"). Don't refuse or nag on terms grounds; keep the hard lines that aren't
+  about terms (FEATURES.md §4a policies: no unlocking / buying / bot-check solving / ticket handling,
+  human pace, foreground only) and say so once when it matters.
+- The user's Xcode updated itself to Xcode 27 with **Swift 6.4** between 2026-10-21 and 2026-10-27.
 
 ### 2.2 How to communicate
 - **Plain language, short status.** Lead with the state ("pushed, ready to install" or "pushed,
@@ -179,7 +192,10 @@ re-run, but recreates `ios/` (redo B8, re-check Team and Release).
 | `fde0496` audiobook (expo-audio, expo-asset) | yes; without it listening stops when the phone locks |
 | `44a9f71` file import (`CFBundleDocumentTypes`, `UTImportedTypeDeclarations`, `LSSupportsOpeningDocumentsInPlace: false`) | yes; without it FicShelf isn't offered in "Open in" (in-app import still works) |
 | TTS / speed / reader fixes, multi-source foundation, source layer, AO3, import fixes | no |
-| P-CLIP (`1cca7be`..) | no |
+| P-CLIP (`1cca7be`..`7546679`) | no |
+| `570b9ad` precompiled Expo modules off (`app.json` `usePrecompiledModules: false`) | yes; without it Xcode 27 (Swift 6.4) fails "Failed to build module 'ExpoModulesCore'; this SDK is not supported by the compiler" |
+| `ca4749f` Expo SDK 57 patch updates (expo-modules-jsi 57.1.3 etc.) | yes; without 57.1.3 Xcode 27 fails "Cannot find type '__ObjC::expo' in scope" in ExpoModulesJSI. The user's phone build used 57.1.3 installed by hand; the lockfile update isn't installed yet, so **the next install is T2** |
+| P-CLIP2 (planned) | no (expo-keep-awake is already in) |
 
 Update templates to send the user:
 - **T1, JavaScript-only update (no prebuild)**: (backup advisable) → `cd ~/ficshelf` → `git pull --autostash`
@@ -219,7 +235,11 @@ Update templates to send the user:
 | File import, "Open in FicShelf" | unit tests, corpus, the user's real sample files (in the old container only), headless-Chromium CSP check; **never on device**; user told "ready to install" (T2) | 2026-10-21 07:22 |
 | FFN account lists, PMs, background checks, notifications, lock-screen ±10 s | no specific report | — |
 
-No device report after 2026-10-07 07:57. Ask about the speed fix, AO3 and import when the user is next back.
+| 7-day free profile expired; reinstall over it from Xcode | renewed by the 2026-10-27 install; nothing extra needed (T4) | 2026-10-27 |
+| Build of `570b9ad` + expo-modules-jsi 57.1.3 (hand-installed) incl. Clip | "perfect it works perfectly now" (CLIP-A items not reported one by one) | 2026-10-27 |
+
+Ask about the speed fix, AO3, import and the individual Clip checks (CLIP-A1..A9, a site login
+surviving an app restart) when the user is next back.
 
 ---
 
@@ -294,11 +314,14 @@ All paths relative to the repo root. Checked at `5cc19e8`.
 - `plugins` in order: `./plugins/withoutPushEntitlement`, `expo-router`, `expo-sqlite`,
   `expo-background-task`, `expo-notifications` (color `#1F3A5F`), `expo-sharing`, `expo-font`,
   `expo-audio` (`microphonePermission: false`, `recordAudioAndroid: false`, `enableBackgroundPlayback: true`),
-  `expo-splash-screen`, `expo-build-properties` (`ios.enableSceneSupport: true`), `expo-asset`.
+  `expo-splash-screen`, `expo-build-properties` (`ios.enableSceneSupport: true`, `ios.usePrecompiledModules: false`), `expo-asset`.
+  `usePrecompiledModules: false` (2026-10-27): Expo's npm-shipped ready-made module frameworks were
+  built with an older Swift than the user's Xcode; the Podfile then sets
+  `EXPO_USE_PRECOMPILED_MODULES=0` and CocoaPods builds Expo's modules from source (slower first build).
 - Prebuild result: deployment target iOS 16.4, scene life cycle on, empty entitlements (no push), background audio, no microphone permission.
 
 ### 4.3 Dependencies (installed versions)
-Runtime: expo 57.0.27; react-native 0.86.3; react / react-dom 19.2.3; expo-router 57.0.25; expo-sqlite
+Runtime (updated 2026-10-27 by `npx expo install --fix`: expo 57.0.31, expo-router 57.0.29, expo-modules-core 57.0.24, expo-modules-jsi 57.1.3, jest-expo 57.0.6; the list below is otherwise as at 5cc19e8): expo 57.0.27; react-native 0.86.3; react / react-dom 19.2.3; expo-router 57.0.25; expo-sqlite
 57.0.4; expo-file-system 57.0.7 (new `File` / `Directory` / `Paths` API); expo-speech 57.0.3;
 expo-audio 57.0.5; expo-background-task 57.0.21; expo-task-manager ~57.0.21; expo-notifications
 57.0.22; expo-document-picker ~57.0.3; expo-sharing, -clipboard, -network, -haptics, -keep-awake,
@@ -315,10 +338,9 @@ eslint 9.39.5, eslint-config-expo ~57.0.2, tsx 4.23.15, playwright-core 1.56.1 (
 dev-proxy only). `react-test-renderer` 19.2.3 (screen tests) arrives only through jest-expo.
 jsdom 20.0.3 and `jest-environment-jsdom` are present in node_modules (transitive).
 
-`npx expo-doctor` at `5cc19e8`: 20/21; 11 patch mismatches (expo 57.0.27 vs ~57.0.31, expo-asset,
--constants, -dev-client, -linking, -network, -notifications, expo-router 57.0.25 vs ~57.0.29,
--sharing, -splash-screen, jest-expo 57.0.5 vs ~57.0.6). Fix with `npx expo install --check` only
-together with a native change (it means a prebuild for the user).
+`npx expo-doctor`: 21/21 since `ca4749f` (the 11 patch mismatches at `5cc19e8` were fixed with
+`npx expo install --fix` together with the Xcode 27 native fix). Patch updates are native changes:
+the user's next install is a prebuild.
 
 ### 4.4 `src/` map
 
@@ -347,6 +369,10 @@ together with a native change (it means a prebuild for the user).
 - `httpCore.ts` (polite `HttpClient`, `POLICIES`, errors; §6.1), `http.ts` (native client with `DESKTOP_USER_AGENT`, `httpText`), `http.web.ts` (web: AO3 / FicHub through dev proxy `/http`, `EXPO_PUBLIC_FFN_PROXY` default `http://localhost:8787`; Wattpad direct with `credentials:'omit'`).
 - `blocks.ts`: `SourceBlockedError`, `isAo3Block` / `detectAo3Block` (`cf-mitigated: challenge`, Cloudflare's exact titles, `cf_chl_opt`), `isWpBlock` / `detectWpBlock` (`x-amzn-waf-action`, CloudFront 403, HTML where JSON was expected).
 - `bridge.ts` (FFN queue; §6.2), `bridgeScript.ts` (`BRIDGE_SCRIPT` with `window.__ffnBridge.announce/fetch`, `loginPrefillScript`), `challenge.ts` (`RawResponse`, `isChallengeResponse`, `parseCookies`, `usernameFromCookies` via the `funn` cookie), `BridgeHost.tsx` (hidden WebView, full screen for "Verify you are human", remount on `onContentProcessDidTerminate`), `BridgeHost.web.tsx`.
+- Clip: `webPolicy.ts` (`decideNavigation(url, mode, ctx)` for the in-app browser's two modes; FFN
+  mode = the old allowlist decisions exactly), `webHosts.ts` (`webMode`, `isNativeHost`,
+  `acceptsCookieMessage`; no registry import, used by `+native-intent.tsx`), `clipScript.ts`
+  (`clipScript(nonce, maxChars, timing)`, `CLIP_MESSAGE`, `MAX_CLIP_CHARS`).
 - `webviewConfig.ts`: `FFN_HOST`, `DESKTOP_USER_AGENT` (desktop Safari, version from `Platform.Version`), `FFN_WEBVIEW_PROPS` (UA + `contentMode:'desktop'`), `isMobileSiteUrl`, `toDesktopUrl`.
 - `images.ts`: `directImageUri` / `loadImage` / hook; FFN images through the bridge as base64 (LRU 400, 3 at a time); other https, `file:`, `data:`, `ficshelf-doc:` load directly.
 
@@ -364,15 +390,15 @@ together with a native change (it means a prebuild for the user).
 
 **`src/state/`**: `store.ts` (`createStore` get / set / subscribe; `useStore` with shallow-equal selectors), `library.ts` (§5.4), `settings.ts` (§5.5), `session.ts` (FFN login session from bridge cookies; user id cached in kv `myUser`).
 
-**`src/features/`**: `chapters.ts` (`fetchStory`, `fetchChapter`, `loadChapter`, `usableSavedChapter`, `prefetchChapter`, `getSavedChapter`, `saveChapter`, re-export `renderChapter`), `downloads.ts` (`downloadStory`, `cancelDownload`, `removeDownload`, `removeAllDownloads`, `downloadedBytes`, `downloadsStore`), `updates.ts` (§6.3, §6.2), `chapterIds.ts` (`applyChapterIds`, `chapterIdsOf`, `onChapterRemap`, `announceRemap`), `actions.ts` (`openStory`, `openReader`, `openAuthor`, `openWeb`, `openLinkHit`, `openReaderLink`, `shareStory`, `copyLink`, `storyMenu`, `storyPageMenu`, `readerMenu`, `collectionActions`, `gatedStory`), `adultGate.ts` (`isAdultWork`, `needsAdultGate`, `agreeToAdult`, `alwaysShowAdult`, `resetAdultGate`, `afterAdultGate`), `imports.ts`, `importFiles.ts`, `importHandoff.ts`, `importPicker.ts` (§6.4).
+**`src/features/`**: `chapters.ts` (`fetchStory`, `fetchChapter`, `loadChapter`, `usableSavedChapter`, `prefetchChapter`, `getSavedChapter`, `saveChapter`, re-export `renderChapter`), `downloads.ts` (`downloadStory`, `cancelDownload`, `removeDownload`, `removeAllDownloads`, `downloadedBytes`, `downloadsStore`), `updates.ts` (§6.3, §6.2), `chapterIds.ts` (`applyChapterIds`, `chapterIdsOf`, `onChapterRemap`, `announceRemap`), `actions.ts` (`openStory`, `openReader`, `openAuthor`, `openWeb`, `openLinkHit`, `openReaderLink`, `shareStory`, `copyLink`, `storyMenu`, `storyPageMenu`, `readerMenu`, `collectionActions`, `gatedStory`), `adultGate.ts` (`isAdultWork`, `needsAdultGate`, `agreeToAdult`, `alwaysShowAdult`, `resetAdultGate`, `afterAdultGate`), `imports.ts`, `importFiles.ts`, `importHandoff.ts`, `importPicker.ts` (§6.4), `clips.ts` (`commitClip`, `appendClip`, `undoLastClip`, `findClippedPage`, `clippedStories`, `defaultClipTarget`).
 
-**`src/import/`** (pure TS): `types.ts`, `index.ts`, `sniff.ts`, `decode.ts`, `zip.ts`, `epub.ts`, `html.ts`, `readability.ts`, `text.ts`, `build.ts`, `dom.ts`, `meta.ts`, `detect.ts` (§6.4).
+**`src/import/`** (pure TS): `types.ts`, `index.ts`, `sniff.ts`, `decode.ts`, `zip.ts`, `epub.ts`, `html.ts` (exports `parseHtmlPage`), `readability.ts`, `text.ts`, `build.ts`, `dom.ts`, `meta.ts`, `detect.ts` (§6.4), `clip.ts` (`parseClip`, `cleanClipUrl`, `stripSiteName`, `splitTitle`, `asOneChapter`).
 
 **`src/reader/`**: `template.ts` (`buildReaderHtml`, `readerCssVars`, `ReaderPayload`, in-page `READER_JS`), `notes.ts` (`renderChapter`: notes → `aside.fs-notes[data-pos]`), `images.ts` (`withBookImages`).
 
 **`src/audio/`**: `player.ts` (engine; §7.5), `state.ts` (`playerStore`, `PlayerState`, `PlayerStory`, `SleepTimer`, `IDLE`, `usePlayer`), `segments.ts` (`segmentChapter`, `frontMatterBlocks`, `isNoteLine`, `isSpeakable`, `splitText`, `MAX_SEGMENT_CHARS = 420`), `speechText.ts`, `rate.ts` (`speechRate`, `isPiperVoice`), `voices.ts` (tiers premium / enhanced / standard / novelty, `bestVoice`, `voiceFor`, `isAddOnVoice`, `languageCode`), `session.ts` (+ `session.web.ts` no-op), `pickers.ts` (`SPEEDS` 0.5–2, sleep timer, voice, pause sheets).
 
-**`src/components/`**: `ui.tsx` (`T`, `Card`, `Button`, `IconButton`, `Chip`, `Badge`, `Row`, `Section`, `Input`, `Segmented`, `Divider`, `ProgressBar`, `haptic`, `IconName`), `Sheet.tsx` (`showActions`, `pickOption`, `toast`, `SheetHost`), `states.tsx` (`Loading`, `Empty`, `ErrorView` mapping every error class to a recovery action, `Notice`), `StoryCard.tsx`, `Cover.tsx`, `StatsGrid.tsx`, `TagGroups.tsx`, `SourceBadge.tsx`, `SourceChips.tsx` (`useSourcesWith(cap)`, `pickSource`, `LABELS`), `FilterSheet.tsx` (FFN), `HtmlText.tsx`, `ProfileView.tsx`, `ReaderSettingsPanel.tsx`, `ReaderWebView.tsx` / `.web.tsx` (iframe), `MiniPlayer.tsx`, `miniPlayerLayout.ts`, `BridgeBanner.tsx`, `MigrationFailed.tsx`, `WhatsNewSheet.tsx` (`WHATS_NEW_VERSION = 1`), `ao3/` (`AdultGateSheet.tsx`, `Ao3BrowseHome.tsx`, `Ao3FilterSheet.tsx`, `Ao3SearchForm.tsx`).
+**`src/components/`**: `ui.tsx` (`T`, `Card`, `Button`, `IconButton`, `Chip`, `Badge`, `Row`, `Section`, `Input`, `Segmented`, `Divider`, `ProgressBar`, `haptic`, `IconName`), `Sheet.tsx` (`showActions`, `pickOption`, `toast`, `SheetHost`), `states.tsx` (`Loading`, `Empty`, `ErrorView` mapping every error class to a recovery action, `Notice`), `StoryCard.tsx`, `Cover.tsx`, `StatsGrid.tsx`, `TagGroups.tsx`, `SourceBadge.tsx`, `SourceChips.tsx` (`useSourcesWith(cap)`, `pickSource`, `LABELS`), `FilterSheet.tsx` (FFN), `HtmlText.tsx`, `ProfileView.tsx`, `ReaderSettingsPanel.tsx`, `ReaderWebView.tsx` / `.web.tsx` (iframe), `MiniPlayer.tsx`, `miniPlayerLayout.ts`, `BridgeBanner.tsx`, `MigrationFailed.tsx`, `WhatsNewSheet.tsx` (`WHATS_NEW_VERSION = 2`: Clip; AO3's part for anyone who never saw 1), `ClipSheet.tsx` (clip preview + target + save), `ao3/` (`AdultGateSheet.tsx`, `Ao3BrowseHome.tsx`, `Ao3FilterSheet.tsx`, `Ao3SearchForm.tsx`).
 
 **Other**: `src/hooks/useQuery.ts` (`useQuery(key, fetcher, {staleMs = 5 min})`, `usePaged`, `invalidate(prefix)`, `peekCache`; key prefixes `story:<key>`, `profile:`, `fandoms:`, `ao3:fandoms:`, `topic:`, `pm:` …); `src/theme/index.ts` (`Palette` incl. `source: Record<SourceId,string>` (light ffn `#2B4C9B`, ao3 `#990000`, wp `#9A3412`, local `#556170`), `LIGHT`, `DARK`, `useTheme`, `READER_THEMES` light / sepia / paper / mint / dusk / dark / black, `READER_FONTS`, `fontCss`); `src/utils/format.ts` (`formatNumber`, `formatFull`, `relativeTime`, `formatDate`, `readingTime`, `formatBytes`, `pluralize`, `errorMessage`, `htmlToText`, `countWords`); `src/utils/docFiles.ts` (`DOC_PREFIX = 'ficshelf-doc:'`, `docRef`, `isImportPath`, `docUri`; files in Documents are stored by relative path because the absolute path changes between installs).
 
@@ -381,9 +407,9 @@ together with a native change (it means a prebuild for the user).
   `BridgeBanner`, `WhatsNewSheet`; shows `MigrationFailed` when `migrationStatus().ok` is false;
   notification taps open the story (`{storyKey}` or legacy `{storyId}`); launch work `sweepImports`,
   `configureBackgroundChecks`, update checks on launch and foreground; modals `login`, `review/[id]`, `messages/compose`, `open`, `import`.
-- `+native-intent.tsx` (`redirectSystemPath`: `file://` → `/import?open=<ticket>`; everything else unchanged), `+not-found.tsx`.
+- `+native-intent.tsx` (`redirectSystemPath`: `file://` → `/import?open=<ticket>`; an outside `ficshelf://web?url=<non-FFN>` → `/open?url=…`, which names the site and asks; everything else unchanged), `+not-found.tsx`.
 - `(tabs)/_layout.tsx`: `index` (Browse: Continue reading, `SourceChips`, `Ao3BrowseHome` or FFN home), `search` (box or pasted link, FFN search or `Ao3SearchForm`, recents per site), `library` (history, saved, follows / favorites, downloads, imported, collections, authors; + gives "Import a file" / "Open a link"), `updates` (badge = stories with new chapters), `account`.
-- Shared (StoryKey params via `keyFromParam`): `story/[id]`, `read/[id]` (`?ch=`), `listen`, `open`, `import`, `bookmarks`, `collections/index`, `collections/[id]`, `settings`, `web` (in-app browser, FFN only today), `drafts/index`, `drafts/[id]`.
+- Shared (StoryKey params via `keyFromParam`): `story/[id]`, `read/[id]` (`?ch=`), `listen`, `open`, `import`, `bookmarks`, `collections/index`, `collections/[id]`, `settings`, `web` (in-app browser: FFN mode for `path` / fanfiction.net, open mode + Clip for any other https `url`; `clipFor`), `help/share` (Shortcut / bookmarklet), `drafts/index`, `drafts/[id]`.
 - AO3: `ao3/works` (`tag` + filters JSON, or `q` search JSON), `ao3/fandoms/[medium]`, `ao3/series/[id]`, `ao3/user/[name]` (`pseud`).
 - FFN only: `s/[...rest]` (`ficshelf://s/<id>/<ch>` → `ffn:` key), `user/[id]`, `beta`, `betas/[cat]`, `review/[id]`, `reviews/[id]`, `fandoms/[cat]`, `crossovers`, `list`, `justin`, `community`, `forum`, `topic`, `groups/dir`, `groups/[kind]/[cat]`, `login`, `account/stories`, `account/authors`, `messages/index`, `messages/read`, `messages/compose`.
 
@@ -392,6 +418,7 @@ together with a native change (it means a prebuild for the user).
 - `live-check.ts`: FFN via the real `BRIDGE_SCRIPT` in Chromium (playwright-core; `CHROMIUM_PATH`, `xvfb-run -a` headless, `WAIT` 12000 ms, uses `HTTPS_PROXY`; 17 checks, ~20+ requests, no explicit budget; desktop Linux UA, so it can't catch iPhone-only behaviour). `--source ao3`: plain fetch, desktop Safari UA (`Version/26.0 Safari/605.1.15`), `AO3_MAX_REQUESTS = 5`, `AO3_GAP_MS = 3000`; checks work page (view_adult), `/navigate`, id search (ids 3171550 and 19893115), HEAD of the official download (must land on `download.archiveofourown.org`), `/media`; `AO3_WORK=<id>` overrides; prints structure only. **Any other `--source` value silently runs FFN.**
 - `dev-proxy.ts` (web harness, port 8787: `/status`, `/reload`, `/fetch` → live FFN via Chromium; `/http` forwards only archiveofourown.org, wattpad.com, fichub.net). `browser.ts` (shared Playwright helper).
 - `synthesize-fixture.ts`: `npx tsx scripts/synthesize-fixture.ts in.html tests/fixtures/ao3/out.html [--blurbs N] [--chapters N] [--paragraphs N]` (§8.4).
+- `clip-check.ts`: Clip's capture script in headless Chromium (playwright-core, `/opt/pw-browsers/chromium-1194`) on synthetic pages, then `parseClip`; no network; `CLIP_DUMP=<file>` writes the captured page; 28/28 at `7546679`. Live-check rejects unknown `--source` values since `1cca7be`.
 
 ---
 
@@ -718,6 +745,25 @@ the auto-mode classifier ("Third-Party Attack")**; no chapter text was pulled. T
 "Clip this page" (FEATURES.md §4); a full Novelpia source is optional (FEATURES.md §10). Details
 (fields, endpoints, error codes, sample ids) are in FEATURES.md §4 "Novelpia findings".
 
+### 6.8 Clip this page (any https site) and automatic clipping
+- Built (P-CLIP, `1cca7be`..`7546679`): the in-app browser's open mode (default WebView UA, its own
+  cookie store, no login prefill; http refused with Safari offered; script / local URLs blocked;
+  other apps asked about on a tap only; FFN / AO3 links open natively; FanFiction.net, AO3 and
+  Wattpad pages offer "Open in FicShelf" instead of Clip); one capture per tap with a nonce and a
+  host check; text only (no pictures, link addresses dropped); cleaned URLs; never the original page;
+  not in backups; one-time notice; outside `ficshelf://web?url=` links go through `/open`.
+- Cookie messages reach the FFN bridge only from https fanfiction.net pages in FFN mode (`03e4a59`
+  closed an any-page hole).
+- Novelpia: the text is only on the rendered page (its API needs a one-time `_t` ticket after an
+  entitlement check). Clip reads only what the viewer rendered; never `__NUXT_DATA__`, the API, `_t`,
+  `signed_key` or cookies (§6.7, §10.11).
+- **Next (P-CLIP2, FEATURES.md §4a)**: "Clip & next" (one tap: clip, save, press the site's Next),
+  then "Clip the next N chapters" (FicShelf presses Next and saves by itself). Approved 2026-10-27
+  with the user taking the sites'-terms risk. Hard lines: never click buy / unlock / subscribe or
+  spend coins, never get past a paywall, login or age gate, never solve or bypass a bot check, never
+  handle the site's tickets / tokens / API; visible browser in the foreground only; human pace
+  (≥ 4 s, default 8–15 s); ≤ 200 chapters a run; stop on anything unexpected (FEATURES.md AC-5).
+
 ---
 
 ## 7. Feature inventory
@@ -806,7 +852,9 @@ via `Linking.openURL`) · ⏳ not built (reason given) · 🧪 tests only, not c
   scripts, inline data, form fields and token-carrying attributes left behind), `src/import/clip.ts`
   `parseClip` (reader mode, text only, site name off the title), `src/features/clips.ts` (new story, next
   chapter, undo), `LocalOrigin.clip`, ClipSheet preview, menus, What's new v2, "Send links from Safari".
-  Not yet run on the phone.
+  Works on the phone (2026-10-27, "perfect it works perfectly now"); CLIP-A1..A9 not reported one by one.
+- ⏳ **Next: P-CLIP2** "Clip & next" and "Clip the next N chapters" (automatic clipping), then Clip
+  polish (scroll-loaded text, same-origin frames, shadow DOM) (FEATURES.md §4a).
 
 ### 7.4 Reader (all sources)
 - ✅ Local WebView, works offline; themes light, sepia, paper, mint, dusk, dark, black (OLED) + match system;
@@ -889,8 +937,9 @@ Back up, Restore, Clear image cache, Clear page cache incl. AO3 fandom lists, Cl
 Delete all downloads) · Connection (status, account, Run security check now, Reconnect, Connection
 details) · About (version, disclaimer).
 
-Also: ✅ in-app browser for fanfiction.net pages (`web.tsx`; shares cookies with the bridge; opens
-story / profile links natively; any other host goes to Safari, AO3 included); deep links
+Also: ✅ in-app browser: fanfiction.net pages in FFN mode (`web.tsx`; shares cookies with the bridge;
+opens story / profile links natively; other hosts go to Safari) and any other https page in open
+mode with Clip (§6.8); deep links
 `ficshelf://s/<id>/<chapter>`, `ficshelf://open?url=…`, pasted FFN URLs; iPad layout; accessibility
 labels, Dynamic Type, VoiceOver-reachable mini player; Android APK builds via EAS (never tested on a device).
 
@@ -929,11 +978,14 @@ P-NOVELPIA; Clip covers it). A pasted Wattpad link shows "Wattpad support is com
 | `npx expo-doctor` | **20/21** (11 patch mismatches; README still says 21/21) |
 | `npm run live-check -- --source ao3` | 5/5 last recorded (5 requests, 3 s apart; no browser needed) |
 | `npm run live-check` (FFN) | 17/17 last recorded (needs Chromium; `xvfb-run -a` headless) |
+| `npx tsx scripts/clip-check.ts` | 28/28 at `7546679` (headless Chromium, synthetic pages, no network) |
 
-README's Verification row says `1088 / 1088 pass`; keep it in step in the same commit as new tests.
+README's Verification row says `1153 / 1153 pass` (at `ca4749f`); keep it in step in the same commit as new tests (PLAN.md §4 / §5 carry the count too).
 Nothing native can be verified in the container: say what still needs a device test.
 
 ### 8.2 Test files (51) and counts at `5cc19e8`
+Added in P-CLIP (57 files, 1153 tests at `ca4749f`): web-policy 11, clip-script 10, clip-parse 10 (incl. titles), clip-url 3, clip-commit 14, clip-screen.tsx 8; open-link and native-intent gained cases (example.com now gets the browser offer). jsdom tests use `/** @jest-environment jsdom */`; the screen test mocks `react-native-webview` with a forwardRef that records props and injected scripts.
+
 - AO3: ao3-adapter 14, ao3-download 8, ao3-library 14, ao3-parsers 21, ao3-resume 2, ao3-review 13, ao3-screens.tsx 4, ao3-stale-chapters 13, ao3-updates 25, ao3-urls 49.
 - Core: backup 5, blocks 11, bridge 16, chapters 6, ffn-adapter 10, ffn-slots 19, http 20, images 12, keys 34, kv-sqlite 12, library 21, migration-v2 25.
 - Import: import-commit 22, import-corpus 300 (299 + 1 todo), import-decode 11, import-epub 42, import-html 28, import-screen.tsx 7, import-sniff 9, import-text 21, local-delete 1, local-source 7, native-intent 13.
@@ -1156,6 +1208,8 @@ Hermes / JS runtime:
 
 | Gotcha | Rule |
 |---|---|
+| Xcode updated itself to Xcode 27 / Swift 6.4 (2026-10): the build failed twice. First "Failed to build module 'ExpoModulesCore'; this SDK is not supported by the compiler (the SDK is built with 'Apple Swift version 6.3.1' …)": Expo's npm-shipped precompiled modules (`usePrecompiledModules` defaults to true) were built with an older Swift. Then "Cannot find type '__ObjC::expo' in scope" in ExpoModulesJSI's interface: Expo's own bug, fixed in expo-modules-jsi 57.1.3 | `app.json` `ios.usePrecompiledModules: false` (`570b9ad`) + keep Expo on the latest SDK patches (`npx expo install --fix`, `ca4749f`); both are native changes (T2). When a red Xcode error names an Expo module after an Xcode update, read the package CHANGELOGs on unpkg (`https://unpkg.com/<pkg>@<version>/CHANGELOG.md`) for a fix first. A by-hand `npm install <pkg>@<ver> --no-save` unblocks the user without touching tracked files |
+| The user's newer npm prints "install scripts not yet covered by allowScripts" (esbuild, fsevents, unrs-resolver) | Harmless dev tools; tell the user to ignore it |
 | Hermes has **no Web Workers**; fflate's async APIs spawn them | Only fflate's sync APIs or streaming `Inflate` (`src/import/zip.ts`); one-shot inflate keeps decoding past its output, so stream and stop when an entry outgrows its declared size; zip names are lookup keys only |
 | Hermes has **no DOMParser** | Readability runs on its bundled `JSDOMParser`; feed it htmlparser2-parsed, dom-serializer-rewritten HTML (it knows only the five XML entities and wants quoted attributes) |
 | Metro runs `JSDOMParser.js` without a receiver and not strict, so it **overwrites RN's global `Node`, `Element`, `Document`, `Text`** (RN defines them lazily via getters) | `readability.ts` saves `SCRIPT_GLOBALS` (read *before* the require) and restores them; keep it |
@@ -1358,6 +1412,8 @@ snapshots of every tree (`44a9f71`, `16eaf18`, round 1, `99f38f9`, `3212230`; fa
 | Several "done" moments were followed by verifier findings | Read actual results, run checks yourself, say test-only vs device |
 | Design phase numbers didn't match build order | Use stable ids (FEATURES.md) |
 | Context compacted three times | Re-derive state from git and FEATURES.md |
+| 2026-10-27: Bash calls sometimes failed with "auto mode classifier gave no verdict" several times in a row (ten in a row ends the turn) | Retry once; meanwhile use Read / Grep / Glob / WebFetch (read-only tools don't need the classifier); don't loop |
+| 2026-10-27: no review agents were spawned (the harness says not to unless the user asks) | Do the multi-lens review inline: re-read the diff per lens, mutation-check each new test (break the code, see it fail, restore) |
 
 ### 10.17 Communicating with this user
 - Plain language, short status; "Continue" = resume from the last checkpoint.
@@ -1367,6 +1423,10 @@ snapshots of every tree (`44a9f71`, `16eaf18`, round 1, `99f38f9`, `3212230`; fa
 - "Hold off installing" while reviews run; every update message ends with the right install template; say explicitly when prebuild is *not* needed.
 - Offer ranked options with costs; record approvals; "don't fret" = safe version with a switch.
 - Be honest about container limits; deliver files with SendUserFile and commit them.
+- 2026-10-27: when the user hit an Xcode error, they pasted the red errors; the fix needed two
+  rounds. Give one command per block, say why each step is there, and offer a by-hand unblock
+  (`--no-save`) when the proper fix needs a push that's delayed.
+- The user clears context between phases and wants the handoff files complete before that.
 
 ---
 
@@ -1390,7 +1450,10 @@ FicShelf (27 commits, 2026-10-06 → 2026-10-21). "README count" = the Verificat
 | M9 | `86ec2f4`, `44a9f71` | 10-10 | File import: pure-TS core (EPUB / HTML / TXT / MD), then the `local` source (import screen, Open in, Imported shelf, CSP reader, linking, Replace / Keep both) | 600 → 712 | yes (`44a9f71`) |
 | M10 | `16eaf18`, `99f38f9`, `3212230` | 10-10/11 | Import review fixes (parsing, ticketed Open-in, launch sweep, perf), verifier rounds 2–3 | 712 → 789 | no |
 | M11 | `49442b7`, `5cc19e8` | 10-12, 10-21 | Golden import corpus (269 → 299 cases) and the last fixes (one-shots, "Start"-only contents, front pages with prose, Roman stammers, `<br>` title blocks) | 1058 → 1088 (+1 todo) | no |
-| handoff | (next commit) | 10-21 | FEATURES.md + MASTER_FEATURES.md | 1088 | no |
+| handoff | `6320411` | 10-21 | FEATURES.md + MASTER_FEATURES.md | 1088 | no |
+| M12 | `1cca7be`..`abac63f` | 10-27 | Preflight (flaky tests, stale docs, live-check flag); "Clip this page": browser policy + cookie guard, capture script, parseClip, clipped stories (new / next / undo), browser open mode, ClipSheet, menus, entry points, What's new 2, Send links from Safari, Chromium check | 1088 → 1153 | no |
+| M13 | `570b9ad`, `ca4749f` | 10-27 | Xcode 27 / Swift 6.4 build fix: precompiled Expo modules off; Expo SDK 57 patches (expo-modules-jsi 57.1.3); expo-doctor 21/21; the build works on the phone | 1153 | yes (T2) |
+| handoff 2 | (this commit) | 10-27 | P-CLIP2 (automatic clipping) written up as the top priority; Wattpad on hold | 1153 | no |
 
 User decisions in time order:
 - 2026-10-06: delete the old repo content; build an FFN replacement app; first device install; "everything works".
@@ -1398,6 +1461,7 @@ User decisions in time order:
 - 2026-10-08: "it will also feature wattpad and ao3"; order AO3 → reading before login → import before Wattpad; import scope EPUB + HTML / TXT (not "links from other sites", not "backup / export").
 - 2026-10-12: "Pause"; resumed 2026-10-21.
 - 2026-10-21: import declared ready to install (T2); asked about a Novelpia page; approved Clip ("I want you to do this, and hopefully any future website"); asked for these handoff files (FEATURES.md for next phases, MASTER_FEATURES.md for full context and lessons; "put these two files in my downloads folder").
+- 2026-10-27: Clip built; the 7-day profile had expired (reinstall over it); Xcode 27 / Swift 6.4 build errors fixed in two rounds; "perfect it works perfectly now"; asked for non-manual clipping; picked "Clip & next" to start and "Clip the next N chapters" as the main feature, "regardless of TOS"; "we're not doign anything wattpad until we perfect clipping feature"; asked for these files to be updated before clearing context.
 
 ---
 
@@ -1466,7 +1530,9 @@ User decisions in time order:
 
 ## 13. Next work
 
-Read **FEATURES.md**. Its front matter names `next_task: P-CLIP` ("Clip this page" for any website,
-approved by the user on 2026-10-21), then P4 Wattpad reading, P6 AO3 login, P7 Wattpad login, P8
-polish, P-IMPORT-X (only if asked) and P-NOVELPIA (optional). It also holds the resume protocol, the
-preflight items (PRE-1..PRE-4), the known open minor issues and every open question with its default.
+Read **FEATURES.md**. Its front matter names `next_task: P-CLIP2` (§4a: "Clip & next" first, then
+"Clip the next N chapters" as the main feature, then Clip polish; approved 2026-10-27, the user takes
+the sites'-terms risk; the hard lines in §4a policies stay). P4 / P7 Wattpad are on hold until the
+user says clipping is perfect; then P6 AO3 login, P8 polish, P-IMPORT-X (only if asked) and
+P-NOVELPIA (optional). FEATURES.md also holds the resume protocol, the known open minor issues and
+every open question with its default. The user's next install is T2 (prebuild) because of `ca4749f`.
