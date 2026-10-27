@@ -10,7 +10,7 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 0e93bdd
+base_commit: 7546679
 base_commit_date: 2026-10-27
 commits_at_base: 164
 updated: 2026-10-27
@@ -376,7 +376,7 @@ Checklist:
       from the Library + sheet. Planned in P5 and never built. (0e93bdd)
 - [x] CLIP-17 Docs: README "Imported files" (Clip and its limits: text only, one tap per chapter,
       https only, stays on the phone, not in backups) and Known limitations; PLAN.md §2.13;
-      INSTALL.md "no prebuild for this update". (CLIP-18 commit)
+      INSTALL.md "no prebuild for this update". (7546679)
 - [x] CLIP-18 All checks green, README count, tick this file, commit, push, report (T1, no prebuild).
 
 ### files
@@ -569,7 +569,7 @@ Novelpia findings (2026-10-21; Clip's first target and test site; structure only
       `tests/local-*.test.ts`, `tests/backup.test.ts` and the corpus still pass unchanged. Only `tests/open-link.test.ts`
       changed on purpose: `https://example.com/whatever` now gets the browser offer instead of "not a link".
 - [x] CLIP-T8 (optional) `scripts/clip-check.ts`: run the capture script in headless Chromium
-      (`scripts/browser.ts`, playwright-core) on a local synthetic page, as the reader CSP check was done. 28/28 (CLIP-18 commit). It found no app bug; the
+      (`scripts/browser.ts`, playwright-core) on a local synthetic page, as the reader CSP check was done. 28/28 (7546679). It found no app bug; the
       harness itself needed care: Playwright's `setContent` doesn't run `addInitScript`, and tsx adds a `__name`
       helper to functions passed to `page.evaluate` (pass strings).
 
@@ -1394,4 +1394,4 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 | date | commit | change |
 |---|---|---|
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
-| 2026-10-27 | 1cca7be..(CLIP-18 commit) | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |
+| 2026-10-27 | 1cca7be..7546679 | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |
