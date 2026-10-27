@@ -225,7 +225,7 @@ Checks run while building this (October 2026):
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |
 | `npx expo export --platform ios` | bundles (4.8 MB Hermes bytecode); `--platform web` builds too |
-| `npx expo-doctor` | 20 / 21 checks pass: 11 Expo packages are a patch version behind the SDK 57 pins (for example `expo` 57.0.27 vs ~57.0.31); they get updated together with the next update that needs a prebuild anyway |
+| `npx expo-doctor` | 21 / 21 checks pass (dependencies on the SDK 57 patch versions; expo-modules-jsi 57.1.3, which compiles with Xcode 27 / Swift 6.4) |
 | `npx expo prebuild -p ios` / `-p android` | native projects generate cleanly (deployment target iOS 16.4, scene life cycle on, no push entitlement, background audio on, no microphone permission; Info.plist has the EPUB / HTML / text / Markdown document types, the Markdown type declaration and no opening in place) |
 | First install on a real iPhone (iOS 26, Xcode, free Apple ID) | builds and opens; login and search failed until the desktop user agent fix (October 2026) |
 | The desktop user agent fix, the mobile-site redirect handling, login, search and the audiobook (background audio, lock screen) on the iPhone | "everything works" (October 6, 2026); the Piper "Lessac" voice works (October 7, 2026) |

@@ -38,7 +38,7 @@ status:
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
     clip_check: "npx tsx scripts/clip-check.ts: 28/28 (headless Chromium, no network)"
-    expo_doctor: "20/21: 11 patch-version mismatches (README still says 21/21)"
+    expo_doctor: "21/21 (after npx expo install --fix, 2026-10-27)"
   device_confirmed: >-
     Builds through e2c8ac5 ("everything works", 2026-10-06) and the Piper Lessac voice (build
     about 31439d4, 2026-10-07). No device report since 2026-10-07.
@@ -145,7 +145,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 - [x] PRE-3 `scripts/live-check.ts`: any `--source` other than `ao3` silently runs the FFN check
       (`target = … : 'ffn'`, line ~288). Reject unknown values with a message (a `wp` branch comes
       in P4). (1cca7be)
-- [ ] PRE-4 (skipped in P-CLIP, a JS-only phase; only bundled with the next native change, never on its own) `npx expo install --check`
+- [x] PRE-4 (done 2026-10-27 with the Xcode 27 / Swift 6.4 build fix, a native change; `npx expo install --fix`, expo-doctor 21/21, expo-modules-jsi 57.1.3) (previously: only bundled with the next native change, never on its own) `npx expo install --check`
       to clear the 11 patch mismatches (`expo` 57.0.27 → ~57.0.31, `expo-router` 57.0.25 → ~57.0.29,
       `jest-expo` 57.0.5 → ~57.0.6, …). These are native packages, so this makes the user's next
       update a prebuild (T2). Not needed for P-CLIP; do not do it in a JS-only phase.
@@ -1355,8 +1355,8 @@ data shape may change.
 | ISSUE-FLAKE-2 | `tests/sanitize.test.ts:163` | `< 1500 ms` timing assertion failed once in a full parallel run (1087/1088) | More headroom (PRE-1) |
 | ISSUE-WEB-COOKIE | `src/app/web.tsx` `onMessage` | Any page in the in-app browser could post `{type:'cookies'}` into `bridge.updateCookies` | CLIP-3 |
 | ISSUE-LIVECHECK | `scripts/live-check.ts` ~l.288 | Unknown `--source` silently runs the FFN check | PRE-3; `wp` branch in WP-17 |
-| ISSUE-DOCTOR | deps | `npx expo-doctor` 20/21: 11 patch mismatches | PRE-4, only with the next native change |
-| ISSUE-XCODE-SWIFT (fixed 2026-10-27) | `app.json` expo-build-properties | After an Xcode update (Swift 6.4) the user's build failed: Expo's npm-shipped precompiled ExpoModulesCore (built with Swift 6.3.1) can't be read ("this SDK is not supported by the compiler", "Cannot find type '__ObjC::expo'") | `ios.usePrecompiledModules: false` (the Podfile then forces `EXPO_USE_PRECOMPILED_MODULES=0`): Expo modules build from source on the Mac. Native change: T2 (prebuild). Keep it unless Expo's prebuilts follow Xcode |
+| ISSUE-DOCTOR (fixed 2026-10-27) | deps | `npx expo-doctor` was 20/21: 11 patch mismatches | Done with the Xcode 27 fix (21/21) |
+| ISSUE-XCODE-SWIFT (fixed 2026-10-27) | `app.json` expo-build-properties | After an Xcode update (Swift 6.4) the user's build failed: Expo's npm-shipped precompiled ExpoModulesCore (built with Swift 6.3.1) can't be read ("this SDK is not supported by the compiler", "Cannot find type '__ObjC::expo'") | `ios.usePrecompiledModules: false` (the Podfile then forces `EXPO_USE_PRECOMPILED_MODULES=0`): Expo modules build from source on the Mac. Native change: T2 (prebuild). Keep it unless Expo's prebuilts follow Xcode. The second half of the same failure (`Cannot find type '__ObjC::expo'` in ExpoModulesJSI's interface) is Expo's bug, fixed in expo-modules-jsi 57.1.3 ("Fix the `.swiftinterface` failing to compile with Xcode 27 (Swift 6.4)"), which PRE-4's `npx expo install --fix` brings in. Confirmed working on the user's phone 2026-10-27 (with 57.1.3 installed by hand first) |
 | ISSUE-DOCS | `PLAN.md`, `INSTALL.md`, `README.md` | Stale counts and device statements | PRE-2 |
 | ISSUE-TITLES | `src/sources/meta.ts` `withKnownTitles` | Removing this safety net still passes all AO3 suites (untested) | POL-8 |
 | ISSUE-RTR | `package.json` | `react-test-renderer` only arrives through jest-expo | POL-7 |
