@@ -43,7 +43,7 @@ describe('finding the site’s Next', () => {
     expect(m.fp).toMatch(/^[0-9a-f]+:\d+$/);
   });
 
-  it.each(['Next chapter', 'Next Chapter »', 'Next chapter: The Fall', '다음화', '次へ', '下一章', 'Siguiente', '›', 'Next >'])('finds a “%s” button', (label) => {
+  it.each(['Next chapter', 'Next Chapter »', 'Next chapter: The Fall', 'Next: Chapter 5', '다음화', '次へ', '下一章', 'Siguiente', '›', 'Next >'])('finds a “%s” button', (label) => {
     document.body.innerHTML = `${chapter()}<div><button type="button">Previous</button><button type="button">${label}</button></div>`;
     const m = find();
     expect(m.found).toBe(true);

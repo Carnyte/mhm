@@ -10,9 +10,9 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: ca4749f
+base_commit: (this commit)
 base_commit_date: 2026-10-27
-commits_at_base: 175
+commits_at_base: 178
 updated: 2026-10-27
 next_task: P-CLIP2
 companion: MASTER_FEATURES.md
@@ -22,9 +22,11 @@ status:
     Markdown, stored as the 'local' source) are built, reviewed, verified and pushed. No pending
     phase has been started. "Clip this page" for any website (approved 2026-10-21) was built on
     2026-10-27 and works on the phone ("perfect it works perfectly now", after an Xcode 27 /
-    Swift 6.4 build fix). Next and top priority: P-CLIP2 ("Clip & next", then "Clip the next N
-    chapters" automatically; approved 2026-10-27, the user takes the sites'-terms risk). No
-    Wattpad until the user says clipping is perfect.
+    Swift 6.4 build fix). P-CLIP2 automatic clipping ("Clip & next", "Clip the next N chapters",
+    "What Clip sees", Settings → Clipping) was built on 2026-10-27 and is pushed: tests and
+    headless-Chromium runs only, not yet on the phone. Next: the user tries it on the phone
+    (AC-A1..A6), then AC-11 polish from what they hit. No Wattpad until the user says clipping is
+    perfect.
   done:
     - M1-M5 FanFiction.net client, reader, audiobook (TTS incl. Piper add-on voices), device fixes
     - P0-P1 source-qualified StoryKeys + storage v2 migration
@@ -32,15 +34,16 @@ status:
     - P3 AO3 reading loop (no login)
     - P5 file import as the local source + golden import corpus
     - P-CLIP "Clip this page" for any https site (works on the phone)
+    - P-CLIP2 Clip & next, Clip the next chapters, What Clip sees (device check pending)
     - Xcode 27 / Swift 6.4 build fix (570b9ad usePrecompiledModules false; ca4749f Expo patches)
-  pending_in_order: [P-CLIP2, P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
+  pending_in_order: [P-CLIP2 device check + AC-11 polish, P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "57 suites, 1153 passed + 1 todo (1154 total)"
+    jest: "60 suites, 1213 passed + 1 todo (1214 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
-    clip_check: "npx tsx scripts/clip-check.ts: 28/28 (headless Chromium, no network)"
+    clip_check: "npx tsx scripts/clip-check.ts: 34/34 (headless Chromium, synthetic pages and sites, no network)"
     expo_doctor: "21/21 (after npx expo install --fix, 2026-10-27)"
   device_confirmed: >-
     Builds through e2c8ac5 ("everything works", 2026-10-06), the Piper Lessac voice (build about
@@ -59,6 +62,8 @@ status:
     - P-CLIP acceptance items CLIP-A1..A9 one by one, and OQ-CLIP-9 (site login after an app restart):
       the user only said the app "works perfectly now"
     - ca4749f Expo patch updates (not installed yet)
+    - P-CLIP2 (8271660 and the commit after it): Clip & next, Clip the next chapters, What Clip sees,
+      Settings → Clipping, What's new 3
 ---
 
 # FicShelf: next work
@@ -116,7 +121,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
      fails once under load, rerun it alone before chasing it.
    - lint must end with `check-keys: ok`.
    - The export output dir must be outside the repo.
-   - Clip phases also: `npx tsx scripts/clip-check.ts` (headless Chromium, synthetic pages, no network; 28/28 at base).
+   - Clip phases also: `npx tsx scripts/clip-check.ts` (headless Chromium, synthetic pages and sites, no network; 34/34 at base).
    - `npx expo-doctor` should say 21/21.
    - Optional, at most once per phase: `npm run live-check -- --source ao3` (5 AO3 requests, 3 s apart).
    - If Bash calls fail with "auto mode classifier gave no verdict", that's transient: retry once,
@@ -224,7 +229,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 | order | id | title | status | depends_on | prebuild for the user | gate |
 |---|---|---|---|---|---|---|
 | 0 | P-CLIP | "Clip this page" for any website | done (works on the phone 2026-10-27; CLIP-A items not reported one by one) | P5 (done) | no (https only) | none |
-| 1 | P-CLIP2 | "Clip & next", "Clip the next N chapters" (auto-clip), Clip polish | pending (next; top priority; approved 2026-10-27) | P-CLIP | no (but the next install is T2 because of ca4749f) | none: the user accepted the terms risk |
+| 1 | P-CLIP2 | "Clip & next", "Clip the next N chapters" (auto-clip), Clip polish | done (device check pending; AC-11 polish waits for the user's reports) | P-CLIP | no (but the next install is T2 because of ca4749f) | none: the user accepted the terms risk |
 | 2 | P4 | Wattpad reading, no login | on hold (user, 2026-10-27: "we're not doign anything wattpad until we perfect clipping feature") | P1–P3 (done) | no | the user says clipping is perfect; then OQ-1 (default yes) |
 | 3 | P6 | AO3 login and social | pending | P3 (done) | no | user has an AO3 account (invite-only) |
 | 4 | P7 | Wattpad login and social | on hold (as P4) | P4 | no | Wattpad account + the ≤10-request endpoint check |
@@ -652,7 +657,7 @@ Built on 2026-10-27 with every default above (no question needed asking). Still 
 ```yaml
 id: P-CLIP2
 title: Clip & next, auto-clip the next N chapters, and Clip polish
-status: pending
+status: done (device check pending); AC-11 polish and AC-12 wait for the user
 order: 1
 next_task: true
 depends_on: [P-CLIP (done; works on the phone)]
@@ -708,14 +713,14 @@ What exists (P-CLIP, verified at `ca4749f`; re-check line numbers):
 - `expo-keep-awake` is a dependency (used in `src/app/read/[id].tsx`).
 
 Checklist (in build order):
-- [ ] AC-1 `src/net/nextScript.ts` (new): in-page scripts (WebKit, injected like clipScript, nonce'd):
+- [x] AC-1 `src/net/nextScript.ts` (new) (8271660; review fixes in the next commit): in-page scripts (WebKit, injected like clipScript, nonce'd):
   - `findNextScript(nonce)` posts `{type:'ficshelf-next', nonce, url, found, label?, kind?:'link'|'button', disabled?, score?, candidates?: number}`
     (labels and counts only: no text of the chapter, no hrefs with tokens);
   - `pressNextScript(nonce)` finds the same best candidate and activates it with `el.click()` (works
     for SPA buttons and plain links), posting `{pressed: true|false}`;
   - candidate scoring (see data/API details); never a control whose label, class or nearby text
     looks like buying / unlocking / subscribing (see LOCK_WORDS), never a hidden or disabled one.
-- [ ] AC-2 **Option 1, "Clip & next"** (build first):
+- [x] AC-2 **Option 1, "Clip & next"** (build first): (8271660)
   - ClipSheet: when the target is an existing clipped story, a primary **Save & next chapter**
     button (Save stays): saves, closes the sheet, presses the site's Next (AC-1), waits for the new
     chapter (AC-4 "wait for the next chapter"), then shows the bar again ready for the next Clip;
@@ -726,7 +731,7 @@ Checklist (in build order):
   - bar: when a target story is known, the button reads **Clip & next**; a small ⋯ next to it
     offers "Clip only", "Clip the next chapters…" (AC-3) and "What Clip sees" (AC-9);
   - no Next found → toast "FicShelf couldn’t find this site’s Next button. Tap it yourself, then Clip."
-- [ ] AC-3 **Option 3, "Clip the next N chapters"** (the main feature): `src/features/autoClip.ts`
+- [x] AC-3 **Option 3, "Clip the next N chapters"** (the main feature) (8271660; pauses on screen blur too, next commit): `src/features/autoClip.ts`
   (new, pure state machine, no React Native imports; timers and page actions injected so tests drive
   it) plus its UI in web.tsx:
   - start: bar ⋯ → "Clip the next chapters…", or story ⋯ menu → **Clip the next chapters…** (opens
@@ -744,13 +749,13 @@ Checklist (in build order):
     stop / unmount); pauses when the app leaves the foreground (AppState) and asks "Continue
     clipping?" on return; never runs with the screen closed, in the background or headless;
   - everything saved stays saved when a run stops; Remove last chapter undoes one at a time.
-- [ ] AC-4 "Wait for the next chapter": after pressing Next, success = the URL changed, or the page's
+- [x] AC-4 "Wait for the next chapter" (8271660): after pressing Next, success = the URL changed, or the page's
   text fingerprint (first ~300 chars of the captured main text, hashed in RN) differs from the last
   chapter's, within 20 s (SPA readers often change content without a URL change; react-native-webview
   13.16 injects a history shim so `pushState` updates `onNavigationStateChange`). Then the normal
   capture waits for quiet. Same URL and same fingerprint after 20 s → stop ("The next chapter didn’t
   load"). Track `onLoadEnd` / `onNavigationStateChange` in web.tsx and pass events to the runner.
-- [ ] AC-5 Stop rules (each stops the run with a plain message and **Continue** / **Stop**; nothing
+- [x] AC-5 Stop rules (8271660) (each stops the run with a plain message and **Continue** / **Stop**; nothing
   is clicked, bought or solved on the user's behalf):
   - no Next control (or only disabled ones) → "Reached the last chapter FicShelf can find.";
   - lock / paywall / login signals on the page (LOCK_WORDS in visible short text, a price or coin
@@ -770,23 +775,23 @@ Checklist (in build order):
     the preview (the user decides "Keep as one chapter");
   - 3 errors in a row (timeouts, parse errors, storage) → stop;
   - the cap N is reached, or the user taps Stop / Pause; the app goes to the background.
-- [ ] AC-6 Pace (`sources.local.clipPace`): **Gentle** 20–40 s between chapters, **Normal** 8–15 s
+- [x] AC-6 Pace (8271660) (`sources.local.clipPace`): **Gentle** 20–40 s between chapters, **Normal** 8–15 s
   (default), **Quick** 4–7 s; uniformly random within the range; the hard floor is 4 s whatever the
   setting. Time spent loading counts toward the dwell (the wait starts when the chapter is saved).
-- [ ] AC-7 Same-story memory: `ClipInfo.storyTitle?: string` (the story part of the first clipped
+- [x] AC-7 Same-story memory (8271660): `ClipInfo.storyTitle?: string` (the story part of the first clipped
   page's cleaned title, ≤ 300 chars) set by commitClip and kept by appendClip; `normalizeClip` in
   `src/db/migrations/v2.ts` must keep it (string, trimmed, ≤ 300) or it vanishes on reload (R-9).
   Used by AC-5's different-story rule across runs.
-- [ ] AC-8 Settings → Imported files: **Auto-clip pace** (Gentle / Normal / Quick), **Save next
+- [x] AC-8 Settings → Imported files (8271660; a section of its own, Settings → Clipping): **Auto-clip pace** (Gentle / Normal / Quick), **Save next
   chapters without asking** (`clipQuick`), default run size (`clipBatch`, 10). Add the three fields
   to `SourceSettings` (`src/state/settings.ts`).
-- [ ] AC-9 **What Clip sees** (bar ⋯): copies a structure-only report to the clipboard for the user to
+- [x] AC-9 **What Clip sees** (8271660) (bar ⋯): copies a structure-only report to the clipboard for the user to
   paste back: host, page title length, captured text length and words, chapter headings found, Next
   candidates (label text up to 40 chars, tag, kind, score, disabled), lock / bot-check signals that
   fired, hidden elements dropped, `capped`. Never chapter text, hrefs, cookies or tokens (R-13).
   This is how per-site problems (Novelpia's Next button, its paywall notice) get fixed without
   live requests from the container.
-- [ ] AC-10 Tests:
+- [x] AC-10 Tests: (8271660 + the next commit: next-script 22, auto-clip 27, clip-screen +6, clip-commit +2, clip-parse +1, clip-report 2 (60 new, 1213 in all); clip-check 34/34)
   - `tests/next-script.test.ts` (jsdom): `rel=next` link wins; "Next chapter" / "다음화" / "次へ" /
     "下一章" / "Siguiente" / "›" buttons found; a disabled or hidden Next ignored; "Buy next
     chapter" / "Unlock (5 coins)" never chosen; comment-pagination "Next page" loses to the reader's
@@ -813,16 +818,27 @@ Checklist (in build order):
 - [ ] AC-12 (optional, after AC-3) **Option 2, "Save chapters as I go"**: a bar ⋯ switch; when on and
   a target is set, every new chapter page the user opens on that site is captured once it's quiet
   and saved if nothing is odd (same rules as quick mode); FicShelf never navigates in this mode.
-- [ ] AC-13 Docs and ship: README Clip section (Clip & next, Clip the next chapters, the stop
+- [x] AC-13 Docs and ship (the commit after 8271660): README Clip section (Clip & next, Clip the next chapters, the stop
   rules, pace, "you decide about sites’ terms; FicShelf never unlocks, buys or solves checks"),
   Known limitations, PLAN §2.13, INSTALL ("no prebuild for this feature; the next install is T2
   because of ca4749f"), What's new (`WHATS_NEW_VERSION` 3), this file, MASTER_FEATURES §7.3.
+
+Built as planned, with these differences (2026-10-27):
+- One script `nextScript(nonce, 'find' | 'press' | 'report')` (wrappers `findNextScript`, `pressNextScript`, `reportNextScript`); the page fingerprint is an in-page FNV hash of the main text (the element whose paragraphs hold the most text) plus its length, so no chapter text crosses the bridge.
+- Comment sections score −60, not −40 (a comment pager's rel=next scored 40 and tied the reader's Next). `aside`, chapter lists (more than 8 links) and site chrome never count as lock signals; text blocks count only with a lock-ish class or a plain "unlock this chapter / log in to read" sentence, so story prose about coins is no paywall. "Next: Chapter 5" labels count.
+- Every stop rule pauses the run with **Continue** / **Stop** (as AC-5 says); Continue lets that page through for the lock, duplicate, different-story and bot rules. Bot-check widgets (Turnstile, hCaptcha, a visible reCAPTCHA) stop a run only when the page has no story text (comment forms carry them).
+- Pace waits count from the previous press (page loading counts towards it); constants in `src/features/clipPace.ts` (no imports) so settings and the runner share them; `MIN_DWELL_MS` 4000.
+- The run also pauses when another screen covers the browser (a tapped AO3 / FFN link), not only when the app leaves the screen.
+- The run's "Check it" preview (a new story's first chapter, several chapters) is the same ClipSheet in a `run` mode ("Save and keep clipping"); a preview saved into another story moves the run there.
+- Settings rows are in their own **Clipping** section (pace, chapters per run, save without asking).
+- AC-11 and AC-12 not started: AC-11 waits for the user's reports from the phone (FEATURES order), AC-12 is optional.
 
 ### files
 | action | path | what |
 |---|---|---|
 | new | `src/net/nextScript.ts` | AC-1 |
-| new | `src/features/autoClip.ts` | AC-3..AC-6 runner (pure) |
+| new | `src/features/autoClip.ts` | AC-3..AC-6 runner (pure); `waitForNextChapter` for Clip & next |
+| new | `src/features/clipPace.ts`, `src/features/clipReport.ts` | paces / run sizes; the "What Clip sees" report |
 | change | `src/app/web.tsx` | Clip & next, run start / banner / stop, page events to the runner, keep-awake, AppState pause, What Clip sees |
 | change | `src/components/ClipSheet.tsx` | Save & next, quick switch, run-size sheet (or a new `AutoClipSheet.tsx`) |
 | change | `src/features/clips.ts` | `storyTitle`; helpers the runner needs (same-story check) |
@@ -1682,5 +1698,6 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 |---|---|---|
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
-| 2026-10-27 | (this commit) | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
+| 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
+| 2026-10-27 | 8271660, (this commit) | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |
 | 2026-10-27 | 1cca7be..7546679 | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |

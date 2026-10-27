@@ -19,8 +19,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Linking, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -144,6 +144,9 @@ export default function WebScreen() {
     },
     [],
   );
+
+  // A run happens only while this page is on screen: another screen on top pauses it.
+  useFocusEffect(useCallback(() => () => runner.current?.setActive(false), []));
 
   // A run keeps the screen on, and pauses when the app leaves the screen.
   useEffect(() => {
@@ -621,7 +624,7 @@ function RunBanner({
     head = `Clipping chapter ${Math.min(s.saved + 1, s.count)} of ${s.count}${story}`;
     sub = PHASES[s.phase] ?? '';
   } else if (s.state === 'paused') {
-    head = s.message ?? (s.reason === 'background' ? 'Paused while FicShelf was in the background.' : 'Paused.');
+    head = s.message ?? (s.reason === 'background' ? 'Paused while you were away from this page.' : 'Paused.');
     sub = `${s.saved} of ${s.count} saved${story}`;
   } else {
     head = s.message;

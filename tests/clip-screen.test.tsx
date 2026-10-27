@@ -31,10 +31,21 @@ jest.mock('../src/net/bridge', () => ({ bridge: { updateCookies: jest.fn(), requ
 jest.mock('expo-keep-awake', () => ({ activateKeepAwakeAsync: jest.fn(async () => {}), deactivateKeepAwake: jest.fn() }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(async () => true) }));
 const mockParams: { current: Record<string, string> } = { current: {} };
+const mockBlur: { current?: () => void } = {};
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn(), canGoBack: jest.fn(() => true) },
   Stack: { Screen: () => null },
   useLocalSearchParams: () => mockParams.current,
+  // Runs the focus effect like a screen that gains focus, and its cleanup on blur (mockBlur).
+  useFocusEffect: (fn: () => (() => void) | void) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const React = require('react');
+    React.useEffect(() => {
+      const off = fn();
+      mockBlur.current = off ?? undefined;
+      return off ?? undefined;
+    }, [fn]);
+  },
   usePathname: () => '/web',
 }));
 
@@ -367,7 +378,7 @@ describe('Clip & next and Clip the next chapters', () => {
 
       // Leaving the app pauses; coming back asks.
       await act(async () => onAppState!('background'));
-      expect(text()).toContain('Paused while FicShelf was in the background.');
+      expect(text()).toContain('Paused while you were away from this page.');
       alert.mockClear();
       await act(async () => onAppState!('active'));
       expect(alert).toHaveBeenCalledWith('Continue clipping?', '1 chapter saved so far.', expect.any(Array));
@@ -382,6 +393,16 @@ describe('Clip & next and Clip the next chapters', () => {
     } finally {
       sub.mockRestore();
     }
+  });
+
+  it('pauses when another screen covers the browser', async () => {
+    const key = await oneChapterStory();
+    await render({ url: CH1, clipFor: key, auto: '3' });
+    await act(async () => mockWeb.props!.onLoadEnd());
+    expect(text()).toContain('Clipping chapter 1 of 3');
+    await act(async () => mockBlur.current?.());
+    expect(text()).toContain('Paused while you were away from this page.');
+    expect(byLabel('Continue')).toHaveLength(1);
   });
 
   it('starts by itself from the story’s menu (auto=N) on the last clipped page, pressing Next first', async () => {

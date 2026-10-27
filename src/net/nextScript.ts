@@ -146,6 +146,8 @@ export function nextScript(nonce: string, action: NextAction): string {
     if (WORDS[n]) return true;
     var core = trimArrows(n);
     if (core && WORDS[core]) return true;
+    // "Next: Chapter 5", "Next - The Fall".
+    if (/^next\\s*[:：–—-]\\s*\\S/.test(core)) return true;
     for (var i = 0; i < C.prefixes.length; i++) {
       var p = C.prefixes[i];
       if (core.indexOf(p) === 0 && core.length <= p.length + 80 && /^[\\s:：–—-]/.test(core.slice(p.length))) return true;

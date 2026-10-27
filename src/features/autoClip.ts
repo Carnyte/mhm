@@ -129,9 +129,12 @@ export function dwellMs(pace: ClipPace, random: () => number): number {
   return Math.max(MIN_DWELL_MS, Math.round((p.min + random() * (p.max - p.min)) * 1000));
 }
 
-/** The opening of a chapter's text, for telling one chapter from the next. */
+/** A chapter's whole text as a short print (length and hash), for telling one chapter from the next. */
 export function textPrint(book: ImportedBook): string {
-  return htmlToText(book.chapters[0]?.html ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  const text = book.chapters.map((c) => htmlToText(c.html)).join('\n').replace(/\s+/g, ' ').trim();
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
+  return `${text.length}:${h.toString(16)}`;
 }
 
 const isEmpty = (e: unknown) => !!e && typeof e === 'object' && (e as { code?: unknown }).code === 'empty';
@@ -140,7 +143,7 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 class Stop extends Error {}
 
 type Step = 'start' | 'capture' | 'press';
-type Rule = 'locked' | 'duplicate' | 'different';
+type Rule = 'locked' | 'duplicate' | 'different' | 'bot';
 
 export interface AutoClipOptions {
   /** The clipped story to add to; none: the first chapter becomes a new story (after its preview). */
@@ -245,9 +248,11 @@ export class AutoClip {
   reviewed(saved?: { key: StoryKey; first: number; added: number; url: string; book: ImportedBook }) {
     if (this.finished || this.paused !== 'blocked' || !this.review) return;
     if (!saved) return;
-    if (!this.progress.key) {
+    // The rest of the run goes where this page went (a new story, or another one picked in the preview).
+    if (this.progress.key !== saved.key) {
       this.progress.key = saved.key;
       this.progress.title = this.deps.story(saved.key)?.title ?? saved.book.title;
+      this.runStory = this.deps.story(saved.key)?.storyTitle ?? '';
     }
     this.recordSaved(saved.book, saved.url, saved.first, saved.added);
     this.review = undefined;
@@ -371,7 +376,8 @@ export class AutoClip {
       return this.failed(e);
     }
     await this.checkpoint();
-    if (probe.bot) return this.block(MESSAGES.bot);
+    const here = cleanClipUrl(page.state().url);
+    if (probe.bot && this.waived.get('bot') !== here) return this.block(MESSAGES.bot, { rule: 'bot', url: here });
     let got: Captured;
     try {
       got = await page.capture();
@@ -379,7 +385,7 @@ export class AutoClip {
       await this.checkpoint();
       if (!isEmpty(e)) return this.failed(e);
       const url = cleanClipUrl(page.state().url);
-      if (probe.botWidget) return this.block(MESSAGES.bot);
+      if (probe.botWidget && this.waived.get('bot') !== url) return this.block(MESSAGES.bot, { rule: 'bot', url });
       if (probe.lock.length && this.waived.get('locked') !== url) return this.block(MESSAGES.locked, { rule: 'locked', url });
       // A page still putting its text in: give it a moment (within the wait for the next chapter).
       if (this.before && this.deps.now() < this.deadline) {
@@ -432,6 +438,11 @@ export class AutoClip {
     }
     this.errors = 0;
     this.recordSaved(book, got.url, first, book.chapters.length);
+    if (this.stopped) {
+      // Stopped while this chapter was being saved: it's saved, so say so.
+      this.emit({ ...this.progress, state: 'finished', message: summary(this.progress) });
+      throw new Stop();
+    }
     if (this.progress.saved >= this.progress.count) return this.finish(summary(this.progress));
     this.step = 'press';
     this.dwell = 0;
@@ -455,7 +466,7 @@ export class AutoClip {
       return this.failed(e);
     }
     await this.checkpoint();
-    if (probe.bot) return this.block(MESSAGES.bot);
+    if (probe.bot && this.waived.get('bot') !== cleanClipUrl(probe.url)) return this.block(MESSAGES.bot, { rule: 'bot', url: cleanClipUrl(probe.url) });
     if (!probe.pressed) {
       // The user may have gone on to the next chapter themselves: read it rather than stop.
       if (this.prevUrl && cleanClipUrl(probe.url) !== this.prevUrl && !this.deps.findClipped(probe.url)) {

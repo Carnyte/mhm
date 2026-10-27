@@ -4,12 +4,21 @@
 // script where the CSS cascade, checkVisibility, MutationObserver and inert template documents
 // are real. No network: the pages are set from strings.
 //
+// Then "Clip the next chapters" (src/features/autoClip.ts) drives the real capture and Next scripts
+// on three synthetic sites served by the check itself (no network): a reader that swaps chapters in
+// place on a Next button and then shows a locked episode, a plain site with rel=next links, and a
+// site whose third page is a bot check. The runner's clock is virtual (pages load for real).
+//
 // Usage: npx tsx scripts/clip-check.ts   (set CHROMIUM_PATH if Chromium isn't found; CLIP_DUMP=<file>
 // writes the captured page there, outside the repo)
 
 import { existsSync, writeFileSync } from 'fs';
+import type { BrowserContext, Page } from 'playwright-core';
+import { AutoClip, MESSAGES, type AutoClipPage, type AutoClipStatus } from '../src/features/autoClip';
 import { parseClip } from '../src/import/clip';
 import { clipScript } from '../src/net/clipScript';
+import { findNextScript, pressNextScript } from '../src/net/nextScript';
+import type { StoryKey } from '../src/sources/keys';
 
 const LOREM = 'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua';
 
@@ -46,6 +55,114 @@ const PAGE = `<!DOCTYPE html><html lang="en"><head><title>Glass Orchard - Chapte
 const STUB = 'window.ReactNativeWebView = { postMessage: function (s) { window.__clipPost(s); } };';
 
 const results: { name: string; ok: boolean; detail?: string }[] = [];
+
+const paras = (tag: string) => Array.from({ length: 6 }, (_, i) => `<p>${tag} paragraph ${i} ${LOREM}.</p>`).join('');
+
+/** A reader that swaps chapters in place (no address change) on its Next button; episode 4 is locked. */
+const SPA = `<!DOCTYPE html><html lang="en"><head><title>Glass Orchard - Chapter 1 | Example Reads</title><meta property="og:site_name" content="Example Reads"></head><body>
+<header><a href="/shop">Buy coins</a> <a href="/premium">Premium</a></header>
+<main><h1 id="t">Chapter 1</h1><div id="text">${paras('C1')}</div></main>
+<div class="viewer-nav"><button id="prev">Previous</button> <button id="next">Next episode</button></div>
+<section id="comments"><a href="/comments?page=2" rel="next">Next page</a></section>
+<script>
+var n = 1;
+var lorem = ${JSON.stringify(LOREM)};
+function show() {
+  document.title = 'Glass Orchard - Chapter ' + n + ' | Example Reads';
+  document.getElementById('t').textContent = 'Chapter ' + n;
+  var t = document.getElementById('text');
+  if (n < 4) { var h = ''; for (var i = 0; i < 6; i++) h += '<p>C' + n + ' paragraph ' + i + ' ' + lorem + '.</p>'; t.innerHTML = h; }
+  else t.innerHTML = '<div class="episode-paywall"><p>This episode is locked.</p><button>Unlock this episode (5 coins)</button></div>';
+}
+document.getElementById('next').addEventListener('click', function () {
+  document.getElementById('text').innerHTML = '<p>Loading…</p>';
+  setTimeout(function () { n++; show(); }, 300);
+});
+</script></body></html>`;
+
+/** A plain site: one page per chapter, rel=next in the head and a "Next ›" link; the third is the last. */
+const staticPage = (n: number, last: number) => `<!DOCTYPE html><html lang="en"><head><title>Iron Harbour - Chapter ${n}</title>
+${n < last ? `<link rel="next" href="/s/${n + 1}">` : ''}</head><body>
+<nav class="menu"><a href="/">Home</a> <a href="/list">All stories</a></nav>
+<article><h1>Chapter ${n}</h1>${paras(`S${n}`)}</article>
+<div class="pager"><a href="/s/${n - 1}">‹ Previous</a> ${n < last ? `<a href="/s/${n + 1}">Next ›</a>` : '<span class="disabled">Next ›</span>'}</div>
+</body></html>`;
+
+/** Chapters, then a bot check where the third chapter should be. */
+const cfPage = (n: number) =>
+  n === 3
+    ? `<!DOCTYPE html><html><head><title>Just a moment...</title></head><body><div id="challenge-stage"><p>Checking if the site connection is secure</p></div></body></html>`
+    : `<!DOCTYPE html><html lang="en"><head><title>Salt Road - Chapter ${n}</title></head><body><article><h1>Chapter ${n}</h1>${paras(`F${n}`)}</article><p><a href="/cf/${n + 1}">Next chapter</a></p></body></html>`;
+
+/** The runner on a real page: the app's scripts injected as web.tsx does, saving into memory. */
+async function runOn(ctx: BrowserContext, url: string, count: number): Promise<{ status: AutoClipStatus; saved: string[] }> {
+  const page: Page = await ctx.newPage();
+  const posts: Record<string, unknown>[] = [];
+  await page.exposeFunction('__clipPost', (s: string) => void posts.push(JSON.parse(s)));
+  await page.addInitScript(STUB);
+  let loading = false;
+  page.on('request', (r) => {
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) loading = true;
+  });
+  page.on('load', () => (loading = false));
+  await page.goto(url, { waitUntil: 'load' });
+  let seq = 0;
+  const ask = async (script: (nonce: string) => string): Promise<Record<string, unknown>> => {
+    const nonce = `n${++seq}`;
+    await page.evaluate(script(nonce)).catch(() => {});
+    for (let i = 0; i < 200; i++) {
+      const m = posts.find((p) => p.nonce === nonce);
+      if (m) return m;
+      await page.waitForTimeout(25);
+    }
+    throw new Error('The page didn’t answer.');
+  };
+  const probe = async (script: (nonce: string) => string) => {
+    const m = await ask(script);
+    return { url: String(m.url), found: m.found === true, disabled: m.disabled === true, fp: String(m.fp ?? ''), lock: (m.lock as string[]) ?? [], bot: m.bot as string | undefined, botWidget: m.botWidget === true, pressed: m.pressed === true };
+  };
+  const pageApi: AutoClipPage = {
+    state: () => ({ url: page.url(), loading }),
+    probe: () => probe(findNextScript),
+    press: () => probe(pressNextScript),
+    capture: async () => {
+      const m = await ask((nonce) => clipScript(nonce));
+      if (typeof m.html !== 'string') throw new Error(String(m.error));
+      return { book: await parseClip(m.html, String(m.url), { title: String(m.title) }), url: String(m.url) };
+    },
+  };
+  const key = 'local:check' as StoryKey;
+  let chapters = 0;
+  const saved: string[] = [];
+  let clock = Date.now();
+  const run = new AutoClip(
+    {
+      page: pageApi,
+      story: () => ({ key, title: 'Checked story', chapters, lastUrl: 'https://elsewhere.example/' }),
+      findClipped: () => undefined,
+      append: async (_k, book) => {
+        saved.push(`${book.title} / ${book.chapters[0].title}`);
+        chapters += book.chapters.length;
+        return chapters - book.chapters.length + 1;
+      },
+      // Virtual time for the pace; the page gets real time to load and render.
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+        await page.waitForTimeout(60);
+      },
+      random: () => 0,
+      onChange: () => {},
+    },
+    { key, count, pace: 'quick' },
+  );
+  void run.start();
+  for (let i = 0; i < 600 && (run.current.state === 'running' || !run.current.state); i++) await page.waitForTimeout(50);
+  const status = run.current;
+  run.stop();
+  await page.close();
+  return { status, saved };
+}
 const check = (name: string, ok: boolean, detail?: string) => results.push({ name, ok, detail });
 
 async function main() {
@@ -99,6 +216,26 @@ async function main() {
     for (let i = 0; i < 200 && !busyPosts.length; i++) await busy.waitForTimeout(50);
     const busyMs = Date.now() - t0;
     check('a page that keeps changing is sent after about 4 s', busyPosts.length === 1 && busyMs >= 3800 && busyMs < 6000, `${busyMs} ms`);
+
+    // "Clip the next chapters" on sites served from here.
+    const sites = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await sites.route('https://**/*', (route) => {
+      const u = new URL(route.request().url());
+      const m = u.pathname.match(/^\/(s|cf)\/(\d+)$/);
+      const body = u.hostname === 'spa.example.test' && u.pathname === '/viewer' ? SPA : m ? (m[1] === 's' ? staticPage(Number(m[2]), 3) : cfPage(Number(m[2]))) : null;
+      return body ? route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body }) : route.fulfill({ status: 404, body: 'not here' });
+    });
+    const spa = await runOn(sites, 'https://spa.example.test/viewer', 10);
+    check('SPA reader: 3 chapters saved in order', spa.saved.join(' | ') === 'Glass Orchard / Chapter 1 | Glass Orchard / Chapter 2 | Glass Orchard / Chapter 3', spa.saved.join(' | '));
+    check('SPA reader: stops at the locked episode', spa.status.state === 'paused' && spa.status.message === MESSAGES.locked, JSON.stringify({ state: spa.status.state, message: 'message' in spa.status ? spa.status.message : '' }));
+    const plain = await runOn(sites, 'https://static.example.test/s/1', 10);
+    check('rel=next site: 3 chapters saved in order', plain.saved.join(' | ') === 'Iron Harbour / Chapter 1 | Iron Harbour / Chapter 2 | Iron Harbour / Chapter 3', plain.saved.join(' | '));
+    check('rel=next site: stops at the last chapter', plain.status.state === 'paused' && plain.status.message === MESSAGES.last, 'message' in plain.status ? plain.status.message : plain.status.state);
+    const capped = await runOn(sites, 'https://static.example.test/s/1', 2);
+    check('stops at the run’s size', capped.status.state === 'finished' && capped.saved.length === 2, 'message' in capped.status ? capped.status.message : '');
+    const cf = await runOn(sites, 'https://cf.example.test/cf/1', 10);
+    check('bot check: 2 chapters saved, then it stops', cf.saved.length === 2 && cf.status.state === 'paused' && cf.status.message === MESSAGES.bot, `${cf.saved.length} saved; ${'message' in cf.status ? cf.status.message : cf.status.state}`);
+    await sites.close();
   } finally {
     await browser.close();
   }

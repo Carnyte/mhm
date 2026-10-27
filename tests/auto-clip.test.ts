@@ -340,6 +340,52 @@ describe('the user’s controls', () => {
   });
 });
 
+describe('review fixes', () => {
+  it('Continue lets a page through that only looks like a bot check', async () => {
+    const s = site(pages(3, (i) => (i === 1 ? { bot: 'text' } : {})), { count: 3 });
+    void s.run.start();
+    expect(await settle(s.run)).toMatchObject({ message: MESSAGES.bot, saved: 1 });
+    s.run.resume();
+    expect(await settle(s.run)).toMatchObject({ state: 'finished', saved: 3 });
+  });
+
+  it('Stop while a chapter is being saved counts that chapter', async () => {
+    const s = site(pages(4), { count: 4 });
+    const append = s.deps.append;
+    s.deps.append = async (k, b, u) => {
+      const n = await append(k, b, u);
+      if (s.saved.length === 2) s.run.stop();
+      return n;
+    };
+    void s.run.start();
+    expect(await settle(s.run)).toMatchObject({ state: 'finished', saved: 2, message: 'Saved 2 chapters (4–5) of “Glass Orchard”.' });
+    expect(s.saved).toHaveLength(2);
+  });
+
+  it('tells chapters apart by all of their text, not just how they open', async () => {
+    const intro = 'Translator note and a long shared header. '.repeat(20);
+    const list = pages(3, (i) => ({ url: 'https://reads.example.com/viewer', text: `${intro} body ${i}` }));
+    const s = site(list, { count: 3 });
+    void s.run.start();
+    expect(await settle(s.run)).toMatchObject({ state: 'finished', saved: 3 });
+  });
+
+  it('goes on into the story a preview saved to', async () => {
+    const s = await (async () => {
+      const x = site(pages(4, (i) => (i === 1 ? { chapters: 2 } : {})), { count: 4 });
+      void x.run.start();
+      await settle(x.run);
+      return x;
+    })();
+    const st = s.run.current;
+    const b = st.state === 'paused' ? st.review! : undefined;
+    const other = 'local:other' as StoryKey;
+    s.setStory({ key: other, title: 'Other Story', chapters: 2, lastUrl: b!.url });
+    s.run.reviewed({ key: other, first: 1, added: 2, url: b!.url, book: b!.book });
+    expect(await settle(s.run)).toMatchObject({ key: other, title: 'Other Story', saved: 4 });
+  });
+});
+
 describe('readers that keep one address', () => {
   it('tells chapters apart by their text, and waits for the new text to show', async () => {
     const list = pages(4, (i) => ({ url: 'https://reads.example.com/viewer', text: `T${i}` }));

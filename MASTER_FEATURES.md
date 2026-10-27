@@ -10,11 +10,11 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: ca4749f
-commits_at_base: 175 (137 unrelated legacy commits + 38 FicShelf commits from 695e10d)
+base_commit: (the commit that last updated this file)
+commits_at_base: 178 (137 unrelated legacy commits + 41 FicShelf commits from 695e10d)
 updated: 2026-10-27
 next_work: FEATURES.md
-next_task: P-CLIP2 (automatic clipping; top priority, no Wattpad until clipping is perfect)
+next_task: P-CLIP2 device check (AC-A1..A6) and AC-11 polish from the user's reports; no Wattpad until clipping is perfect
 stack:
   expo: 57.0.31
   expo_modules_core: 57.0.24
@@ -29,15 +29,15 @@ stack:
   ios_precompiled_expo_modules: off (app.json expo-build-properties ios.usePrecompiledModules false)
   node_required: ">=22.13"
 platform_target: iPhone, sideloaded with a free Apple ID from Xcode on the user's Mac
-size_at_base: "179 TS/TSX files in src/; 57 test files"
+size_at_base: "183 TS/TSX files in src/; 60 test files"
 checks_at_base:
   tsc: clean
-  jest: "57 suites, 1153 passed + 1 todo"
+  jest: "60 suites, 1213 passed + 1 todo"
   import_corpus: "299 passed + 1 todo"
   lint: "clean, check-keys: ok"
   expo_export_ios: "bundles; entry-*.hbc about 4.9 MB"
   expo_doctor: "21/21"
-  clip_check: "npx tsx scripts/clip-check.ts: 28/28 (headless Chromium, synthetic pages)"
+  clip_check: "npx tsx scripts/clip-check.ts: 34/34 (headless Chromium, synthetic pages and sites)"
   live_check_ao3: "5/5 (last run during P3; not re-run since, to keep load off AO3)"
   live_check_ffn: "17/17 (last recorded)"
 ---
@@ -80,7 +80,9 @@ single user sideloads it from source.
   (history, shelves, collections, downloads, backups), **updates** (foreground and background checks, local notifications).
 - **Clip this page** (built 2026-10-27, works on the phone): FicShelf's in-app browser opens any
   https site; Clip saves what the page shows as text, as a new local story or its next chapter.
-  Next: P-CLIP2, automatic clipping ("Clip & next", "Clip the next N chapters").
+  **Automatic clipping** (P-CLIP2, built 2026-10-27, tests only so far): "Clip & next" (save, then
+  the site's Next) and "Clip the next chapters" (FicShelf presses Next by itself at a reader's pace,
+  stopping at locks, logins, bot checks and anything odd); "What Clip sees" reports.
 - **Wattpad**: link parsing only; reading (P4) is **on hold** until the user says clipping is perfect.
 
 Goals and principles (from the user's requests and the design):
@@ -369,6 +371,10 @@ the user's next install is a prebuild.
 - `httpCore.ts` (polite `HttpClient`, `POLICIES`, errors; §6.1), `http.ts` (native client with `DESKTOP_USER_AGENT`, `httpText`), `http.web.ts` (web: AO3 / FicHub through dev proxy `/http`, `EXPO_PUBLIC_FFN_PROXY` default `http://localhost:8787`; Wattpad direct with `credentials:'omit'`).
 - `blocks.ts`: `SourceBlockedError`, `isAo3Block` / `detectAo3Block` (`cf-mitigated: challenge`, Cloudflare's exact titles, `cf_chl_opt`), `isWpBlock` / `detectWpBlock` (`x-amzn-waf-action`, CloudFront 403, HTML where JSON was expected).
 - `bridge.ts` (FFN queue; §6.2), `bridgeScript.ts` (`BRIDGE_SCRIPT` with `window.__ffnBridge.announce/fetch`, `loginPrefillScript`), `challenge.ts` (`RawResponse`, `isChallengeResponse`, `parseCookies`, `usernameFromCookies` via the `funn` cookie), `BridgeHost.tsx` (hidden WebView, full screen for "Verify you are human", remount on `onContentProcessDidTerminate`), `BridgeHost.web.tsx`.
+- Auto-clip: `nextScript.ts` (`nextScript(nonce, 'find'|'press'|'report')`, `NEXT_MESSAGE`,
+  `NEXT_WORDS`, `LOCK_PATTERN`, `LOCKED_TEXT_PATTERN`, `NEXT_SCORE_MIN` 30: Next candidates by
+  rel=next / label / class / pager, never disabled, hidden or buy / unlock; lock and bot signals;
+  main-text fingerprint; posts labels and counts only).
 - Clip: `webPolicy.ts` (`decideNavigation(url, mode, ctx)` for the in-app browser's two modes; FFN
   mode = the old allowlist decisions exactly), `webHosts.ts` (`webMode`, `isNativeHost`,
   `acceptsCookieMessage`; no registry import, used by `+native-intent.tsx`), `clipScript.ts`
@@ -390,7 +396,7 @@ the user's next install is a prebuild.
 
 **`src/state/`**: `store.ts` (`createStore` get / set / subscribe; `useStore` with shallow-equal selectors), `library.ts` (§5.4), `settings.ts` (§5.5), `session.ts` (FFN login session from bridge cookies; user id cached in kv `myUser`).
 
-**`src/features/`**: `chapters.ts` (`fetchStory`, `fetchChapter`, `loadChapter`, `usableSavedChapter`, `prefetchChapter`, `getSavedChapter`, `saveChapter`, re-export `renderChapter`), `downloads.ts` (`downloadStory`, `cancelDownload`, `removeDownload`, `removeAllDownloads`, `downloadedBytes`, `downloadsStore`), `updates.ts` (§6.3, §6.2), `chapterIds.ts` (`applyChapterIds`, `chapterIdsOf`, `onChapterRemap`, `announceRemap`), `actions.ts` (`openStory`, `openReader`, `openAuthor`, `openWeb`, `openLinkHit`, `openReaderLink`, `shareStory`, `copyLink`, `storyMenu`, `storyPageMenu`, `readerMenu`, `collectionActions`, `gatedStory`), `adultGate.ts` (`isAdultWork`, `needsAdultGate`, `agreeToAdult`, `alwaysShowAdult`, `resetAdultGate`, `afterAdultGate`), `imports.ts`, `importFiles.ts`, `importHandoff.ts`, `importPicker.ts` (§6.4), `clips.ts` (`commitClip`, `appendClip`, `undoLastClip`, `findClippedPage`, `clippedStories`, `defaultClipTarget`).
+**`src/features/`**: `chapters.ts` (`fetchStory`, `fetchChapter`, `loadChapter`, `usableSavedChapter`, `prefetchChapter`, `getSavedChapter`, `saveChapter`, re-export `renderChapter`), `downloads.ts` (`downloadStory`, `cancelDownload`, `removeDownload`, `removeAllDownloads`, `downloadedBytes`, `downloadsStore`), `updates.ts` (§6.3, §6.2), `chapterIds.ts` (`applyChapterIds`, `chapterIdsOf`, `onChapterRemap`, `announceRemap`), `actions.ts` (`openStory`, `openReader`, `openAuthor`, `openWeb`, `openLinkHit`, `openReaderLink`, `shareStory`, `copyLink`, `storyMenu`, `storyPageMenu`, `readerMenu`, `collectionActions`, `gatedStory`), `adultGate.ts` (`isAdultWork`, `needsAdultGate`, `agreeToAdult`, `alwaysShowAdult`, `resetAdultGate`, `afterAdultGate`), `imports.ts`, `importFiles.ts`, `importHandoff.ts`, `importPicker.ts` (§6.4), `clips.ts` (`commitClip`, `appendClip`, `undoLastClip`, `findClippedPage`, `clippedStories`, `defaultClipTarget`, `clipOddity`), `autoClip.ts` (pure runner `AutoClip` with `start/pause/resume/stop/setActive/reviewed`, `AutoClipStatus` running / paused (user, background, blocked + message, review) / finished, `MESSAGES`, `dwellMs`, `textPrint`, `summary`, `waitForNextChapter`; `MIN_DWELL_MS` 4000, `NEXT_WAIT_MS` 20000, `POLL_MS` 700, `MAX_ERRORS` 3), `clipPace.ts` (no imports: `ClipPace`, `CLIP_PACES` gentle 20–40 / normal 8–15 / quick 4–7 s, `CLIP_BATCHES` 5/10/25/50, `MAX_CLIP_RUN` 200, `runSizeOptions`), `clipReport.ts` (`clipReport`: "What Clip sees", no story text).
 
 **`src/import/`** (pure TS): `types.ts`, `index.ts`, `sniff.ts`, `decode.ts`, `zip.ts`, `epub.ts`, `html.ts` (exports `parseHtmlPage`), `readability.ts`, `text.ts`, `build.ts`, `dom.ts`, `meta.ts`, `detect.ts` (§6.4), `clip.ts` (`parseClip`, `cleanClipUrl`, `stripSiteName`, `splitTitle`, `asOneChapter`).
 
@@ -418,7 +424,7 @@ the user's next install is a prebuild.
 - `live-check.ts`: FFN via the real `BRIDGE_SCRIPT` in Chromium (playwright-core; `CHROMIUM_PATH`, `xvfb-run -a` headless, `WAIT` 12000 ms, uses `HTTPS_PROXY`; 17 checks, ~20+ requests, no explicit budget; desktop Linux UA, so it can't catch iPhone-only behaviour). `--source ao3`: plain fetch, desktop Safari UA (`Version/26.0 Safari/605.1.15`), `AO3_MAX_REQUESTS = 5`, `AO3_GAP_MS = 3000`; checks work page (view_adult), `/navigate`, id search (ids 3171550 and 19893115), HEAD of the official download (must land on `download.archiveofourown.org`), `/media`; `AO3_WORK=<id>` overrides; prints structure only. **Any other `--source` value silently runs FFN.**
 - `dev-proxy.ts` (web harness, port 8787: `/status`, `/reload`, `/fetch` → live FFN via Chromium; `/http` forwards only archiveofourown.org, wattpad.com, fichub.net). `browser.ts` (shared Playwright helper).
 - `synthesize-fixture.ts`: `npx tsx scripts/synthesize-fixture.ts in.html tests/fixtures/ao3/out.html [--blurbs N] [--chapters N] [--paragraphs N]` (§8.4).
-- `clip-check.ts`: Clip's capture script in headless Chromium (playwright-core, `/opt/pw-browsers/chromium-1194`) on synthetic pages, then `parseClip`; no network; `CLIP_DUMP=<file>` writes the captured page; 28/28 at `7546679`. Live-check rejects unknown `--source` values since `1cca7be`.
+- `clip-check.ts`: Clip's capture script in headless Chromium (playwright-core, `/opt/pw-browsers/chromium-1194`) on synthetic pages, then `parseClip`; then the real `AutoClip` runner with the capture and Next scripts on three synthetic sites served by `context.route` (an in-place SPA reader ending in a locked episode, a rel=next site, a bot-check page), virtual clock; no network; `CLIP_DUMP=<file>` writes the captured page; 34/34 at the P-CLIP2 commit. Live-check rejects unknown `--source` values since `1cca7be`.
 
 ---
 
@@ -757,12 +763,17 @@ the auto-mode classifier ("Third-Party Attack")**; no chapter text was pulled. T
 - Novelpia: the text is only on the rendered page (its API needs a one-time `_t` ticket after an
   entitlement check). Clip reads only what the viewer rendered; never `__NUXT_DATA__`, the API, `_t`,
   `signed_key` or cookies (§6.7, §10.11).
-- **Next (P-CLIP2, FEATURES.md §4a)**: "Clip & next" (one tap: clip, save, press the site's Next),
-  then "Clip the next N chapters" (FicShelf presses Next and saves by itself). Approved 2026-10-27
-  with the user taking the sites'-terms risk. Hard lines: never click buy / unlock / subscribe or
-  spend coins, never get past a paywall, login or age gate, never solve or bypass a bot check, never
-  handle the site's tickets / tokens / API; visible browser in the foreground only; human pace
-  (≥ 4 s, default 8–15 s); ≤ 200 chapters a run; stop on anything unexpected (FEATURES.md AC-5).
+- **Built (P-CLIP2, FEATURES.md §4a, `8271660` + the next commit)**: "Clip & next" (one tap:
+  clip, save, press the site's Next; "save without asking" unless `clipOddity`), "Clip the next N
+  chapters" (`AutoClip`; bar ⋯, story ⋯, `/web?auto=N`), "What Clip sees", Settings → Clipping
+  (`clipPace`, `clipBatch`, `clipQuick` under `sources.local`), `ClipInfo.storyTitle`. Approved
+  2026-10-27 with the user taking the sites'-terms risk. Hard lines (kept in code): never click buy /
+  unlock / subscribe or spend coins (Next candidates with lock words are never pressed), never get
+  past a paywall, login or age gate, never solve or bypass a bot check, never handle the site's
+  tickets / tokens / API; visible browser in the foreground only (AppState and screen blur pause);
+  human pace (≥ 4 s between presses, default 8–15 s); ≤ 200 chapters a run; every stop rule pauses
+  with Continue / Stop. Not yet on the phone; AC-11 polish (scroll-loaded text, frames, shadow DOM)
+  waits for the user's reports.
 
 ---
 
@@ -853,8 +864,9 @@ via `Linking.openURL`) · ⏳ not built (reason given) · 🧪 tests only, not c
   `parseClip` (reader mode, text only, site name off the title), `src/features/clips.ts` (new story, next
   chapter, undo), `LocalOrigin.clip`, ClipSheet preview, menus, What's new v2, "Send links from Safari".
   Works on the phone (2026-10-27, "perfect it works perfectly now"); CLIP-A1..A9 not reported one by one.
-- ⏳ **Next: P-CLIP2** "Clip & next" and "Clip the next N chapters" (automatic clipping), then Clip
-  polish (scroll-loaded text, same-origin frames, shadow DOM) (FEATURES.md §4a).
+- ✅ 🧪 **P-CLIP2** "Clip & next", "Clip the next N chapters", "What Clip sees", Settings → Clipping
+  (FEATURES.md §4a; built 2026-10-27; tests + headless Chromium only). ⏳ Clip polish
+  (scroll-loaded text, same-origin frames, shadow DOM) after the user's reports (AC-11).
 
 ### 7.4 Reader (all sources)
 - ✅ Local WebView, works offline; themes light, sepia, paper, mint, dusk, dark, black (OLED) + match system;
@@ -978,12 +990,13 @@ P-NOVELPIA; Clip covers it). A pasted Wattpad link shows "Wattpad support is com
 | `npx expo-doctor` | **20/21** (11 patch mismatches; README still says 21/21) |
 | `npm run live-check -- --source ao3` | 5/5 last recorded (5 requests, 3 s apart; no browser needed) |
 | `npm run live-check` (FFN) | 17/17 last recorded (needs Chromium; `xvfb-run -a` headless) |
-| `npx tsx scripts/clip-check.ts` | 28/28 at `7546679` (headless Chromium, synthetic pages, no network) |
+| `npx tsx scripts/clip-check.ts` | 34/34 at the P-CLIP2 commit (headless Chromium, synthetic pages and sites, no network) |
 
-README's Verification row says `1153 / 1153 pass` (at `ca4749f`); keep it in step in the same commit as new tests (PLAN.md §4 / §5 carry the count too).
+README's Verification row says `1213 / 1213 pass` (P-CLIP2); keep it in step in the same commit as new tests (PLAN.md §4 / §5 carry the count too).
 Nothing native can be verified in the container: say what still needs a device test.
 
 ### 8.2 Test files (51) and counts at `5cc19e8`
+Added in P-CLIP2 (60 files, 1213 tests): next-script 22 (jsdom), auto-clip 27 (fake site, virtual clock), clip-report 2; clip-screen +6 (Save & next, quick save, run banner / background / Stop, blur pause, auto=N, What Clip sees), clip-commit +2 (`storyTitle`), clip-parse +1 (same-story / chapter numbers). The screen test mocks `expo-keep-awake`, `expo-clipboard`, `useFocusEffect` and `AppState.addEventListener` (RN's jest preset returns no subscription).
 Added in P-CLIP (57 files, 1153 tests at `ca4749f`): web-policy 11, clip-script 10, clip-parse 10 (incl. titles), clip-url 3, clip-commit 14, clip-screen.tsx 8; open-link and native-intent gained cases (example.com now gets the browser offer). jsdom tests use `/** @jest-environment jsdom */`; the screen test mocks `react-native-webview` with a forwardRef that records props and injected scripts.
 
 - AO3: ao3-adapter 14, ao3-download 8, ao3-library 14, ao3-parsers 21, ao3-resume 2, ao3-review 13, ao3-screens.tsx 4, ao3-stale-chapters 13, ao3-updates 25, ao3-urls 49.
@@ -1453,7 +1466,8 @@ FicShelf (27 commits, 2026-10-06 → 2026-10-21). "README count" = the Verificat
 | handoff | `6320411` | 10-21 | FEATURES.md + MASTER_FEATURES.md | 1088 | no |
 | M12 | `1cca7be`..`abac63f` | 10-27 | Preflight (flaky tests, stale docs, live-check flag); "Clip this page": browser policy + cookie guard, capture script, parseClip, clipped stories (new / next / undo), browser open mode, ClipSheet, menus, entry points, What's new 2, Send links from Safari, Chromium check | 1088 → 1153 | no |
 | M13 | `570b9ad`, `ca4749f` | 10-27 | Xcode 27 / Swift 6.4 build fix: precompiled Expo modules off; Expo SDK 57 patches (expo-modules-jsi 57.1.3); expo-doctor 21/21; the build works on the phone | 1153 | yes (T2) |
-| handoff 2 | (this commit) | 10-27 | P-CLIP2 (automatic clipping) written up as the top priority; Wattpad on hold | 1153 | no |
+| handoff 2 | `324ae66` | 10-27 | P-CLIP2 (automatic clipping) written up as the top priority; Wattpad on hold | 1153 | no |
+| M14 | `8271660` + the next commit | 10-27 | P-CLIP2: Next finder, auto-clip runner, Clip & next, Clip the next chapters, What Clip sees, Settings → Clipping, What's new 3; inline review (6 fixes, each mutation-checked) | 1153 → 1213 | no (but T2 because of `ca4749f`) |
 
 User decisions in time order:
 - 2026-10-06: delete the old repo content; build an FFN replacement app; first device install; "everything works".
@@ -1530,7 +1544,11 @@ User decisions in time order:
 
 ## 13. Next work
 
-Read **FEATURES.md**. Its front matter names `next_task: P-CLIP2` (§4a: "Clip & next" first, then
+P-CLIP2 is built and pushed (not yet on the phone). When the user is back: send T2 (prebuild,
+because of `ca4749f`), ask them to try AC-A1..A6 (Clip & next, a 10-chapter run, a Novelpia run to
+its first locked episode, leaving the app mid-run, "What Clip sees", reading / listening offline)
+and to paste a "What Clip sees" report from any site where Next isn't found; fix from those
+(AC-11). Read **FEATURES.md**. Its front matter names `next_task: P-CLIP2` (§4a: "Clip & next" first, then
 "Clip the next N chapters" as the main feature, then Clip polish; approved 2026-10-27, the user takes
 the sites'-terms risk; the hard lines in §4a policies stay). P4 / P7 Wattpad are on hold until the
 user says clipping is perfect; then P6 AO3 login, P8 polish, P-IMPORT-X (only if asked) and

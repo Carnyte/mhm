@@ -500,6 +500,15 @@ Then rebuild:
 - **Path C:** rerun the Path C step-2 command.
 - **Path D:** `eas build --platform android --profile preview`, install the new APK the same way.
 
+### The automatic clipping update ("Clip & next", "Clip the next chapters")
+
+The feature itself needs no prebuild (the keep-awake module is already in the app), but the
+update before it moved Expo to its latest SDK 57 patches, so if your phone still runs the build
+from before that, this install **is** a prebuild: follow "The file-import update" steps below
+(`git pull --autostash`, `npm install`, `npx expo prebuild -p ios`, the `NODE_BINARY` line,
+`xed ios`, check Team and Release, **Cmd+R**). Don't delete FicShelf from the phone first.
+Existing data isn't changed (clipped stories gain one optional field).
+
 ### The "Clip this page" update
 
 No prebuild for this one: it uses the browser and reader already in the app. Update as usual

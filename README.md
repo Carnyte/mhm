@@ -125,11 +125,29 @@ FicShelf's browser. Log in there if the site needs it; once the chapter shows, t
   save as a **new story** or as the **next chapter** of a story clipped before (the default when
   you came from that story, or when it's the site's only clipped story). Clipping the same page
   again warns first. A page with several chapter headings can be kept as one chapter.
-- **One tap per chapter:** tap the site's own **Next**, then **Clip** again. FicShelf never follows
-  links, clips by itself or loads anything extra: it reads only what the page already shows.
-  The story's ⋯ menu has **Clip next chapter** (the last clipped page, in FicShelf's browser),
-  **Remove last chapter** (a wrong clip; your place moves back) and **Open on <site>**; the last
-  chapter ends with **Clip next chapter** too.
+- **Clip & next:** once a story is being clipped, the button reads **Clip & next**: one tap clips
+  the chapter, saves it (Save & next chapter in the preview) and presses the site's own **Next**,
+  then waits for the next chapter to show. With **Next time, save without asking** (in the preview,
+  or Settings → Clipping) it skips the preview unless something looks odd (a page clipped before, a
+  warning, several chapters, another story's name). **Clip only** is on the ⋯ next to it.
+- **Clip the next chapters:** from that ⋯, or the story's ⋯ menu. Pick how many (5, 10, 25, 50 or
+  "until the end", at most 200 a run); FicShelf clips the page, waits a reader's while (Settings →
+  Clipping → Auto-clip pace: Gentle 20–40 s, Normal 8–15 s, Quick 4–7 s; never under 4 s), presses
+  Next, waits for the next chapter (a new address, or new text on readers that swap it in place)
+  and goes on. A banner shows "Clipping chapter 7 of 20", with **Pause** and **Stop**; the screen
+  stays on; leaving the app or the page pauses it. It **stops and waits for you** (Continue or Stop)
+  at a chapter that looks locked or needs a login, an "are you human" check, a page on another
+  site, two empty pages, a page clipped before, a different story, a page with several chapters
+  (shown in the preview), the last chapter it can find, or three errors in a row. FicShelf never
+  clicks anything that buys, unlocks or subscribes and never solves or gets around a check: you do
+  that on the page, then tap Continue. Everything saved stays saved. Some sites' terms don't allow
+  copying or automated reading: it's your call.
+- **What Clip sees** (on the ⋯) copies a short report of how FicShelf reads the page (sizes, the
+  Next buttons it found and their scores, lock and bot-check signals), without the story's text,
+  to paste into a message when a site doesn't clip right.
+- The story's ⋯ menu has **Clip next chapter** (the last clipped page, in FicShelf's browser),
+  **Clip the next chapters…**, **Remove last chapter** (a wrong clip; your place moves back) and
+  **Open on <site>**; the last chapter ends with **Clip next chapter** too.
 - **Afterwards** a clipped story is an imported story: Imported shelf, offline reader, audiobook,
   bookmarks and collections. It stays on the phone and isn't in backups.
 - **The browser:** any secure (https) page, with the site's own login and cookies (kept apart from
@@ -141,8 +159,9 @@ FicShelf's browser. Log in there if the site needs it; once the chapter shows, t
   FicShelf" Shortcut to the share sheet, or a bookmark that does the same.
 
 The code is in `src/app/web.tsx` (the browser), `src/net/webPolicy.ts` (what it opens),
-`src/net/clipScript.ts` (the capture in the page), `src/import/clip.ts` (page → book) and
-`src/features/clips.ts` (new story, next chapter, undo).
+`src/net/clipScript.ts` (the capture in the page), `src/net/nextScript.ts` (finding and pressing
+the site's Next), `src/import/clip.ts` (page → book), `src/features/clips.ts` (new story, next
+chapter, undo) and `src/features/autoClip.ts` (Clip the next chapters).
 
 ## Audiobook
 
@@ -217,11 +236,11 @@ Checks run while building this (October 2026):
 
 | Check | Result |
 |---|---|
-| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session, story keys and routes, library state, backups, the storage v2 migration on real SQLite (`node:sqlite`), the source registry and link parsing (FanFiction.net, AO3, Wattpad), the FanFiction.net adapter and its menus (labels unchanged), the polite HTTP client, bot-check detection, the HTML sanitizer, image loading and chapter remapping; AO3: parsers on synthetic fixtures, request URLs, the adapter (view_adult, refusals, listings, the fandom cache), the official download (link copied, never built; not for restricted works), batched update checks (45 works = 3 searches), chapter-id remapping, the FFN 3171550 / AO3 3171550 key collision, AO3's slots and the settings change that turns AO3 on; stale chapter ids (a chapter inserted, deleted or moved: the right chapter fetched, saved and recorded), shortened chapter titles, per-site check times, background budgets and back-off, the adult gate on every way into a work, per-site hidden fandoms and recent searches; file import: EPUBs built in the tests (AO3/Calibre split files, FicHub, FanFicFare, hostile, zip-slip, zip bomb, DRM), HTML (AO3, saved pages, reader-mode cleanup), text and Markdown, encodings; storing imports (files by relative path, duplicates, Replace keeping progress, linking into an AO3 story, failures leaving nothing), deleting, the launch sweep, "Open in" routing, the local source never touching the network, backups without imported stories, the reader's CSP and pictures, the audiobook offline, the import screen (Open in, a PDF, several files); the import corpus (every case the import reviews turned up, rebuilt from synthetic text, with its right result, its warnings and its time); Clip: the browser's rules (FanFiction.net mode decides exactly as before; open mode refuses http, scripts and local URLs, asks before other apps), cookies only from fanfiction.net, the capture script on jsdom pages, clipped pages to books (text only, site names off titles, tokens off addresses), new story / next chapter / undo / duplicates / backups, the browser screen (nonce, host, timeout, notice, preview, deep links); automatic clipping: the Next finder on jsdom pages (rel=next, buttons in many languages, never a disabled, hidden or buy / unlock control, comment pagers, lock notices, bot checks), the auto-clip runner on a fake site (pace, cap, every stop rule, Pause / Continue / Stop, the app leaving the screen, one-address readers), Clip & next and quick saves, the run banner, "What Clip sees" without story text | 1207 / 1207 pass |
+| `npm test`: parsers, URL builders, form replay, challenge detection, bridge retry and mobile-redirect handling, audiobook segmentation, player engine, voices and background-audio session, story keys and routes, library state, backups, the storage v2 migration on real SQLite (`node:sqlite`), the source registry and link parsing (FanFiction.net, AO3, Wattpad), the FanFiction.net adapter and its menus (labels unchanged), the polite HTTP client, bot-check detection, the HTML sanitizer, image loading and chapter remapping; AO3: parsers on synthetic fixtures, request URLs, the adapter (view_adult, refusals, listings, the fandom cache), the official download (link copied, never built; not for restricted works), batched update checks (45 works = 3 searches), chapter-id remapping, the FFN 3171550 / AO3 3171550 key collision, AO3's slots and the settings change that turns AO3 on; stale chapter ids (a chapter inserted, deleted or moved: the right chapter fetched, saved and recorded), shortened chapter titles, per-site check times, background budgets and back-off, the adult gate on every way into a work, per-site hidden fandoms and recent searches; file import: EPUBs built in the tests (AO3/Calibre split files, FicHub, FanFicFare, hostile, zip-slip, zip bomb, DRM), HTML (AO3, saved pages, reader-mode cleanup), text and Markdown, encodings; storing imports (files by relative path, duplicates, Replace keeping progress, linking into an AO3 story, failures leaving nothing), deleting, the launch sweep, "Open in" routing, the local source never touching the network, backups without imported stories, the reader's CSP and pictures, the audiobook offline, the import screen (Open in, a PDF, several files); the import corpus (every case the import reviews turned up, rebuilt from synthetic text, with its right result, its warnings and its time); Clip: the browser's rules (FanFiction.net mode decides exactly as before; open mode refuses http, scripts and local URLs, asks before other apps), cookies only from fanfiction.net, the capture script on jsdom pages, clipped pages to books (text only, site names off titles, tokens off addresses), new story / next chapter / undo / duplicates / backups, the browser screen (nonce, host, timeout, notice, preview, deep links); automatic clipping: the Next finder on jsdom pages (rel=next, buttons in many languages, never a disabled, hidden or buy / unlock control, comment pagers, lock notices, bot checks), the auto-clip runner on a fake site (pace, cap, every stop rule, Pause / Continue / Stop, the app leaving the screen, one-address readers), Clip & next and quick saves, the run banner, "What Clip sees" without story text | 1213 / 1213 pass |
 | `npm run live-check -- --source ao3`: the AO3 parsers against **live** archiveofourown.org (5 requests, 3 s apart) | 5 / 5 pass: work page with chapter index and download link, /navigate, id search, official download (HEAD, served from Cloudflare's cache), /media. A further 9 requests checked a filtered tag listing, search results, the HTML download split into 17 chapters, a series, a creator's works, a chapter page and fandom suggestions (two of them first answered AO3's transient 525 error, shown as "AO3 is busy") |
 | `npm run live-check`: the app's own bridge script in Chromium against **live** fanfiction.net | 17 / 17 pass: fandom lists, story list + 17 filters, chapter page, reviews, author profile, all 4 search types, crossovers, Just In, communities, forums + threads, beta readers, login form, captcha pre-check endpoint, cover images |
 | An imported story's reader page (built by the app, with its CSP) in headless Chromium | the reader's own scripts run (progress, ready, note toggles, read-aloud blocks, settings applied from outside); a script and an event handler planted past the sanitizer are refused; the book's picture loads from its data: URI; a footnote link jumps on the page; a web link goes to the app |
-| `npx tsx scripts/clip-check.ts`: the Clip capture script in headless Chromium on synthetic pages, then the app's page-to-book step | 28 / 28 pass: waits for text a script adds later and sends a page that never settles after about 4 s; drops decoys hidden by display, visibility, opacity and content-visibility; keeps display:contents, a visible child of a hidden box and folded details; no ticket, token, form value, link address or picture address leaves the page; the live page unchanged; title, chapter and stored address cleaned |
+| `npx tsx scripts/clip-check.ts`: the Clip capture script in headless Chromium on synthetic pages, then the app's page-to-book step; then "Clip the next chapters" with the real scripts on three synthetic sites served by the check | 34 / 34 pass: waits for text a script adds later and sends a page that never settles after about 4 s; drops decoys hidden by display, visibility, opacity and content-visibility; keeps display:contents, a visible child of a hidden box and folded details; no ticket, token, form value, link address or picture address leaves the page; the live page unchanged; title, chapter and stored address cleaned; a reader that swaps chapters in place saves 3 and stops at its locked episode (never its comment pager or "Unlock"), a rel=next site saves 3 and stops at its last chapter, a run stops at its size, a bot-check page stops a run after 2 |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |
 | `npx expo export --platform ios` | bundles (4.8 MB Hermes bytecode); `--platform web` builds too |
@@ -272,7 +291,9 @@ never commit a real page.
 - AO3 has no login in the app yet: restricted works open on AO3's site, and kudos, comments,
   subscriptions and AO3 bookmarks aren't available. Reading in the app doesn't add to a work's
   hit count. Creators' work skins (custom styling) aren't applied.
-- Clip keeps text only (no pictures), one page per tap, from secure (https) pages. It can't see
+- Clip keeps text only (no pictures), from secure (https) pages. Automatic clipping finds a site's
+  Next by its label (many languages), `rel=next` and its class; a site with an unlabelled icon
+  button may need a "What Clip sees" report and a fix. It can't see
   text a page draws in a canvas, puts in a frame from another site or in a shadow DOM, or loads
   only as you scroll (scroll to the end first). Hidden decoy text that a site moves off-screen or
   shrinks to nothing (rather than hiding) can come along as stray sentences. Some sites' sign-in

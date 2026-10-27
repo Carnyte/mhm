@@ -329,8 +329,13 @@ your session · ⏳ not built (reason given).
   scripts, inline data, form fields and tokens left behind), cleans it like an imported page, keeps
   text only and previews it; saved as a new local story or the next chapter of a clipped one;
   Clip next chapter, Remove last chapter, Open on <site>; duplicate pages warned; FanFiction.net,
-  AO3 and Wattpad pages offer the app instead; http pages go to Safari; one tap per chapter, no
-  extra requests; a one-time notice; "Send links from Safari" (Shortcut, bookmarklet)
+  AO3 and Wattpad pages offer the app instead; http pages go to Safari; a one-time notice; "Send
+  links from Safari" (Shortcut, bookmarklet)
+- ✅ Automatic clipping: **Clip & next** (save, then the site's Next; "save without asking" unless
+  something looks odd) and **Clip the next chapters** (FicShelf presses Next by itself at a
+  reader's pace, never under 4 s, at most 200 a run, screen on, paused off-screen; stops for locked
+  chapters, logins, bot checks, other sites, duplicates, a different story, the end; never buys,
+  unlocks or solves anything); Settings → Clipping; "What Clip sees" reports without story text
 - ⏳ Later: EPUB export, full backup with imported and clipped stories, FicHub, Wattpad linking,
   pictures in clipped pages
 
@@ -369,7 +374,7 @@ scripts/dev-proxy.ts   lets the web build use a real Chromium session (for scree
 
 ```bash
 npm install
-npm test               # unit tests (1207)
+npm test               # unit tests (1213)
 npm run lint           # eslint + check-keys
 npm run typecheck
 npx expo run:ios       # local dev build (needs Xcode), or:
@@ -381,6 +386,6 @@ use a **development build**, not Expo Go.
 
 ## 5. Verification done
 
-See the **Verification** section of `README.md`: 1207 unit tests, a 17-check live run of the
+See the **Verification** section of `README.md`: 1213 unit tests, a 17-check live run of the
 FanFiction.net parsers and a 5-check live run of the AO3 parsers, typecheck, lint, iOS bundle
 export, expo-doctor, and live-data screenshots.
