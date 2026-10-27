@@ -32,7 +32,7 @@ platform_target: iPhone, sideloaded with a free Apple ID from Xcode on the user'
 size_at_base: "183 TS/TSX files in src/; 60 test files"
 checks_at_base:
   tsc: clean
-  jest: "60 suites, 1213 passed + 1 todo"
+  jest: "61 suites, 1214 passed + 1 todo"
   import_corpus: "299 passed + 1 todo"
   lint: "clean, check-keys: ok"
   expo_export_ios: "bundles; entry-*.hbc about 4.9 MB"
@@ -239,6 +239,7 @@ Update templates to send the user:
 
 | 7-day free profile expired; reinstall over it from Xcode | renewed by the 2026-10-27 install; nothing extra needed (T4) | 2026-10-27 |
 | Build of `570b9ad` + expo-modules-jsi 57.1.3 (hand-installed) incl. Clip | "perfect it works perfectly now" (CLIP-A items not reported one by one) | 2026-10-27 |
+| P-CLIP2 automatic clipping | runs work; reported that new chapters showed on the story page only after reopening it; fixed with auto-reload for local stories + pull-to-refresh | 2026-10-27 |
 
 Ask about the speed fix, AO3, import and the individual Clip checks (CLIP-A1..A9, a site login
 surviving an app restart) when the user is next back.
@@ -992,7 +993,7 @@ P-NOVELPIA; Clip covers it). A pasted Wattpad link shows "Wattpad support is com
 | `npm run live-check` (FFN) | 17/17 last recorded (needs Chromium; `xvfb-run -a` headless) |
 | `npx tsx scripts/clip-check.ts` | 34/34 at `e1b08ba` (headless Chromium, synthetic pages and sites, no network) |
 
-README's Verification row says `1213 / 1213 pass` (P-CLIP2); keep it in step in the same commit as new tests (PLAN.md §4 / §5 carry the count too).
+README's Verification row says `1214 / 1214 pass` (P-CLIP2 + story-page refresh); keep it in step in the same commit as new tests (PLAN.md §4 / §5 carry the count too).
 Nothing native can be verified in the container: say what still needs a device test.
 
 ### 8.2 Test files (51) and counts at `5cc19e8`

@@ -39,7 +39,7 @@ status:
   pending_in_order: [P-CLIP2 device check + AC-11 polish, P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "60 suites, 1213 passed + 1 todo (1214 total)"
+    jest: "61 suites, 1214 passed + 1 todo (1215 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
@@ -831,6 +831,7 @@ Built as planned, with these differences (2026-10-27):
 - The run also pauses when another screen covers the browser (a tapped AO3 / FFN link), not only when the app leaves the screen.
 - The run's "Check it" preview (a new story's first chapter, several chapters) is the same ClipSheet in a `run` mode ("Save and keep clipping"); a preview saved into another story moves the run there.
 - Settings rows are in their own **Clipping** section (pace, chapters per run, save without asking).
+- Device report 2026-10-27: after a run, new chapters showed on the story page only after leaving and reopening it (the page's cached copy wasn't reloaded when a clip invalidated it). Fixed: the story page reloads a local story when its library chapter count changes, and every story page has pull-to-refresh; `tests/story-refresh.test.tsx`.
 - AC-11 and AC-12 not started: AC-11 waits for the user's reports from the phone (FEATURES order), AC-12 is optional.
 
 ### files

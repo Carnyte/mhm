@@ -3,7 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as player from '../../audio/player';
 import { AdultGateSheet, useAdultGate } from '../../components/ao3/AdultGateSheet';
 import { Cover } from '../../components/Cover';
@@ -51,6 +51,16 @@ export default function StoryScreen() {
   const job = useDownloadJob(key);
   const [bigCover, setBigCover] = useState(false);
   const [chapterSort, setChapterSort] = useState<'asc' | 'desc'>('asc');
+
+  // Imported and clipped stories live on the phone: when their chapters change while this page is
+  // open underneath (Clip & next, Clip the next chapters, Remove last chapter), show them at once.
+  const local = !!key && sourceOf(key).transport === 'local';
+  const libChapters = lib?.chapters;
+  const shownChapters = q.data?.chapterList.length;
+  const { refresh } = q;
+  useEffect(() => {
+    if (local && libChapters != null && shownChapters != null && libChapters !== shownChapters) refresh();
+  }, [local, libChapters, shownChapters, refresh]);
 
   // Keep the library copy fresh and clear "new chapter" badges once the story is opened.
   useEffect(() => {
@@ -148,7 +158,11 @@ export default function StoryScreen() {
           ),
         }}
       />
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 40 }}
+        // Pull down to load the story again (new chapters from the site, or ones just clipped).
+        refreshControl={<RefreshControl refreshing={q.refreshing} onRefresh={q.refresh} tintColor={c.textMuted} />}
+      >
         <View style={styles.hero}>
           <Pressable onPress={() => story.coverLargeUrl && setBigCover(true)} accessibilityLabel="Enlarge cover">
             <Cover path={story.coverUrl} width={96} height={128} title={story.title} />
