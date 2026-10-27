@@ -42,6 +42,16 @@ export interface LibraryAuthor {
  * FanFiction.net) was linked to. Paths are relative to the app's Documents folder, whose absolute
  * location changes between installs.
  */
+/** Where a clipped story's chapters came from ("Clip this page" in the in-app browser). */
+export interface ClipInfo {
+  /** The site's host name, lower case ('global.novelpia.com'). */
+  site: string;
+  /** The last clipped page (cleaned https address): "Clip next chapter" opens it. */
+  lastUrl: string;
+  /** Each chapter's page (cleaned); index = chapter number - 1. Duplicate checks, "Open on site". */
+  urls: string[];
+}
+
 export interface LocalOrigin {
   kind: ImportKind;
   /** The file's name as it was picked or opened. */
@@ -68,6 +78,8 @@ export interface LocalOrigin {
   original?: string;
   cover?: string;
   images?: Record<string, string>;
+  /** A story made by clipping pages (generator 'clip'); never has an original file. */
+  clip?: ClipInfo;
 }
 
 export interface LibraryStory {

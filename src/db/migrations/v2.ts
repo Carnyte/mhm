@@ -4,7 +4,7 @@
 // The transforms are pure and idempotent, so the same functions migrate v1 data, merge rows an
 // older build writes after the upgrade, import v1 backups, and normalise blobs when they're read.
 
-import type { Bookmark, Collection, LibraryStory, LocalOrigin, RecentSearch, SavedAuthor } from '../../state/library';
+import type { Bookmark, ClipInfo, Collection, LibraryStory, LocalOrigin, RecentSearch, SavedAuthor } from '../../state/library';
 import type { PinnedFandom } from '../../state/settings';
 import { authorKey, isSourceId, isStoryKey, normalizeKey, splitKey, type SourceId, type StoryKey } from '../../sources/keys';
 import type { MigrationCounts, MigrationEnv, MigrationResult, SyncDb } from './index';
@@ -115,7 +115,20 @@ export function normalizeLocal(raw: unknown): LocalOrigin | undefined {
     for (const [k, v] of Object.entries(raw.images)) if (/^\d{1,6}$/.test(k) && isStr(v) && IMPORT_IMAGE.test(v)) images[k] = v;
     out.images = images;
   }
+  const clip = normalizeClip(raw.clip);
+  if (clip) out.clip = clip;
   return out as unknown as LocalOrigin;
+}
+
+const CLIP_HOST = /^(?=.{1,253}$)[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+const MAX_CLIP_URLS = 5000;
+const isClipUrl = (u: unknown): u is string => isStr(u) && u.length <= 2048 && /^https:\/\/[^\s]+$/i.test(u);
+
+/** A clipped story's pages, when every part of it is sound; else nothing (the story itself stays). */
+export function normalizeClip(raw: unknown): ClipInfo | undefined {
+  if (!isObj(raw) || !isStr(raw.site) || !CLIP_HOST.test(raw.site) || !isClipUrl(raw.lastUrl)) return undefined;
+  if (!Array.isArray(raw.urls) || raw.urls.length > MAX_CLIP_URLS || !raw.urls.every(isClipUrl)) return undefined;
+  return { site: raw.site.toLowerCase(), lastUrl: raw.lastUrl, urls: [...raw.urls] };
 }
 
 function numbersOnly(o: Obj): Obj {

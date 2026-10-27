@@ -10,7 +10,7 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 03e4a59
+base_commit: 4a653e7
 base_commit_date: 2026-10-27
 commits_at_base: 164
 updated: 2026-10-27
@@ -328,12 +328,16 @@ Checklist:
   - new params `url`, `clipFor`; bottom bar with host + Clip; Clip disabled while a capture is pending.
 - [x] CLIP-3 Accept `{type:'cookies'}` messages only when `acceptsCookieMessage(e.nativeEvent.url)`
       (fanfiction.net). Closes today's any-page hole. (03e4a59)
-- [ ] CLIP-4 `src/net/clipScript.ts` (new): `clipScript(nonce: string, maxChars: number): string`,
-      `CLIP_MESSAGE = 'ficshelf-clip'`, `MAX_CLIP_CHARS = 10_000_000` (see data/API details).
-- [ ] CLIP-5 `src/import/html.ts`: export `parseHtmlPage(html, stepper, images)` (today's `parsePage`);
-      `stripActive` also removes `[data-fs-hidden]` (harmless for files).
-- [ ] CLIP-6 `src/import/clip.ts` (new) `parseClip(html, pageUrl, opts?): Promise<ImportedBook>`;
-      export from `src/import/index.ts`; `ImportGenerator` gains `'clip'`.
+- [x] CLIP-4 `src/net/clipScript.ts` (new): `clipScript(nonce: string, maxChars: number): string`,
+      `CLIP_MESSAGE = 'ficshelf-clip'`, `MAX_CLIP_CHARS = 10_000_000` (see data/API details). (4a653e7) Built a little differently: hidden elements are found on the live page but
+      dropped from an inert copy walked side by side (the page is never changed); forms are unwrapped, not removed (some sites
+      wrap the whole page in one); every attribute that could carry a token is dropped (link addresses become
+      `https://link.invalid/`, in-page `#` links kept); `hidden` / `aria-hidden` are dropped too (a consent dialog can leave
+      `aria-hidden` on the whole page).
+- [x] CLIP-5 `src/import/html.ts`: export `parseHtmlPage(html, stepper, images)` (today's `parsePage`);
+      `stripActive` also removes `[data-fs-hidden]` (harmless for files). (4a653e7)
+- [x] CLIP-6 `src/import/clip.ts` (new) `parseClip(html, pageUrl, opts?): Promise<ImportedBook>`;
+      export from `src/import/index.ts`; `ImportGenerator` gains `'clip'`. (4a653e7) Also `asOneChapter` (OQ-CLIP-3), `stripSiteName`, `splitTitle`, `cleanClipUrl` live here (pure).
 - [ ] CLIP-7 Storage: `ClipInfo` + `LocalOrigin.clip?` in `src/state/library.ts`; `normalizeLocal`
       keeps a valid `clip`; `CommitOptions.clip?: ClipInfo` written by `fileRecord`; `commitLocal`
       with `replace` keeps `old.local.clip`; clips commit with `keepOriginal: false`.
@@ -518,7 +522,7 @@ Novelpia findings (2026-10-21; Clip's first target and test site; structure only
 - External deep links to `/web` with a non-FFN host go through `/open`, which shows the host and asks.
 
 ### tests
-- [ ] CLIP-T1 `tests/clip-parse.test.ts` (synthetic rendered pages): nav / sidebar / comments /
+- [x] CLIP-T1 `tests/clip-parse.test.ts` (4a653e7) (synthetic rendered pages): nav / sidebar / comments /
       footer around a chapter → one chapter, chrome gone; `data-fs-hidden` decoys removed; a fake
       `<script id="__NUXT_DATA__">` with a fake `_t` token plus a form with a value → none of those
       strings in any chapter html, the title or summary; `<img src="https://cdn.example/x.jpg?Signature=...">`
@@ -526,7 +530,7 @@ Novelpia findings (2026-10-21; Clip's first target and test site; structure only
       Chapter 3" cleaned; empty / loading page → `ImportError` code `empty` with the message; 3
       chapter headings → 3 chapters; a 2 MB page parses with stalls under 1 s (calibrate for jest,
       about 3x slower than tsx: < 1500 ms stall).
-- [ ] CLIP-T2 `tests/clip-url.test.ts`: `cleanClipUrl` strips `_t`, `token`, `Signature`,
+- [x] CLIP-T2 `tests/clip-url.test.ts` (4a653e7): `cleanClipUrl` strips `_t`, `token`, `Signature`,
       `Key-Pair-Id`, `Policy`, `Expires` and fragments, keeps `?chapter=3`, lower-cases the host;
       `isNativeHost` covers `www.fanfiction.net`, `m.fanfiction.net`, `fictionpress.com`,
       `archiveofourown.org`, `ao3.org`, `www.wattpad.com`, `m.wattpad.com`.
@@ -534,7 +538,7 @@ Novelpia findings (2026-10-21; Clip's first target and test site; structure only
       allows https, blocks http with a message, blocks `javascript:` / `data:` / `blob:` / `file:`,
       `mailto:` → `ask`; FFN / AO3 links → `native`; non-top frames allowed; `acceptsCookieMessage`
       true only for fanfiction.net.
-- [ ] CLIP-T4 `tests/clip-script.test.ts` (`/** @jest-environment jsdom */`; `jest-environment-jsdom`
+- [x] CLIP-T4 `tests/clip-script.test.ts` (4a653e7) (`/** @jest-environment jsdom */`; `jest-environment-jsdom`
       and jsdom 20.0.3 are in node_modules): `eval(clipScript(nonce, max))` on a jsdom document with a
       stub `ReactNativeWebView` posts one message with the nonce, `location.href` and html; no
       script / style / form; drops `display:none`, `visibility:hidden`, `opacity:0`; keeps children

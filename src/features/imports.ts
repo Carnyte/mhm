@@ -26,6 +26,7 @@ import {
   removeBookmarksOf,
   removeStory,
   upsertStory,
+  type ClipInfo,
   type LibraryAuthor,
   type LibraryStory,
   type LocalOrigin,
@@ -166,6 +167,8 @@ export interface CommitOptions {
   authors?: string[];
   /** Keep a copy of the file (default: Settings → Imported files). */
   keepOriginal?: boolean;
+  /** Local: the pages a clipped story came from (a replacement keeps the old story's otherwise). */
+  clip?: ClipInfo;
   /** Chapters saved so far, of all. */
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
@@ -208,7 +211,7 @@ function metaFromBook(book: ImportedBook, o: Pick<CommitOptions, 'title' | 'auth
   };
 }
 
-function fileRecord(key: StoryKey, book: ImportedBook, file: ImportFile, files: Pick<LocalOrigin, 'original' | 'cover' | 'images'>): LocalOrigin {
+function fileRecord(key: StoryKey, book: ImportedBook, file: ImportFile, files: Pick<LocalOrigin, 'original' | 'cover' | 'images'>, clip?: ClipInfo): LocalOrigin {
   const out: LocalOrigin = {
     kind: book.kind,
     fileName: file.name,
@@ -226,6 +229,7 @@ function fileRecord(key: StoryKey, book: ImportedBook, file: ImportFile, files: 
   if (book.updated) out.updated = sec(book.updated);
   if (files.original) out.original = files.original;
   if (files.cover) out.cover = files.cover;
+  if (clip) out.clip = clip;
   return out;
 }
 
@@ -320,7 +324,7 @@ async function commitLocal(book: ImportedBook, file: ImportFile, o: CommitOption
     downloadedChapters: range(n),
     knownChapters: n,
     coverUrl: files.cover ? storyFileRef(key, files.cover) : undefined,
-    local: fileRecord(key, book, file, files),
+    local: fileRecord(key, book, file, files, o.clip ?? old?.local?.clip),
   };
   if (!old) {
     upsertStory(record as LibraryStory, record);

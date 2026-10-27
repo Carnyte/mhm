@@ -66,6 +66,8 @@ export interface SourceSettings {
   hiddenFandoms?: string[];
   /** Imported files: keep a copy of each original file next to the story (on unless turned off). */
   keepOriginals?: boolean;
+  /** Imported files: the one-time notice before the first "Clip this page" was shown. */
+  clipNoticeSeen?: boolean;
 }
 
 export interface AppSettings {
