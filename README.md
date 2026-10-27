@@ -188,17 +188,18 @@ Checks run while building this (October 2026):
 | An imported story's reader page (built by the app, with its CSP) in headless Chromium | the reader's own scripts run (progress, ready, note toggles, read-aloud blocks, settings applied from outside); a script and an event handler planted past the sanitizer are refused; the book's picture loads from its data: URI; a footnote link jumps on the page; a web link goes to the app |
 | `npx tsc --noEmit` | clean |
 | `npx eslint .` | clean |
-| `npx expo export --platform ios` | bundles (4.7 MB Hermes bytecode); `--platform web` builds too |
-| `npx expo-doctor` | 21 / 21 checks pass (dependencies pinned to SDK 57 versions) |
+| `npx expo export --platform ios` | bundles (4.8 MB Hermes bytecode); `--platform web` builds too |
+| `npx expo-doctor` | 20 / 21 checks pass: 11 Expo packages are a patch version behind the SDK 57 pins (for example `expo` 57.0.27 vs ~57.0.31); they get updated together with the next update that needs a prebuild anyway |
 | `npx expo prebuild -p ios` / `-p android` | native projects generate cleanly (deployment target iOS 16.4, scene life cycle on, no push entitlement, background audio on, no microphone permission; Info.plist has the EPUB / HTML / text / Markdown document types, the Markdown type declaration and no opening in place) |
 | First install on a real iPhone (iOS 26, Xcode, free Apple ID) | builds and opens; login and search failed until the desktop user agent fix (October 2026) |
+| The desktop user agent fix, the mobile-site redirect handling, login, search and the audiobook (background audio, lock screen) on the iPhone | "everything works" (October 6, 2026); the Piper "Lessac" voice works (October 7, 2026) |
 | Web harness screenshots with live data | Browse, fandom directory, story list, story details and reader render correctly |
 
 Not verified here, because this was built on Linux with no iPhone and no account:
 
-- **The fixes since the first device install.** The desktop user agent, the mobile-site redirect
-  handling and the audiobook's background audio and lock screen have unit tests but haven't run
-  on an iPhone yet. If something still fails, Settings → Connection → **Connection details**
+- **Changes since October 7, 2026.** The Piper speed mapping, the blank-reader recovery, "skip
+  author's notes", the storage upgrade, AO3 and file import have unit tests but haven't been
+  reported on an iPhone yet. If something fails, Settings → Connection → **Connection details**
   copies a report to share.
 - **Logging in with a real account.** The login form, the captcha pre-check endpoint and the
   login fields were checked against the live site, but a full login wasn't possible without

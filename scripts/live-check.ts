@@ -286,8 +286,14 @@ async function mainAo3() {
 
 const sourceArg = process.argv.indexOf('--source');
 const target = sourceArg >= 0 ? process.argv[sourceArg + 1] : 'ffn';
+const CHECKS: Record<string, () => Promise<void>> = { ffn: main, ao3: mainAo3 };
+if (!Object.hasOwn(CHECKS, target ?? '')) {
+  // Running the FFN check for a typo (or a site without a check yet) would report on the wrong site.
+  console.error(`Unknown --source "${target ?? ''}". Use one of: ${Object.keys(CHECKS).join(', ')}.`);
+  process.exit(2);
+}
 
-(target === 'ao3' ? mainAo3() : main()).catch((e) => {
+CHECKS[target]().catch((e) => {
   console.error(e);
   process.exit(1);
 });

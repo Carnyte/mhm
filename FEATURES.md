@@ -13,7 +13,7 @@ branch: claude/ficshelf-fanfiction-app
 base_commit: 5cc19e8
 base_commit_date: 2026-10-21
 commits_at_base: 164
-updated: 2026-10-21
+updated: 2026-10-27
 next_task: P-CLIP
 companion: MASTER_FEATURES.md
 status:
@@ -204,7 +204,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 
 | order | id | title | status | depends_on | prebuild for the user | gate |
 |---|---|---|---|---|---|---|
-| 1 | P-CLIP | "Clip this page" for any website | pending (next; approved 2026-10-21) | P5 (done) | no (https only) | none |
+| 1 | P-CLIP | "Clip this page" for any website | in_progress (started 2026-10-27; approved 2026-10-21) | P5 (done) | no (https only) | none |
 | 2 | P4 | Wattpad reading, no login | pending | P1–P3 (done) | no | Wattpad terms posture (OQ-1, default yes) |
 | 3 | P6 | AO3 login and social | pending | P3 (done) | no | user has an AO3 account (invite-only) |
 | 4 | P7 | Wattpad login and social | pending | P4 | no | Wattpad account + the ≤10-request endpoint check |
@@ -222,7 +222,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-CLIP
 title: Clip this page (any website)
-status: pending
+status: in_progress
 order: 1
 next_task: true
 depends_on: [P5-import (done)]

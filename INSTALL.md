@@ -4,7 +4,7 @@ FicShelf isn't in the App Store, so you build your own copy and install it. Setu
 job; updating later takes a few commands. (Expo Go can't run this app.)
 
 > These steps follow Expo's and Apple's current docs (October 2026) and a check of this
-> project. Nobody has run a full iPhone build of this branch yet. If a build fails, see
+> project. The developer's own iPhone has run builds of this branch since October 6, 2026. If a build fails, see
 > [Troubleshooting](#troubleshooting) and tell the developer what the error said.
 
 **How to run a command:** open a terminal. On **Windows**, press Start, type `cmd`, press Enter
@@ -530,6 +530,8 @@ From the `ficshelf` folder, one at a time:
    ```
 5. In Xcode: blue **FicShelf** project → TARGETS **FicShelf** → **Signing & Capabilities** →
    check **Team** still shows "Your Name (Personal Team)" (pick it again if not, as in B10).
+   Then check the scheme is still Release: **Product → Scheme → Edit Scheme… → Run** →
+   **Build Configuration** shows **Release** and **Debug executable** is unticked (as in B11).
 6. Connect the iPhone, choose it at the top of the window and press **Cmd+R**. **Don't delete
    FicShelf from the phone first.**
 7. Check it worked: in the Files app, press and hold an `.epub` file → **Share**. FicShelf is in

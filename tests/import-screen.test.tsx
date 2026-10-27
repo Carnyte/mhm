@@ -28,6 +28,9 @@ import { handOff } from '../src/features/importHandoff';
 import { libraryStore } from '../src/state/library';
 import { buildEpub, nav, png, xhtml } from './helpers/epub';
 
+// A cold transform cache made the first test overrun jest's 5 s default and fail the rest in a cascade.
+jest.setTimeout(30_000);
+
 const story = (title: string) =>
   `${title}\nby Ana Writer\n\nChapter 1: Harbour\n\nThe boats were folded at dawn and set on the water.\n\nChapter 2: Open Sea\n\nThey drifted past the lighthouse and out of sight.\n`;
 const bytes = (s: string) => new Uint8Array(Buffer.from(s, 'utf8'));
