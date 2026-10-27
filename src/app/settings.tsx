@@ -12,6 +12,7 @@ import { ReaderSettingsPanel } from '../components/ReaderSettingsPanel';
 import { pickOption, toast } from '../components/Sheet';
 import { Row, Section, T } from '../components/ui';
 import { deleteSnapshot, httpCache, snapshotInfo } from '../db/kv';
+import { CLIP_BATCHES, CLIP_PACES, MAX_CLIP_RUN, type ClipPace } from '../features/clipPace';
 import { downloadedBytes, removeAllDownloads } from '../features/downloads';
 import { importFilesBytes } from '../features/importFiles';
 import { pickStoryFiles } from '../features/importPicker';
@@ -22,13 +23,14 @@ import { bridge } from '../net/bridge';
 import { clearImageCache } from '../net/images';
 import { clearHistory, exportBackup, importBackup, useLibrary } from '../state/library';
 import { useBridgeStatus, useSession } from '../state/session';
-import { setFandomHidden, updateReader, updateSettings, updateSource, useSettings } from '../state/settings';
+import { clipSettings, setFandomHidden, updateReader, updateSettings, updateSource, useSettings } from '../state/settings';
 import { useTheme } from '../theme';
 import { formatBytes, relativeMs } from '../utils/format';
 
 export default function SettingsScreen() {
   const c = useTheme();
   const s = useSettings();
+  const clip = clipSettings(s);
   const status = useBridgeStatus();
   const session = useSession();
   const storyCount = useLibrary((x) => Object.keys(x.stories).length);
@@ -225,6 +227,41 @@ export default function SettingsScreen() {
           title="Keep original files"
           subtitle="A copy of each imported file, next to its story"
           right={<Switch value={s.sources.local?.keepOriginals !== false} onValueChange={(v) => updateSource('local', { keepOriginals: v })} accessibilityLabel="Keep original files" />}
+        />
+      </Section>
+
+      <Section
+        title="Clipping"
+        footer="“Clip the next chapters” presses the site’s Next for you, waiting this long between chapters, and stops at locked chapters, logins and “are you human” checks. Some sites’ terms don’t allow copying: it’s your call."
+      >
+        <Row
+          title="Auto-clip pace"
+          value={`${CLIP_PACES[clip.pace].label} (${CLIP_PACES[clip.pace].min}–${CLIP_PACES[clip.pace].max} s)`}
+          onPress={() =>
+            pickOption<ClipPace>(
+              'Auto-clip pace',
+              (Object.keys(CLIP_PACES) as ClipPace[]).map((k) => ({ value: k, label: CLIP_PACES[k].label, sub: `${CLIP_PACES[k].min}–${CLIP_PACES[k].max} seconds between chapters` })),
+              clip.pace,
+              (v) => updateSource('local', { clipPace: v }),
+            )
+          }
+        />
+        <Row
+          title="Chapters per run"
+          value={String(clip.batch)}
+          onPress={() =>
+            pickOption(
+              'Chapters per run',
+              [...CLIP_BATCHES, MAX_CLIP_RUN].map((n) => ({ value: n, label: n === MAX_CLIP_RUN ? `Until the end (at most ${n})` : String(n) })),
+              clip.batch,
+              (v) => updateSource('local', { clipBatch: v }),
+            )
+          }
+        />
+        <Row
+          title="Save next chapters without asking"
+          subtitle="Clip & next adds to the same story straight away; the preview shows only when something looks odd"
+          right={<Switch value={clip.quick} onValueChange={(v) => updateSource('local', { clipQuick: v })} accessibilityLabel="Save next chapters without asking" />}
         />
       </Section>
 

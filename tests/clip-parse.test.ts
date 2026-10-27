@@ -5,7 +5,7 @@
 // steps.
 
 import { asOneChapter, CLIP_EMPTY, ImportError, parseClip } from '../src/import';
-import { splitTitle, stripSiteName } from '../src/import/clip';
+import { clipChapterNumber, clipStoryTitle, sameClipStory, splitTitle, stripSiteName } from '../src/import/clip';
 
 const LOREM = 'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua'.split(' ');
 let seed = 1;
@@ -147,5 +147,23 @@ describe('clip titles', () => {
     expect(splitTitle('Spider-Man: Home | Prologue')).toEqual({ story: 'Spider-Man: Home', chapter: 'Prologue' });
     expect(splitTitle('Just a Title')).toEqual({ story: 'Just a Title' });
     expect(splitTitle('Love - Hate')).toEqual({ story: 'Love - Hate' });
+  });
+
+  it('tells one story’s pages from another’s, and reads chapter numbers', () => {
+    expect(clipStoryTitle({ title: 'Glass Orchard' })).toBe('Glass Orchard');
+    expect(clipStoryTitle({ title: 'Chapter 12' })).toBe('');
+    expect(sameClipStory('Glass Orchard', 'glass  orchard')).toBe(true);
+    expect(sameClipStory('Glass Orchard', 'Glass Orchard Chapter 5')).toBe(true);
+    expect(sameClipStory('Glass Orchard Ch. 4', 'Glass Orchard Ch. 5')).toBe(true);
+    expect(sameClipStory('Glass Orchard', '')).toBe(true);
+    expect(sameClipStory('Glass Orchard', 'Iron Harbour')).toBe(false);
+    expect(sameClipStory('Ab', 'Abyss Walker')).toBe(false);
+    expect(clipChapterNumber('Chapter 12: The Fall')).toBe(12);
+    expect(clipChapterNumber('Ep. 7')).toBe(7);
+    expect(clipChapterNumber('第3話')).toBe(3);
+    expect(clipChapterNumber('12화')).toBe(12);
+    expect(clipChapterNumber('41. Homecoming')).toBe(41);
+    expect(clipChapterNumber('The Fall')).toBeUndefined();
+    expect(clipChapterNumber(undefined)).toBeUndefined();
   });
 });

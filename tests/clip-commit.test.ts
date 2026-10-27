@@ -88,7 +88,7 @@ describe('appendClip', () => {
     expect(s.chapterProgress).toEqual({ 1: 0.5 });
     expect(newChapterCount(s)).toBe(0);
     expect(s.updated).toBeGreaterThan(Date.now() / 1000 - 60);
-    expect(s.local?.clip).toEqual({ site: 'reader.example.com', lastUrl: CLEAN2, urls: [CLEAN1, CLEAN2] });
+    expect(s.local?.clip).toEqual({ site: 'reader.example.com', lastUrl: CLEAN2, urls: [CLEAN1, CLEAN2], storyTitle: 'Glass Orchard' });
     expect(s.local?.chapters).toBe(2);
     expect(rows(key).map(([n]) => n)).toEqual([1, 2]);
     expect(libraryStore.get().bookmarks.map((b) => b.chapter)).toEqual([1]);
@@ -145,7 +145,7 @@ describe('undoLastClip', () => {
     off();
     const s = stories()[key];
     expect(s).toMatchObject({ chapters: 1, words: 5, chapterTitles: ['Chapter 1'], knownChapters: 1, downloadedChapters: [1], lastChapter: 1 });
-    expect(s.local?.clip).toEqual({ site: 'reader.example.com', lastUrl: CLEAN1, urls: [CLEAN1] });
+    expect(s.local?.clip).toEqual({ site: 'reader.example.com', lastUrl: CLEAN1, urls: [CLEAN1], storyTitle: 'Glass Orchard' });
     expect(rows(key).map(([n]) => n)).toEqual([1]);
     expect(libraryStore.get().bookmarks.map((b) => b.chapter)).toEqual([1]);
     expect(remaps).toEqual([[key, [2]]]);
@@ -170,7 +170,28 @@ describe('the clip record', () => {
   it('survives a reload', async () => {
     const key = await twoChapters();
     reloadLibrary();
-    expect(stories()[key].local?.clip).toEqual({ site: 'reader.example.com', lastUrl: CLEAN2, urls: [CLEAN1, CLEAN2] });
+    expect(stories()[key].local?.clip).toEqual({ site: 'reader.example.com', lastUrl: CLEAN2, urls: [CLEAN1, CLEAN2], storyTitle: 'Glass Orchard' });
+  });
+
+  it('remembers the story’s name from the first page, whatever the story is renamed to', async () => {
+    const key = await commitClip(clip('Chapter 1', 'lorem ipsum'), { title: 'My Own Name', url: PAGE1 });
+    await appendClip(key, clip('Chapter 2', 'dolor sit', { title: 'Another Name Entirely' }), PAGE2);
+    reloadLibrary();
+    expect(stories()[key].title).toBe('My Own Name');
+    expect(stories()[key].local?.clip?.storyTitle).toBe('Glass Orchard');
+    // A page titled only by its chapter gives nothing to compare with.
+    const other = await commitClip(clip('Chapter 1', 'lorem'), { url: 'https://other.example.com/1' }).then(() => clippedStories('other.example.com')[0]);
+    expect(other.local.clip.storyTitle).toBe('Glass Orchard');
+    const bare = await commitClip(clip('Chapter 1', 'lorem', { title: 'Chapter 1' }), { url: 'https://bare.example.com/1' });
+    expect(stories()[bare].local?.clip?.storyTitle).toBeUndefined();
+  });
+
+  it('keeps a stored story name only when it’s text, trimmed and at most 300 characters', () => {
+    const base = { kind: 'html', fileName: 'x', importedAt: 1, size: 1, contentHash: 'fnv:1', dir: 'imports/local_abc' };
+    const good = { site: 'reader.example.com', lastUrl: CLEAN1, urls: [CLEAN1] };
+    expect(normalizeLocal({ ...base, clip: { ...good, storyTitle: '  Glass   Orchard ' } })?.clip?.storyTitle).toBe('Glass Orchard');
+    expect(normalizeLocal({ ...base, clip: { ...good, storyTitle: 'x'.repeat(400) } })?.clip?.storyTitle).toHaveLength(300);
+    for (const bad of [42, { a: 1 }, '   ', null]) expect(normalizeLocal({ ...base, clip: { ...good, storyTitle: bad } })?.clip).toEqual(good);
   });
 
   it('is dropped when damaged, and the story stays', () => {

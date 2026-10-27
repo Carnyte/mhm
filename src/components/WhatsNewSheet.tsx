@@ -1,7 +1,7 @@
 // A one-time "What's new" sheet (settings.whatsNewSeen), with what each release the user hasn't
-// seen added: version 2 is "Clip this page" for any website; version 1 was AO3, switched on for
-// everyone, so its part says what that means, offers the switch right there and points to
-// Settings → Sources.
+// seen added: version 3 is automatic clipping ("Clip & next", "Clip the next chapters"); version 2
+// was "Clip this page" for any website; version 1 was AO3, switched on for everyone, so its part
+// says what that means, offers the switch right there and points to Settings → Sources.
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -12,7 +12,7 @@ import { useTheme } from '../theme';
 import { Button, T, type IconName } from './ui';
 
 /** Bump to show the sheet again for a later release (with new content). */
-export const WHATS_NEW_VERSION = 2;
+export const WHATS_NEW_VERSION = 3;
 
 function Point({ icon, text, color }: { icon: IconName; text: string; color?: string }) {
   const c = useTheme();
@@ -42,25 +42,52 @@ export function WhatsNewSheet() {
           WHAT’S NEW
         </T>
         <T size={26} weight="800" style={{ marginTop: 6 }}>
-          Clip chapters from any website
+          Clipping, hands-free
         </T>
         <T muted size={15} style={{ marginTop: 8, lineHeight: 21 }}>
-          Reading on a site FicShelf doesn’t know? Open its page in FicShelf’s browser and tap Clip: the chapter becomes a story in your library.
+          FicShelf can now press a site’s Next for you, so a long story comes in without a tap per chapter.
         </T>
         <View style={{ marginTop: 20, gap: 14 }}>
-          <Point color={clip} icon="globe-outline" text="Library → + → Clip from a web page, then paste the chapter’s address. Log in there if the site needs it." />
-          <Point color={clip} icon="cut-outline" text="When the chapter shows, tap Clip. Check the preview and save it as a new story, or as the next chapter of one you clipped before." />
           <Point
             color={clip}
             icon="play-forward-outline"
-            text="Tap the site’s own Next, then Clip again: one tap per chapter. FicShelf never clips by itself. Clip next chapter is on the story’s ⋯ menu too."
+            text="Clip & next: once a story is being clipped, one tap saves the chapter and opens the next. Turn on “save without asking” in its preview to skip the preview when nothing looks odd."
           />
           <Point
             color={clip}
-            icon="airplane-outline"
-            text="Clipped chapters read offline and play as audiobooks, like imported files. Only the text is kept (no pictures), on this phone only, not in backups."
+            icon="albums-outline"
+            text="Clip the next chapters: from the ⋯ next to Clip, or the story’s ⋯ menu. Pick how many; FicShelf clips them one by one at a reader’s pace (Settings → Clipping), with Pause and Stop."
+          />
+          <Point
+            color={clip}
+            icon="hand-left-outline"
+            text="It stops at locked or paid chapters, log-ins and “are you human” checks: you deal with them on the page, then tap Continue. FicShelf never buys, unlocks or solves anything."
+          />
+          <Point
+            color={clip}
+            icon="phone-portrait-outline"
+            text="Runs keep the screen on and pause when you leave the app. Some sites’ terms don’t allow copying or automated reading: it’s your call."
           />
         </View>
+        {seen < 2 && (
+          <>
+            <T size={22} weight="800" style={{ marginTop: 32 }}>
+              Clip chapters from any website
+            </T>
+            <T muted size={15} style={{ marginTop: 8, lineHeight: 21 }}>
+              Reading on a site FicShelf doesn’t know? Open its page in FicShelf’s browser and tap Clip: the chapter becomes a story in your library.
+            </T>
+            <View style={{ marginTop: 20, gap: 14 }}>
+              <Point color={clip} icon="globe-outline" text="Library → + → Clip from a web page, then paste the chapter’s address. Log in there if the site needs it." />
+              <Point color={clip} icon="cut-outline" text="When the chapter shows, tap Clip. Check the preview and save it as a new story, or as the next chapter of one you clipped before." />
+              <Point
+                color={clip}
+                icon="airplane-outline"
+                text="Clipped chapters read offline and play as audiobooks, like imported files. Only the text is kept (no pictures), on this phone only, not in backups."
+              />
+            </View>
+          </>
+        )}
         <Button
           title="Clip from a web page"
           icon="cut-outline"

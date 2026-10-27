@@ -183,3 +183,38 @@ export function asOneChapter(book: ImportedBook, title = book.chapters[0]?.title
   const html = book.chapters.map((c) => `<h3>${esc(c.title)}</h3>\n${c.html}`).join('\n');
   return { ...book, chapters: [{ title, html, words: book.words }] };
 }
+
+/**
+ * The story's name a clipped page gave (its title without the site and chapter parts), or '' when
+ * the page named only a chapter ("Chapter 5"): nothing to compare other pages with.
+ */
+export function clipStoryTitle(book: Pick<ImportedBook, 'title'>): string {
+  const t = book.title.replace(/\s+/g, ' ').trim();
+  return t && !isChapterHeading(t, true) ? t.slice(0, 300) : '';
+}
+
+/** Letters only, lower case, no digits: "Glass Orchard Ch. 4" and "glass orchard ch 5" compare equal. */
+const storyKey = (s: string) => s.toLowerCase().replace(/[^\p{L}]+/gu, '');
+
+/**
+ * Whether two pages' story names are the same story. Unknown names (either '') count as the same;
+ * so do names where one starts with the other (a site that adds the chapter's name to the title).
+ */
+export function sameClipStory(a: string, b: string): boolean {
+  const x = storyKey(a);
+  const y = storyKey(b);
+  if (!x || !y || x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.length >= 4 && long.startsWith(short);
+}
+
+/** The chapter number a title or heading names ("Chapter 12: …", "Ep. 7", "第3話", "12화"), if any. */
+export function clipChapterNumber(title: string | undefined): number | undefined {
+  if (!title) return undefined;
+  const m =
+    title.match(/(?:chapter|chap\.?|ch\.?|episode|ep\.?|part|capítulo|chapitre|kapitel|глава|bölüm|chương)\s*(\d{1,5})\b/i) ??
+    title.match(/第\s*(\d{1,5})\s*[章話话回]/) ??
+    title.match(/(\d{1,5})\s*(?:화|회)/) ??
+    title.match(/^\s*(\d{1,5})(?:\s*[.:–—-]|\s*$)/);
+  return m ? Number(m[1]) : undefined;
+}

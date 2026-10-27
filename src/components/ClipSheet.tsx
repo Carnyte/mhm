@@ -1,11 +1,16 @@
 // The preview after a tap on Clip (src/app/web.tsx): what was found on the page (story and chapter
 // titles, words, the first lines, anything left out), where it goes (a new story, or the next
 // chapter of a story clipped before) and Save. Saving stores only the cleaned text.
+//
+// Opened by "Clip & next" it also offers Save & next chapter (save, then the browser presses the
+// site's Next) and "Next time, save without asking"; opened by "Clip the next chapters" (a new
+// story's first chapter, or a page with several chapters) its Save lets the run go on.
 
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { settingsStore, updateSource } from '../state/settings';
 import { appendClip, clippedStories, commitClip, defaultClipTarget, findClippedPage, type ClippedStory } from '../features/clips';
 import { asOneChapter } from '../import/clip';
 import type { ImportedBook } from '../import/types';
@@ -24,6 +29,19 @@ export interface ClipResult {
   /** The page's address as it was clipped (cleaned before it's stored). */
   url: string;
 }
+
+/** What a save stored: the first new chapter's number and how many were added. */
+export interface SavedClip {
+  book: ImportedBook;
+  url: string;
+  first: number;
+  added: number;
+  /** Save & next chapter (or the run's Save): the browser goes on to the next chapter. */
+  next: boolean;
+}
+
+/** clip: a tap on Clip; next: "Clip & next"; run: a check "Clip the next chapters" asked for. */
+export type ClipSheetMode = 'clip' | 'next' | 'run';
 
 function firstLines(book: ImportedBook): string {
   const text = htmlToText(book.chapters[0]?.html ?? '').replace(/\s+/g, ' ').trim();
@@ -56,9 +74,21 @@ function Target({ label, sub, selected, onPress }: { label: string; sub?: string
 
 /**
  * The preview sheet. `clipFor` names the story "Clip next chapter" was opened for (the default
- * target); `onSaved` gets the story's key once the text is stored.
+ * target); `onSaved` gets the story's key and what was stored once the text is saved.
  */
-export function ClipSheet({ result, clipFor, onClose, onSaved }: { result: ClipResult; clipFor?: string; onClose: () => void; onSaved: (key: StoryKey) => void }) {
+export function ClipSheet({
+  result,
+  clipFor,
+  mode = 'clip',
+  onClose,
+  onSaved,
+}: {
+  result: ClipResult;
+  clipFor?: string;
+  mode?: ClipSheetMode;
+  onClose: () => void;
+  onSaved: (key: StoryKey, saved: SavedClip) => void;
+}) {
   const c = useTheme();
   const insets = useSafeAreaInsets();
   const { book, url } = result;
@@ -78,11 +108,12 @@ export function ClipSheet({ result, clipFor, onClose, onSaved }: { result: ClipR
   const [chapterTitle, setChapterTitle] = useState(book.chapters[0]?.title ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const [quick, setQuick] = useState(() => settingsStore.get().sources.local?.clipQuick === true);
 
   const several = book.chapters.length > 1 && !oneChapter;
   const story = target === 'new' ? undefined : targets.find((s) => s.key === target);
 
-  const save = async () => {
+  const save = async (next: boolean) => {
     setSaving(true);
     setError(undefined);
     try {
@@ -92,7 +123,8 @@ export function ClipSheet({ result, clipFor, onClose, onSaved }: { result: ClipR
         const first = await appendClip(story.key, out, url);
         const last = first + out.chapters.length - 1;
         toast(last > first ? `Added as chapters ${first}–${last} of “${story.title}”` : `Added as chapter ${first} of “${story.title}”`, 'success');
-        onSaved(story.key);
+        if (mode === 'next' && quick !== (settingsStore.get().sources.local?.clipQuick === true)) updateSource('local', { clipQuick: quick });
+        onSaved(story.key, { book: out, url, first, added: out.chapters.length, next });
       } else {
         const authors = author
           .split(',')
@@ -100,7 +132,7 @@ export function ClipSheet({ result, clipFor, onClose, onSaved }: { result: ClipR
           .filter(Boolean);
         const key = await commitClip(out, { title: title.trim() || book.title, authors, url });
         toast(`Saved “${title.trim() || book.title}” to your library`, 'success');
-        onSaved(key);
+        onSaved(key, { book: out, url, first: 1, added: out.chapters.length, next });
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -196,8 +228,28 @@ export function ClipSheet({ result, clipFor, onClose, onSaved }: { result: ClipR
         ))}
         {error && <T style={{ color: c.danger }}>{error}</T>}
 
-        <Button title={duplicate ? 'Add again' : 'Save'} icon="download-outline" loading={saving} onPress={save} />
-        <Button title="Cancel" kind="ghost" disabled={saving} onPress={onClose} />
+        {mode === 'next' && story && (
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <T size={15}>Next time, save without asking</T>
+              <T muted size={12}>
+                Clip & next adds to this story straight away; this preview shows only when something looks odd.
+              </T>
+            </View>
+            <Switch value={quick} onValueChange={setQuick} accessibilityLabel="Next time, save without asking" />
+          </View>
+        )}
+        {mode === 'run' ? (
+          <Button title={duplicate ? 'Add again and keep clipping' : 'Save and keep clipping'} icon="download-outline" loading={saving} onPress={() => save(true)} />
+        ) : mode === 'next' && story ? (
+          <>
+            <Button title={duplicate ? 'Add again & next chapter' : 'Save & next chapter'} icon="play-forward-outline" loading={saving} onPress={() => save(true)} />
+            <Button title={duplicate ? 'Add again' : 'Save'} kind="secondary" icon="download-outline" disabled={saving} onPress={() => save(false)} />
+          </>
+        ) : (
+          <Button title={duplicate ? 'Add again' : 'Save'} icon="download-outline" loading={saving} onPress={() => save(false)} />
+        )}
+        <Button title={mode === 'run' ? 'Not now' : 'Cancel'} kind="ghost" disabled={saving} onPress={onClose} />
         <T faint size={12} style={{ lineHeight: 17 }}>
           Only the text is kept, on this phone ({formatFull(book.words)} words; no pictures). Clipped stories aren’t in backups.
         </T>

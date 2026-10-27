@@ -4,6 +4,7 @@ import { kv } from '../db/kv';
 import { normalizePins } from '../db/migrations/v2';
 import { DEFAULT_RATING } from '../ffn/constants';
 import { SOURCE_IDS, type SourceId } from '../sources/keys';
+import { CLIP_PACES, MAX_CLIP_RUN, type ClipPace } from '../features/clipPace';
 import { createStore, useStore } from './store';
 
 export type ReaderThemeKey = 'light' | 'sepia' | 'paper' | 'mint' | 'dusk' | 'dark' | 'black';
@@ -68,6 +69,20 @@ export interface SourceSettings {
   keepOriginals?: boolean;
   /** Imported files: the one-time notice before the first "Clip this page" was shown. */
   clipNoticeSeen?: boolean;
+  /** Clipping: how long "Clip the next chapters" waits between chapters (see CLIP_PACES). */
+  clipPace?: ClipPace;
+  /** Clipping: "Clip & next" adds to the same story without the preview unless something looks odd. */
+  clipQuick?: boolean;
+  /** Clipping: how many chapters "Clip the next chapters" offers first. */
+  clipBatch?: number;
+}
+
+/** The clipping settings as stored, with anything odd replaced by the defaults. */
+export function clipSettings(st: AppSettings = settingsStore.get()): { pace: ClipPace; quick: boolean; batch: number } {
+  const l = st.sources.local ?? { enabled: true };
+  const pace = l.clipPace && l.clipPace in CLIP_PACES ? l.clipPace : 'normal';
+  const batch = Number.isInteger(l.clipBatch) && l.clipBatch! >= 1 && l.clipBatch! <= MAX_CLIP_RUN ? l.clipBatch! : 10;
+  return { pace, quick: l.clipQuick === true, batch };
 }
 
 export interface AppSettings {

@@ -2,14 +2,17 @@
 // chapters, when it was imported, what kind of file it was), the site it came from as a link, its
 // tags, and Delete. No author pages, follows, comments or downloads: there's no site behind it.
 // Clipped stories ("Clip this page") also get Clip next chapter (the site's page in FicShelf's
-// browser, where the user taps the site's Next and Clip), Remove last chapter and Open on <site>.
+// browser, where Clip & next adds the next chapter), Clip the next chapters… (FicShelf goes on by
+// itself from the last clipped page), Remove last chapter and Open on <site>.
 
 import { router } from 'expo-router';
 import { Alert, Linking } from 'react-native';
-import { toast, type SheetAction } from '../../components/Sheet';
+import { pickOption, toast, type SheetAction } from '../../components/Sheet';
+import { runSizeOptions } from '../../features/clipPace';
 import { undoLastClip } from '../../features/clips';
 import { deleteImportedStory } from '../../features/imports';
 import { keyOf, libraryStore, type AnyStory, type LocalOrigin } from '../../state/library';
+import { clipSettings } from '../../state/settings';
 import { errorMessage, formatDate, formatFull, formatNumber, readingTime } from '../../utils/format';
 import { NO_WARNING } from '../ao3/constants';
 import type { StoryKey } from '../keys';
@@ -82,6 +85,12 @@ export function openClipPage(key: StoryKey, url: string) {
   router.push({ pathname: '/web', params: { url, clipFor: key } });
 }
 
+/** "Clip the next chapters…": how many, then the story's last clipped page, where the run starts by itself. */
+export function pickClipRun(key: StoryKey, url: string) {
+  const st = clipSettings();
+  pickOption('Clip the next chapters', runSizeOptions(st.pace), st.batch, (n) => router.push({ pathname: '/web', params: { url, clipFor: key, auto: String(n) } }));
+}
+
 function confirmUndoClip(s: { key: StoryKey; title: string; chapters: number }) {
   Alert.alert(`Remove chapter ${s.chapters}?`, `The last chapter of “${s.title}” is removed from this device, so you can clip the right page instead.`, [
     { text: 'Cancel', style: 'cancel' },
@@ -104,6 +113,7 @@ function clipActions(s: { key: StoryKey; title: string; chapters: number }): She
   const first = clip.urls[0] ?? clip.lastUrl;
   return [
     { label: 'Clip next chapter', icon: 'cut-outline', onPress: () => openClipPage(s.key, clip.lastUrl) },
+    { label: 'Clip the next chapters…', icon: 'play-forward-outline', onPress: () => pickClipRun(s.key, clip.lastUrl) },
     ...(s.chapters > 1 ? [{ label: 'Remove last chapter', icon: 'arrow-undo-outline' as const, destructive: true, onPress: () => confirmUndoClip(s) }] : []),
     { label: `Open on ${siteName(first)}`, icon: 'globe-outline', onPress: () => openClipPage(s.key, first) },
   ];

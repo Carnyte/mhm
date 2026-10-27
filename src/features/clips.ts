@@ -11,7 +11,7 @@ import { playerStore } from '../audio/state';
 import { chapterStore, kv } from '../db/kv';
 import { invalidate } from '../hooks/useQuery';
 import { wordsOfHtml } from '../import/build';
-import { cleanClipUrl } from '../import/clip';
+import { cleanClipUrl, clipStoryTitle, sameClipStory } from '../import/clip';
 import type { ImportedBook } from '../import/types';
 import { hostOf } from '../net/httpCore';
 import type { StoryKey } from '../sources/keys';
@@ -75,7 +75,7 @@ export async function commitClip(book: ImportedBook, o: { title?: string; author
       authors: o.authors,
       // The page itself is never kept: only its text.
       keepOriginal: false,
-      clip: { site, lastUrl: url, urls: book.chapters.map(() => url) },
+      clip: { site, lastUrl: url, urls: book.chapters.map(() => url), ...(clipStoryTitle(book) ? { storyTitle: clipStoryTitle(book) } : {}) },
     },
   );
 }
@@ -167,4 +167,18 @@ export async function undoLastClip(key: StoryKey): Promise<void> {
   remapStoryBookmarks(key, r);
   announceRemap(key, r);
   invalidate(`story:${key}`);
+}
+
+/**
+ * Why a page clipped for `story` should be looked at before it's added ("Clip & next" with "save
+ * without asking"): a page clipped before, a warning, several chapters, or another story's name.
+ * Undefined when nothing looks odd.
+ */
+export function clipOddity(book: ImportedBook, url: string, story: ClippedStory): string | undefined {
+  const dup = findClippedPage(url);
+  if (dup) return `You clipped this page already (chapter ${dup.chapter} of “${dup.story.title}”).`;
+  if (book.warnings.length) return book.warnings[0];
+  if (book.chapters.length > 1) return `This page shows ${book.chapters.length} chapters.`;
+  if (!sameClipStory(story.local.clip.storyTitle ?? '', clipStoryTitle(book))) return 'This looks like a different story.';
+  return undefined;
 }

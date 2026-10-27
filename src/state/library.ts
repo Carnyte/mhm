@@ -50,6 +50,11 @@ export interface ClipInfo {
   lastUrl: string;
   /** Each chapter's page (cleaned); index = chapter number - 1. Duplicate checks, "Open on site". */
   urls: string[];
+  /**
+   * The story's name as the first clipped page's title gave it (≤ 300 characters), whatever the
+   * story was renamed to: automatic clipping stops when a page names a different story.
+   */
+  storyTitle?: string;
 }
 
 export interface LocalOrigin {

@@ -26,7 +26,10 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('../src/audio/player', () => ({ stop: jest.fn(), forgetListenPosition: jest.fn(), start: jest.fn() }));
 jest.mock('../src/components/Sheet', () => ({ toast: jest.fn(), showActions: jest.fn(), pickOption: jest.fn() }));
+jest.mock('../src/components/ui', () => ({ ...jest.requireActual('../src/components/ui'), haptic: jest.fn() }));
 jest.mock('../src/net/bridge', () => ({ bridge: { updateCookies: jest.fn(), request: jest.fn(async () => ''), subscribe: jest.fn(() => () => {}), get: jest.fn(() => ({})) } }));
+jest.mock('expo-keep-awake', () => ({ activateKeepAwakeAsync: jest.fn(async () => {}), deactivateKeepAwake: jest.fn() }));
+jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(async () => true) }));
 const mockParams: { current: Record<string, string> } = { current: {} };
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn(), canGoBack: jest.fn(() => true) },
@@ -38,8 +41,12 @@ jest.mock('expo-router', () => ({
 import { router } from 'expo-router';
 import { Alert } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-import WebScreen, { CLIP_NOTICE, CLIP_TIMEOUT_MS } from '../src/app/web';
-import { toast } from '../src/components/Sheet';
+import WebScreen, { CLIP_NOTICE, CLIP_TIMEOUT_MS, NO_NEXT } from '../src/app/web';
+import * as Clipboard from 'expo-clipboard';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { AppState } from 'react-native';
+import { pickOption, showActions, toast } from '../src/components/Sheet';
+import { NEXT_MESSAGE } from '../src/net/nextScript';
 import { commitClip } from '../src/features/clips';
 import { CLIP_MESSAGE } from '../src/net/clipScript';
 import { bridge } from '../src/net/bridge';
@@ -91,6 +98,8 @@ beforeEach(() => {
   mockWeb.injected = [];
   jest.clearAllMocks();
   alert.mockImplementation(() => {});
+  // react-native's jest preset gives no subscription back.
+  jest.spyOn(AppState, 'addEventListener').mockImplementation(() => ({ remove: jest.fn() }) as never);
 });
 
 afterEach(() => act(async () => tree?.unmount()));
@@ -129,15 +138,15 @@ describe('Clip in the browser', () => {
     await settle();
     const [story] = Object.values(libraryStore.get().stories);
     expect(story).toMatchObject({ title: 'Glass Orchard', chapters: 1, chapterTitles: ['Chapter 1'] });
-    expect(story.local?.clip).toEqual({ site: 'reader.example.com', lastUrl: 'https://reader.example.com/novel/7/chapter/1', urls: ['https://reader.example.com/novel/7/chapter/1'] });
+    expect(story.local?.clip).toEqual({ site: 'reader.example.com', lastUrl: 'https://reader.example.com/novel/7/chapter/1', urls: ['https://reader.example.com/novel/7/chapter/1'], storyTitle: 'Glass Orchard' });
     expect(JSON.stringify(libraryStore.get())).not.toContain('TICKET');
     expect(toast).toHaveBeenCalledWith('Saved “Glass Orchard” to your library', 'success');
     expect(text()).not.toContain('CLIPPED FROM');
 
-    // The next tap offers the story just saved, without the notice.
+    // The next tap offers Clip & next for the story just saved, without the notice.
     alert.mockClear();
-    expect(byLabel('Clip as chapter 2')).toHaveLength(1);
-    await press('Clip as chapter 2');
+    expect(byLabel('Clip & next')).toHaveLength(1);
+    await press('Clip & next');
     expect(alert).not.toHaveBeenCalled();
     expect(mockWeb.injected).toHaveLength(2);
   });
@@ -149,7 +158,7 @@ describe('Clip in the browser', () => {
     );
     updateSource('local', { clipNoticeSeen: true });
     await render({ url: 'https://reader.example.com/novel/7/chapter/2', clipFor: key });
-    await press('Clip as chapter 2');
+    await press('Clip & next');
     const nonce = nonceOf(mockWeb.injected[0]);
     await post({ type: CLIP_MESSAGE, nonce, url: 'https://reader.example.com/novel/7/chapter/2', title: 'Glass Orchard - Chapter 2', html: HTML.replace(/Chapter 1/g, 'Chapter 2') }, 'https://reader.example.com/novel/7/chapter/2');
     await settle();
@@ -199,10 +208,17 @@ describe('a clipped story’s menus', () => {
     const info = () => infoFromLibrary(libraryStore.get().stories[key]);
     let menu = localUi.storyActions(info()).menu.map((a) => a.label);
     // One chapter: nothing to remove (Delete is the way out).
-    expect(menu).toEqual(['Clip next chapter', 'Open on reader.example.com', 'Delete from this device']);
+    expect(menu).toEqual(['Clip next chapter', 'Clip the next chapters…', 'Open on reader.example.com', 'Delete from this device']);
     libraryStore.set((st) => ({ ...st, stories: { ...st.stories, [key]: { ...st.stories[key], chapters: 2 } } }));
     menu = localUi.storyActions(info()).menu.map((a) => a.label);
-    expect(menu).toEqual(['Clip next chapter', 'Remove last chapter', 'Open on reader.example.com', 'Delete from this device']);
+    expect(menu).toEqual(['Clip next chapter', 'Clip the next chapters…', 'Remove last chapter', 'Open on reader.example.com', 'Delete from this device']);
+    // Clip the next chapters… asks how many, then opens the last clipped page with the run's size.
+    localUi.storyActions(info()).menu[1].onPress();
+    const [, options, , onPick] = (pickOption as jest.Mock).mock.calls[0];
+    expect(options.map((o: { value: number }) => o.value)).toEqual([5, 10, 25, 50, 200]);
+    onPick(25);
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/web', params: { url: 'https://www.reader.example.com/novel/7/chapter/1', clipFor: key, auto: '25' } });
+    (router.push as jest.Mock).mockClear();
     localUi.storyActions(info()).menu[0].onPress();
     expect(router.push).toHaveBeenCalledWith({ pathname: '/web', params: { url: 'https://www.reader.example.com/novel/7/chapter/1', clipFor: key } });
     expect(localUi.readerActions(info(), 2, {}).end.map((e) => e.label)).toEqual(['Clip next chapter']);
@@ -250,6 +266,149 @@ describe('browser rules on the screen', () => {
     });
     expect(mockWeb.props).toBeNull();
     expect(text()).toContain('only opens secure (https) pages');
+  });
+});
+
+describe('Clip & next and Clip the next chapters', () => {
+  const CH1 = 'https://reader.example.com/novel/7/chapter/1';
+  const CH2 = 'https://reader.example.com/novel/7/chapter/2';
+  const CH3 = 'https://reader.example.com/novel/7/chapter/3';
+  const page = (n: number) => HTML.replace(/Chapter 1/g, `Chapter ${n}`).replace(/lorem/g, `lorem${n}`);
+  const scripts = (action: string) => mockWeb.injected.filter((x) => x.includes(`"action":"${action}"`));
+  const captures = () => mockWeb.injected.filter((x) => x.includes(`"type":"${CLIP_MESSAGE}"`));
+  const answerNext = async (action: string, m: object, url: string) => {
+    const all = scripts(action);
+    await post({ type: NEXT_MESSAGE, nonce: nonceOf(all[all.length - 1]), action, url, found: true, candidates: 1, fp: `fp-${url}`, lock: [], ...m }, url);
+  };
+  const answerClip = async (n: number, url: string) => {
+    const all = captures();
+    await post({ type: CLIP_MESSAGE, nonce: nonceOf(all[all.length - 1]), url, title: `Glass Orchard - Chapter ${n}`, html: page(n) }, url);
+  };
+  const goTo = async (url: string) => act(async () => mockWeb.props!.onNavigationStateChange({ url, title: 'Page', canGoBack: true, canGoForward: false, loading: false }));
+  const until = async (fn: () => boolean, what: string) => {
+    for (let i = 0; i < 300; i++) {
+      if (fn()) return;
+      await act(async () => new Promise((r) => setTimeout(r, 10)));
+    }
+    throw new Error(`timed out waiting for ${what}`);
+  };
+  async function oneChapterStory() {
+    const key = await commitClip(
+      { kind: 'html', generator: 'clip', title: 'Glass Orchard', authors: [], words: 3, chapters: [{ title: 'Chapter 1', html: '<p>one two three</p>', words: 3 }], images: [], warnings: [] },
+      { url: CH1 },
+    );
+    updateSource('local', { clipNoticeSeen: true });
+    return key;
+  }
+
+  it('Save & next chapter saves, then presses the site’s Next once and waits for the chapter', async () => {
+    const key = await oneChapterStory();
+    await render({ url: CH2, clipFor: key });
+    await press('Clip & next');
+    await answerClip(2, CH2);
+    await settle();
+    expect(text()).toContain('Next time, save without asking');
+    await press('Save & next chapter');
+    await until(() => scripts('press').length === 1, 'the press');
+    expect(libraryStore.get().stories[key].chapters).toBe(2);
+    await answerNext('press', { pressed: true }, CH2);
+    await goTo(CH3);
+    await until(() => text().includes('Clip & next') && !text().includes('Next chapter…'), 'the next chapter');
+    expect(scripts('press')).toHaveLength(1);
+    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('didn’t load'), expect.anything());
+  });
+
+  it('with “save without asking”, adds straight away unless something looks odd', async () => {
+    const key = await oneChapterStory();
+    updateSource('local', { clipQuick: true });
+    await render({ url: CH2, clipFor: key });
+    await press('Clip & next');
+    await answerClip(2, CH2);
+    await until(() => scripts('press').length === 1, 'the press');
+    expect(text()).not.toContain('CLIPPED FROM');
+    expect(toast).toHaveBeenCalledWith('Added chapter 2', 'success');
+    // Nothing to press on the next page: it says so.
+    await answerNext('press', { pressed: false, found: false }, CH2);
+    await until(() => (toast as jest.Mock).mock.calls.some((c) => c[0] === NO_NEXT), 'the message');
+
+    // The same page again is odd: the preview shows.
+    await press('Clip & next');
+    await answerClip(2, CH2);
+    await settle();
+    expect(text()).toContain('You clipped this page already');
+    expect(scripts('press')).toHaveLength(1);
+  });
+
+  it('runs from the ⋯ menu with a banner, keeps the screen on, pauses in the background and stops on Stop', async () => {
+    const key = await oneChapterStory();
+    let onAppState: ((s: string) => void) | undefined;
+    const sub = jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, fn) => {
+      onAppState = fn as (s: string) => void;
+      return { remove: jest.fn() } as never;
+    });
+    try {
+      await render({ url: CH2, clipFor: key });
+      await press('More clip options');
+      const actions = (showActions as jest.Mock).mock.calls[0][0] as { label: string; onPress: () => void }[];
+      expect(actions.map((a) => a.label)).toEqual(['Clip only (stay on this page)', 'Clip the next chapters…', 'What Clip sees']);
+      await act(async () => actions[1].onPress());
+      const [title, options, value, onPick] = (pickOption as jest.Mock).mock.calls[0];
+      expect(title).toBe('Clip the next chapters');
+      expect(options.map((o: { value: number }) => o.value)).toEqual([5, 10, 25, 50, 200]);
+      expect(value).toBe(10);
+      await act(async () => onPick(5));
+      expect(activateKeepAwakeAsync).toHaveBeenCalledWith('autoclip');
+      await until(() => scripts('find').length === 1, 'the look at the page');
+      await answerNext('find', {}, CH2);
+      await until(() => captures().length === 1, 'the capture');
+      await answerClip(2, CH2);
+      await until(() => text().includes('Clipping chapter 2 of 5'), 'the banner');
+      expect(libraryStore.get().stories[key].chapters).toBe(2);
+
+      // Leaving the app pauses; coming back asks.
+      await act(async () => onAppState!('background'));
+      expect(text()).toContain('Paused while FicShelf was in the background.');
+      alert.mockClear();
+      await act(async () => onAppState!('active'));
+      expect(alert).toHaveBeenCalledWith('Continue clipping?', '1 chapter saved so far.', expect.any(Array));
+      await press('Stop');
+      expect(text()).toContain('Saved 1 chapter (2) of “Glass Orchard”.');
+      expect(deactivateKeepAwake).toHaveBeenCalledWith('autoclip');
+      const injected = mockWeb.injected.length;
+      await settle();
+      expect(mockWeb.injected).toHaveLength(injected);
+      await press('Done');
+      expect(text()).toContain('Clip & next');
+    } finally {
+      sub.mockRestore();
+    }
+  });
+
+  it('starts by itself from the story’s menu (auto=N) on the last clipped page, pressing Next first', async () => {
+    const key = await oneChapterStory();
+    await render({ url: CH1, clipFor: key, auto: '3' });
+    await act(async () => mockWeb.props!.onLoadEnd());
+    expect(text()).toContain('Clipping chapter 1 of 3');
+    expect(captures()).toHaveLength(0);
+    await press('Stop');
+    expect(text()).toContain('Stopped.');
+  });
+
+  it('“What Clip sees” copies a report without the story’s text', async () => {
+    await render({ url: CH2 });
+    updateSource('local', { clipNoticeSeen: true });
+    await press('More clip options');
+    const actions = (showActions as jest.Mock).mock.calls[0][0] as { label: string; onPress: () => void }[];
+    await act(async () => actions.find((a) => a.label === 'What Clip sees')!.onPress());
+    await answerNext('report', { report: [{ label: 'Next', tag: 'a', kind: 'link', score: 40 }], label: 'Next', kind: 'link', score: 40 }, CH2);
+    await until(() => captures().length === 1, 'the capture');
+    await answerClip(2, CH2);
+    await until(() => (Clipboard.setStringAsync as jest.Mock).mock.calls.length === 1, 'the copy');
+    const report = (Clipboard.setStringAsync as jest.Mock).mock.calls[0][0] as string;
+    expect(report).toContain('Site: reader.example.com');
+    expect(report).toContain('Next: “Next” (link, score 40)');
+    expect(report).toMatch(/Text found: \d+ words/);
+    expect(report).not.toMatch(/lorem|Glass Orchard/);
   });
 });
 

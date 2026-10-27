@@ -122,13 +122,17 @@ export function normalizeLocal(raw: unknown): LocalOrigin | undefined {
 
 const CLIP_HOST = /^(?=.{1,253}$)[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 const MAX_CLIP_URLS = 5000;
+const MAX_CLIP_TITLE = 300;
 const isClipUrl = (u: unknown): u is string => isStr(u) && u.length <= 2048 && /^https:\/\/[^\s]+$/i.test(u);
 
 /** A clipped story's pages, when every part of it is sound; else nothing (the story itself stays). */
 export function normalizeClip(raw: unknown): ClipInfo | undefined {
   if (!isObj(raw) || !isStr(raw.site) || !CLIP_HOST.test(raw.site) || !isClipUrl(raw.lastUrl)) return undefined;
   if (!Array.isArray(raw.urls) || raw.urls.length > MAX_CLIP_URLS || !raw.urls.every(isClipUrl)) return undefined;
-  return { site: raw.site.toLowerCase(), lastUrl: raw.lastUrl, urls: [...raw.urls] };
+  const out: ClipInfo = { site: raw.site.toLowerCase(), lastUrl: raw.lastUrl, urls: [...raw.urls] };
+  const storyTitle = isStr(raw.storyTitle) ? raw.storyTitle.replace(/\s+/g, ' ').trim().slice(0, MAX_CLIP_TITLE) : '';
+  if (storyTitle) out.storyTitle = storyTitle;
+  return out;
 }
 
 function numbersOnly(o: Obj): Obj {

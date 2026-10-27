@@ -19,7 +19,7 @@ export const MAX_CLIP_CHARS = 10_000_000;
 
 /** What the capture posts: the page, or why it couldn't send it. */
 export type ClipMessage =
-  | { type: typeof CLIP_MESSAGE; nonce: string; url: string; title: string; lang: string; html: string; capped?: boolean }
+  | { type: typeof CLIP_MESSAGE; nonce: string; url: string; title: string; lang: string; html: string; capped?: boolean; dropped?: number }
   | { type: typeof CLIP_MESSAGE; nonce: string; error: 'too-large' | 'failed' };
 
 export interface ClipTiming {
@@ -144,7 +144,7 @@ export function clipScript(nonce: string, maxChars: number = MAX_CLIP_CHARS, tim
         }
       }
     }
-    return { html: '<!DOCTYPE html>' + root.outerHTML, capped: capped };
+    return { html: '<!DOCTYPE html>' + root.outerHTML, capped: capped, dropped: drop.length };
   }
   function send() {
     try {
@@ -155,6 +155,8 @@ export function clipScript(nonce: string, maxChars: number = MAX_CLIP_CHARS, tim
       }
       var m = { url: location.href, title: document.title || '', lang: document.documentElement.lang || '', html: page.html };
       if (page.capped) m.capped = true;
+      // How many hidden elements were left out ("What Clip sees").
+      if (page.dropped) m.dropped = page.dropped;
       post(m);
     } catch (e) {
       fail();
