@@ -1356,6 +1356,7 @@ data shape may change.
 | ISSUE-WEB-COOKIE | `src/app/web.tsx` `onMessage` | Any page in the in-app browser could post `{type:'cookies'}` into `bridge.updateCookies` | CLIP-3 |
 | ISSUE-LIVECHECK | `scripts/live-check.ts` ~l.288 | Unknown `--source` silently runs the FFN check | PRE-3; `wp` branch in WP-17 |
 | ISSUE-DOCTOR | deps | `npx expo-doctor` 20/21: 11 patch mismatches | PRE-4, only with the next native change |
+| ISSUE-XCODE-SWIFT (fixed 2026-10-27) | `app.json` expo-build-properties | After an Xcode update (Swift 6.4) the user's build failed: Expo's npm-shipped precompiled ExpoModulesCore (built with Swift 6.3.1) can't be read ("this SDK is not supported by the compiler", "Cannot find type '__ObjC::expo'") | `ios.usePrecompiledModules: false` (the Podfile then forces `EXPO_USE_PRECOMPILED_MODULES=0`): Expo modules build from source on the Mac. Native change: T2 (prebuild). Keep it unless Expo's prebuilts follow Xcode |
 | ISSUE-DOCS | `PLAN.md`, `INSTALL.md`, `README.md` | Stale counts and device statements | PRE-2 |
 | ISSUE-TITLES | `src/sources/meta.ts` `withKnownTitles` | Removing this safety net still passes all AO3 suites (untested) | POL-8 |
 | ISSUE-RTR | `package.json` | `react-test-renderer` only arrives through jest-expo | POL-7 |
