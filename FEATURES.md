@@ -330,7 +330,7 @@ Checklist:
     tapped inside go through `resolveLink` and open natively; no `loginPrefillScript`;
   - new params `url`, `clipFor`; bottom bar with host + Clip; Clip disabled while a capture is pending.
   - also: a non-https start page is refused with Safari offered; one link question (alert) at a time, so a
-    redirecting page can't stack them (review fix, CLIP-18 commit).
+    redirecting page can't stack them (review fix, 7546679).
 - [x] CLIP-3 Accept `{type:'cookies'}` messages only when `acceptsCookieMessage(e.nativeEvent.url)`
       (fanfiction.net). Closes today's any-page hole. (03e4a59)
 - [x] CLIP-4 `src/net/clipScript.ts` (new): `clipScript(nonce: string, maxChars: number): string`,
