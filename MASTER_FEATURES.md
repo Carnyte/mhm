@@ -10,7 +10,7 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: (the commit that last updated this file)
+base_commit: e1b08ba
 commits_at_base: 178 (137 unrelated legacy commits + 41 FicShelf commits from 695e10d)
 updated: 2026-10-27
 next_work: FEATURES.md
@@ -424,7 +424,7 @@ the user's next install is a prebuild.
 - `live-check.ts`: FFN via the real `BRIDGE_SCRIPT` in Chromium (playwright-core; `CHROMIUM_PATH`, `xvfb-run -a` headless, `WAIT` 12000 ms, uses `HTTPS_PROXY`; 17 checks, ~20+ requests, no explicit budget; desktop Linux UA, so it can't catch iPhone-only behaviour). `--source ao3`: plain fetch, desktop Safari UA (`Version/26.0 Safari/605.1.15`), `AO3_MAX_REQUESTS = 5`, `AO3_GAP_MS = 3000`; checks work page (view_adult), `/navigate`, id search (ids 3171550 and 19893115), HEAD of the official download (must land on `download.archiveofourown.org`), `/media`; `AO3_WORK=<id>` overrides; prints structure only. **Any other `--source` value silently runs FFN.**
 - `dev-proxy.ts` (web harness, port 8787: `/status`, `/reload`, `/fetch` → live FFN via Chromium; `/http` forwards only archiveofourown.org, wattpad.com, fichub.net). `browser.ts` (shared Playwright helper).
 - `synthesize-fixture.ts`: `npx tsx scripts/synthesize-fixture.ts in.html tests/fixtures/ao3/out.html [--blurbs N] [--chapters N] [--paragraphs N]` (§8.4).
-- `clip-check.ts`: Clip's capture script in headless Chromium (playwright-core, `/opt/pw-browsers/chromium-1194`) on synthetic pages, then `parseClip`; then the real `AutoClip` runner with the capture and Next scripts on three synthetic sites served by `context.route` (an in-place SPA reader ending in a locked episode, a rel=next site, a bot-check page), virtual clock; no network; `CLIP_DUMP=<file>` writes the captured page; 34/34 at the P-CLIP2 commit. Live-check rejects unknown `--source` values since `1cca7be`.
+- `clip-check.ts`: Clip's capture script in headless Chromium (playwright-core, `/opt/pw-browsers/chromium-1194`) on synthetic pages, then `parseClip`; then the real `AutoClip` runner with the capture and Next scripts on three synthetic sites served by `context.route` (an in-place SPA reader ending in a locked episode, a rel=next site, a bot-check page), virtual clock; no network; `CLIP_DUMP=<file>` writes the captured page; 34/34 at `e1b08ba`. Live-check rejects unknown `--source` values since `1cca7be`.
 
 ---
 
@@ -763,7 +763,7 @@ the auto-mode classifier ("Third-Party Attack")**; no chapter text was pulled. T
 - Novelpia: the text is only on the rendered page (its API needs a one-time `_t` ticket after an
   entitlement check). Clip reads only what the viewer rendered; never `__NUXT_DATA__`, the API, `_t`,
   `signed_key` or cookies (§6.7, §10.11).
-- **Built (P-CLIP2, FEATURES.md §4a, `8271660` + the next commit)**: "Clip & next" (one tap:
+- **Built (P-CLIP2, FEATURES.md §4a, `8271660`, `e1b08ba`)**: "Clip & next" (one tap:
   clip, save, press the site's Next; "save without asking" unless `clipOddity`), "Clip the next N
   chapters" (`AutoClip`; bar ⋯, story ⋯, `/web?auto=N`), "What Clip sees", Settings → Clipping
   (`clipPace`, `clipBatch`, `clipQuick` under `sources.local`), `ClipInfo.storyTitle`. Approved
@@ -990,7 +990,7 @@ P-NOVELPIA; Clip covers it). A pasted Wattpad link shows "Wattpad support is com
 | `npx expo-doctor` | **20/21** (11 patch mismatches; README still says 21/21) |
 | `npm run live-check -- --source ao3` | 5/5 last recorded (5 requests, 3 s apart; no browser needed) |
 | `npm run live-check` (FFN) | 17/17 last recorded (needs Chromium; `xvfb-run -a` headless) |
-| `npx tsx scripts/clip-check.ts` | 34/34 at the P-CLIP2 commit (headless Chromium, synthetic pages and sites, no network) |
+| `npx tsx scripts/clip-check.ts` | 34/34 at `e1b08ba` (headless Chromium, synthetic pages and sites, no network) |
 
 README's Verification row says `1213 / 1213 pass` (P-CLIP2); keep it in step in the same commit as new tests (PLAN.md §4 / §5 carry the count too).
 Nothing native can be verified in the container: say what still needs a device test.
@@ -1467,7 +1467,7 @@ FicShelf (27 commits, 2026-10-06 → 2026-10-21). "README count" = the Verificat
 | M12 | `1cca7be`..`abac63f` | 10-27 | Preflight (flaky tests, stale docs, live-check flag); "Clip this page": browser policy + cookie guard, capture script, parseClip, clipped stories (new / next / undo), browser open mode, ClipSheet, menus, entry points, What's new 2, Send links from Safari, Chromium check | 1088 → 1153 | no |
 | M13 | `570b9ad`, `ca4749f` | 10-27 | Xcode 27 / Swift 6.4 build fix: precompiled Expo modules off; Expo SDK 57 patches (expo-modules-jsi 57.1.3); expo-doctor 21/21; the build works on the phone | 1153 | yes (T2) |
 | handoff 2 | `324ae66` | 10-27 | P-CLIP2 (automatic clipping) written up as the top priority; Wattpad on hold | 1153 | no |
-| M14 | `8271660` + the next commit | 10-27 | P-CLIP2: Next finder, auto-clip runner, Clip & next, Clip the next chapters, What Clip sees, Settings → Clipping, What's new 3; inline review (6 fixes, each mutation-checked) | 1153 → 1213 | no (but T2 because of `ca4749f`) |
+| M14 | `8271660`, `e1b08ba` | 10-27 | P-CLIP2: Next finder, auto-clip runner, Clip & next, Clip the next chapters, What Clip sees, Settings → Clipping, What's new 3; inline review (6 fixes, each mutation-checked) | 1153 → 1213 | no (but T2 because of `ca4749f`) |
 
 User decisions in time order:
 - 2026-10-06: delete the old repo content; build an FFN replacement app; first device install; "everything works".

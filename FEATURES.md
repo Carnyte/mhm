@@ -10,7 +10,7 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: (this commit)
+base_commit: e1b08ba
 base_commit_date: 2026-10-27
 commits_at_base: 178
 updated: 2026-10-27
@@ -62,7 +62,7 @@ status:
     - P-CLIP acceptance items CLIP-A1..A9 one by one, and OQ-CLIP-9 (site login after an app restart):
       the user only said the app "works perfectly now"
     - ca4749f Expo patch updates (not installed yet)
-    - P-CLIP2 (8271660 and the commit after it): Clip & next, Clip the next chapters, What Clip sees,
+    - P-CLIP2 (8271660, e1b08ba): Clip & next, Clip the next chapters, What Clip sees,
       Settings → Clipping, What's new 3
 ---
 
@@ -713,7 +713,7 @@ What exists (P-CLIP, verified at `ca4749f`; re-check line numbers):
 - `expo-keep-awake` is a dependency (used in `src/app/read/[id].tsx`).
 
 Checklist (in build order):
-- [x] AC-1 `src/net/nextScript.ts` (new) (8271660; review fixes in the next commit): in-page scripts (WebKit, injected like clipScript, nonce'd):
+- [x] AC-1 `src/net/nextScript.ts` (new) (8271660; review fixes e1b08ba): in-page scripts (WebKit, injected like clipScript, nonce'd):
   - `findNextScript(nonce)` posts `{type:'ficshelf-next', nonce, url, found, label?, kind?:'link'|'button', disabled?, score?, candidates?: number}`
     (labels and counts only: no text of the chapter, no hrefs with tokens);
   - `pressNextScript(nonce)` finds the same best candidate and activates it with `el.click()` (works
@@ -731,7 +731,7 @@ Checklist (in build order):
   - bar: when a target story is known, the button reads **Clip & next**; a small ⋯ next to it
     offers "Clip only", "Clip the next chapters…" (AC-3) and "What Clip sees" (AC-9);
   - no Next found → toast "FicShelf couldn’t find this site’s Next button. Tap it yourself, then Clip."
-- [x] AC-3 **Option 3, "Clip the next N chapters"** (the main feature) (8271660; pauses on screen blur too, next commit): `src/features/autoClip.ts`
+- [x] AC-3 **Option 3, "Clip the next N chapters"** (the main feature) (8271660; pauses on screen blur too, e1b08ba): `src/features/autoClip.ts`
   (new, pure state machine, no React Native imports; timers and page actions injected so tests drive
   it) plus its UI in web.tsx:
   - start: bar ⋯ → "Clip the next chapters…", or story ⋯ menu → **Clip the next chapters…** (opens
@@ -791,7 +791,7 @@ Checklist (in build order):
   fired, hidden elements dropped, `capped`. Never chapter text, hrefs, cookies or tokens (R-13).
   This is how per-site problems (Novelpia's Next button, its paywall notice) get fixed without
   live requests from the container.
-- [x] AC-10 Tests: (8271660 + the next commit: next-script 22, auto-clip 27, clip-screen +6, clip-commit +2, clip-parse +1, clip-report 2 (60 new, 1213 in all); clip-check 34/34)
+- [x] AC-10 Tests: (8271660, e1b08ba: next-script 22, auto-clip 27, clip-screen +6, clip-commit +2, clip-parse +1, clip-report 2 (60 new, 1213 in all); clip-check 34/34)
   - `tests/next-script.test.ts` (jsdom): `rel=next` link wins; "Next chapter" / "다음화" / "次へ" /
     "下一章" / "Siguiente" / "›" buttons found; a disabled or hidden Next ignored; "Buy next
     chapter" / "Unlock (5 coins)" never chosen; comment-pagination "Next page" loses to the reader's
@@ -818,7 +818,7 @@ Checklist (in build order):
 - [ ] AC-12 (optional, after AC-3) **Option 2, "Save chapters as I go"**: a bar ⋯ switch; when on and
   a target is set, every new chapter page the user opens on that site is captured once it's quiet
   and saved if nothing is odd (same rules as quick mode); FicShelf never navigates in this mode.
-- [x] AC-13 Docs and ship (the commit after 8271660): README Clip section (Clip & next, Clip the next chapters, the stop
+- [x] AC-13 Docs and ship (e1b08ba): README Clip section (Clip & next, Clip the next chapters, the stop
   rules, pace, "you decide about sites’ terms; FicShelf never unlocks, buys or solves checks"),
   Known limitations, PLAN §2.13, INSTALL ("no prebuild for this feature; the next install is T2
   because of ca4749f"), What's new (`WHATS_NEW_VERSION` 3), this file, MASTER_FEATURES §7.3.
@@ -1699,5 +1699,5 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
 | 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
-| 2026-10-27 | 8271660, (this commit) | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |
+| 2026-10-27 | 8271660, e1b08ba | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |
 | 2026-10-27 | 1cca7be..7546679 | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |
