@@ -139,6 +139,7 @@ export default function RootLayout() {
             <Stack.Screen name="messages/compose" options={{ presentation: 'modal', title: 'New message' }} />
             <Stack.Screen name="open" options={{ presentation: 'modal', title: 'Open link' }} />
             <Stack.Screen name="import" options={{ presentation: 'modal', title: 'Import' }} />
+            <Stack.Screen name="help/share" options={{ title: 'Send links from Safari' }} />
             <Stack.Screen name="listen" options={{ title: 'Now listening' }} />
             <Stack.Screen name="ao3/works" options={{ title: 'AO3' }} />
             <Stack.Screen name="ao3/fandoms/[medium]" options={{ title: 'Fandoms' }} />

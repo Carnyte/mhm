@@ -38,9 +38,11 @@ function addStories() {
       // The picker waits for the sheet to finish closing (iOS presents one thing at a time).
       { label: 'Import a file', icon: 'document-outline', onPress: () => setTimeout(pickStoryFiles, 300) },
       { label: 'Open a link', icon: 'link-outline', onPress: () => router.push('/open') },
+      { label: 'Clip from a web page', icon: 'cut-outline', onPress: () => router.push({ pathname: '/open', params: { clip: '1' } }) },
+      { label: 'Send links from Safari', icon: 'share-outline', onPress: () => router.push('/help/share') },
     ],
     'Add to your library',
-    'EPUB, HTML, text and Markdown files are imported to this device. Links to FanFiction.net and AO3 stories open in the app.',
+    'EPUB, HTML, text and Markdown files are imported to this device. Links to FanFiction.net and AO3 stories open in the app. Chapters on other sites can be clipped in FicShelf’s browser.',
   );
 }
 

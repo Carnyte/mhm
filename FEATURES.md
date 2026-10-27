@@ -10,7 +10,7 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 4a653e7
+base_commit: 4484f56
 base_commit_date: 2026-10-27
 commits_at_base: 164
 updated: 2026-10-27
@@ -338,11 +338,12 @@ Checklist:
       `stripActive` also removes `[data-fs-hidden]` (harmless for files). (4a653e7)
 - [x] CLIP-6 `src/import/clip.ts` (new) `parseClip(html, pageUrl, opts?): Promise<ImportedBook>`;
       export from `src/import/index.ts`; `ImportGenerator` gains `'clip'`. (4a653e7) Also `asOneChapter` (OQ-CLIP-3), `stripSiteName`, `splitTitle`, `cleanClipUrl` live here (pure).
-- [ ] CLIP-7 Storage: `ClipInfo` + `LocalOrigin.clip?` in `src/state/library.ts`; `normalizeLocal`
+- [x] CLIP-7 Storage: `ClipInfo` + `LocalOrigin.clip?` in `src/state/library.ts`; `normalizeLocal`
       keeps a valid `clip`; `CommitOptions.clip?: ClipInfo` written by `fileRecord`; `commitLocal`
-      with `replace` keeps `old.local.clip`; clips commit with `keepOriginal: false`.
-- [ ] CLIP-8 `src/features/clips.ts` (new): `commitClip`, `appendClip`, `undoLastClip`,
-      `clippedStories(host?)`, `cleanClipUrl`, `isNativeHost`; reuse `hostOf` from `src/net/httpCore.ts`.
+      with `replace` keeps `old.local.clip`; clips commit with `keepOriginal: false`. (4484f56)
+- [x] CLIP-8 `src/features/clips.ts` (new): `commitClip`, `appendClip`, `undoLastClip`,
+      `clippedStories(host?)`, `cleanClipUrl`, `isNativeHost`; reuse `hostOf` from `src/net/httpCore.ts`. (4484f56) Plus
+      `findClippedPage` and `defaultClipTarget`.
 - [ ] CLIP-9 `src/components/ClipSheet.tsx` (new): preview, editable titles, target picker,
       duplicate warning, progress and errors; one-time notice (`sources.local.clipNoticeSeen`).
 - [ ] CLIP-10 `src/sources/local/ui.ts`: `GENERATORS.clip = 'Clipped web page'`; clipped stories get
@@ -357,7 +358,7 @@ Checklist:
       **Open in FicShelf**. The native adapters carry those sites' rules (e.g. Wattpad paid parts).
 - [ ] CLIP-13 `src/app/+native-intent.tsx`: an external `ficshelf://web?...` with a non-FFN URL is
       redirected to `/open?url=...`, so outside links can't drop the user into an arbitrary site.
-- [ ] CLIP-14 `src/state/settings.ts`: `SourceSettings.clipNoticeSeen?: boolean` (under `sources.local`).
+- [x] CLIP-14 `src/state/settings.ts`: `SourceSettings.clipNoticeSeen?: boolean` (under `sources.local`). (4484f56)
 - [ ] CLIP-15 `src/components/WhatsNewSheet.tsx`: `WHATS_NEW_VERSION` 1 → 2 with a Clip card.
 - [ ] CLIP-16 (optional, cheap, no rebuild) `src/app/help/share.tsx`: an iOS Shortcut ("Receive URLs
       from Share Sheet → URL Encode → Open URL `ficshelf://open?url=…`") and a Safari bookmarklet
@@ -545,7 +546,7 @@ Novelpia findings (2026-10-21; Clip's first target and test site; structure only
       of `display:contents`; no `data-fs-hidden` left in the live DOM; `too-large` over max. jsdom
       has no `checkVisibility`, so the script must fall back to `getComputedStyle`. Use fake timers
       or a short quiet period for the 700 ms / 4 s waits.
-- [ ] CLIP-T5 `tests/clip-commit.test.ts` (`memoryKv` + `fakeFs`): `commitClip` makes a `local:`
+- [x] CLIP-T5 `tests/clip-commit.test.ts` (4484f56) (`memoryKv` + `fakeFs`): `commitClip` makes a `local:`
       story (`kind:'html'`, `generator:'clip'`, `clip.site`, `lastUrl`, `urls`, no original file);
       `appendClip` adds chapter n+1 (text, title, words, `chapterTitles`, `downloadedChapters`,
       `knownChapters`, `lastUrl`) and leaves progress and bookmarks alone; duplicate URL detected;

@@ -46,8 +46,18 @@ describe('open link', () => {
   });
 
   it('says when something isn’t a link', () => {
-    expect(openTarget('https://example.com/whatever')).toEqual({ error: 'That doesn’t look like a FanFiction.net or AO3 link, or a story ID.' });
-    expect(openTarget('hello')).toEqual({ error: 'That doesn’t look like a FanFiction.net or AO3 link, or a story ID.' });
+    expect(openTarget('hello')).toEqual({ error: 'That doesn’t look like a web page address or a story ID.' });
+    expect(openTarget('two words.here now')).toEqual({ error: 'That doesn’t look like a web page address or a story ID.' });
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('offers FicShelf’s browser for a page of another site, without opening it', () => {
+    expect(openTarget('https://example.com/whatever')).toEqual({ web: 'https://example.com/whatever' });
+    expect(openTarget('global.novelpia.com/viewer/833813')).toEqual({ web: 'https://global.novelpia.com/viewer/833813' });
+    expect(openProblem('https://www.royalroad.com/fiction/1/x')).toEqual({ web: 'https://www.royalroad.com/fiction/1/x' });
+    // http pages only open in Safari (iOS refuses them in the app without a rebuild).
+    expect(openTarget('http://example.com/chapter/1')).toEqual({ http: 'http://example.com/chapter/1' });
+    expect(replace).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
   });
 });

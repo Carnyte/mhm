@@ -63,11 +63,17 @@ const SEPARATOR = /\s+[|\-–—·•:»]\s+/;
 /** Letters and digits only, lower case: "Royal Road" and "royalroad.com" compare equal. */
 const squash = (s: string) => s.toLowerCase().replace(/\.(?:com|net|org|io|co|me|info|xyz)$/, '').replace(/[^\p{L}\p{N}]+/gu, '');
 
-/** Names the site goes by, from its address: "global.novelpia.com" → novelpia, globalnovelpia. */
+/**
+ * Names the site goes by, from its address: "global.novelpia.com" → novelpia, globalnovelpia,
+ * global; "reader.example.com" → reader, example, readerexample.
+ */
 function hostNames(host: string): Set<string> {
-  const labels = host.replace(/^www\./, '').split('.');
+  const labels = host.replace(/^(?:www|m)\./, '').split('.');
   const names = new Set<string>();
-  for (let i = 0; i < labels.length - 1; i++) names.add(squash(labels.slice(i, -1).join('')));
+  for (let i = 0; i < labels.length - 1; i++) {
+    names.add(squash(labels.slice(i, -1).join('')));
+    if (labels[i].length >= 3) names.add(squash(labels[i]));
+  }
   names.add(squash(labels.join('')));
   return names;
 }

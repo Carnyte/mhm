@@ -1,10 +1,13 @@
 // Imported files' slots on the shared screens (see src/sources/ui.ts): stats from the file (words,
 // chapters, when it was imported, what kind of file it was), the site it came from as a link, its
 // tags, and Delete. No author pages, follows, comments or downloads: there's no site behind it.
+// Clipped stories ("Clip this page") also get Clip next chapter (the site's page in FicShelf's
+// browser, where the user taps the site's Next and Clip), Remove last chapter and Open on <site>.
 
 import { router } from 'expo-router';
 import { Alert, Linking } from 'react-native';
 import { toast, type SheetAction } from '../../components/Sheet';
+import { undoLastClip } from '../../features/clips';
 import { deleteImportedStory } from '../../features/imports';
 import { keyOf, libraryStore, type AnyStory, type LocalOrigin } from '../../state/library';
 import { errorMessage, formatDate, formatFull, formatNumber, readingTime } from '../../utils/format';
@@ -25,6 +28,7 @@ const GENERATORS: Record<string, string> = {
   calibre: 'Calibre',
   ffn: 'Saved FanFiction.net page',
   readability: 'Web page',
+  clip: 'Clipped web page',
 };
 
 const fileOf = (s: { key: StoryKey }): LocalOrigin | undefined => libraryStore.get().stories[s.key]?.local;
@@ -73,6 +77,38 @@ function leaveDeleted() {
   router.navigate('/library');
 }
 
+/** A clipped story's site page in FicShelf's browser; Clip there adds to this story. */
+export function openClipPage(key: StoryKey, url: string) {
+  router.push({ pathname: '/web', params: { url, clipFor: key } });
+}
+
+function confirmUndoClip(s: { key: StoryKey; title: string; chapters: number }) {
+  Alert.alert(`Remove chapter ${s.chapters}?`, `The last chapter of “${s.title}” is removed from this device, so you can clip the right page instead.`, [
+    { text: 'Cancel', style: 'cancel' },
+    {
+      text: 'Remove',
+      style: 'destructive',
+      onPress: () => {
+        undoLastClip(s.key)
+          .then(() => toast(`Removed chapter ${s.chapters}`, 'success'))
+          .catch((e) => toast(errorMessage(e), 'error'));
+      },
+    },
+  ]);
+}
+
+/** Clip next chapter, Remove last chapter and Open on <site>, for a clipped story. */
+function clipActions(s: { key: StoryKey; title: string; chapters: number }): SheetAction[] {
+  const clip = fileOf(s)?.clip;
+  if (!clip) return [];
+  const first = clip.urls[0] ?? clip.lastUrl;
+  return [
+    { label: 'Clip next chapter', icon: 'cut-outline', onPress: () => openClipPage(s.key, clip.lastUrl) },
+    ...(s.chapters > 1 ? [{ label: 'Remove last chapter', icon: 'arrow-undo-outline' as const, destructive: true, onPress: () => confirmUndoClip(s) }] : []),
+    { label: `Open on ${siteName(first)}`, icon: 'globe-outline', onPress: () => openClipPage(s.key, first) },
+  ];
+}
+
 const deleteAction = (s: { key: StoryKey; title: string }, after?: () => void): SheetAction => ({
   label: 'Delete from this device',
   icon: 'trash-outline',
@@ -85,14 +121,18 @@ export const localUi: SourceUi = {
 
   statCells: (s) => {
     const file = fileOf(s);
-    const cells = [
+    const clip = file?.clip;
+    const cells: { label: string; value: string; onPress?: () => void }[] = [
       { label: 'Words', value: formatFull(s.words) },
       { label: 'Chapters', value: String(s.chapters) },
       { label: 'Reading time', value: readingTime(s.words) },
-      { label: 'Imported', value: file?.importedAt ? formatDate(file.importedAt / 1000) : '—' },
-      { label: file?.generator ? (GENERATORS[file.generator] ?? 'File') : 'File', value: fileKindLabel(file?.kind) },
+      { label: clip ? 'Clipped' : 'Imported', value: file?.importedAt ? formatDate(file.importedAt / 1000) : '—' },
+      clip
+        ? { label: GENERATORS.clip, value: clip.site.replace(/^(www|m)\./, ''), onPress: () => openClipPage(s.key, clip.lastUrl) }
+        : { label: file?.generator ? (GENERATORS[file.generator] ?? 'File') : 'File', value: fileKindLabel(file?.kind) },
     ];
     if (s.updated || s.published) cells.push({ label: s.updated ? 'Updated' : 'Published', value: formatDate(s.updated ?? s.published) });
+    if (clip) return cells;
     const url = file?.sourceUrl;
     return url ? [...cells, { label: 'Original site', value: siteName(url), onPress: () => openUrl(url) }] : cells;
   },
@@ -120,10 +160,11 @@ export const localUi: SourceUi = {
   ratingBadge: (s) => (s.rating ? { label: s.rating, adult: /^(m|ma|mature|explicit|nc-?17)$/i.test(s.rating.trim()) } : null),
 
   storyActions: (s) => {
-    const url = fileOf(s)?.sourceUrl;
+    const file = fileOf(s);
+    const url = file?.sourceUrl;
     return {
       menu: [
-        ...(url ? [{ label: `Open on ${siteName(url)}`, icon: 'globe-outline' as const, onPress: () => openUrl(url) }] : []),
+        ...(file?.clip ? clipActions(s) : url ? [{ label: `Open on ${siteName(url)}`, icon: 'globe-outline' as const, onPress: () => openUrl(url) }] : []),
         deleteAction(s, leaveDeleted),
       ],
     };
@@ -131,7 +172,14 @@ export const localUi: SourceUi = {
 
   chapterActions: () => [],
 
-  readerActions: () => ({ menu: [], end: [] }),
+  // The last chapter of a clipped story ends with "Clip next chapter".
+  readerActions: (s, chapter) => {
+    const clip = fileOf(s)?.clip;
+    return {
+      menu: [],
+      end: clip && chapter >= s.chapters ? [{ id: 'clip-next', label: 'Clip next chapter', onPress: () => openClipPage(s.key, clip.lastUrl) }] : [],
+    };
+  },
 
   cardActions: (s) => [deleteAction({ key: keyOf(s), title: s.title })],
 

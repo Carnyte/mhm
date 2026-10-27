@@ -42,9 +42,26 @@ describe('redirectSystemPath', () => {
     'https://www.fanfiction.net/s/123/1/',
     '/settings',
     '',
+    'ficshelf://web?path=%2Fs%2F1%2F1%2F',
+    'ficshelf://web?url=https%3A%2F%2Fwww.fanfiction.net%2Fs%2F1%2F1%2F',
+    '/web?url=https%3A%2F%2Fm.fanfiction.net%2Fs%2F1',
+    'ficshelf://webcomics?url=https%3A%2F%2Fx.example%2F',
   ])('leaves %s as it is', (path) => {
     expect(redirectSystemPath({ path, initial: false })).toBe(path);
     expect(redirectSystemPath({ path, initial: true })).toBe(path);
+  });
+
+  it.each([
+    ['ficshelf://web?url=https%3A%2F%2Fevil.example%2Fpage', 'https://evil.example/page'],
+    ['ficshelf:///web?url=https%3A%2F%2Fevil.example%2Fpage&clipFor=local%3Aabc', 'https://evil.example/page'],
+    ['/web?url=https%3A%2F%2Fglobal.novelpia.com%2Fviewer%2F1', 'https://global.novelpia.com/viewer/1'],
+    ['ficshelf://web/?title=x&url=http%3A%2F%2Fplain.example%2F', 'http://plain.example/'],
+    ['ficshelf://WEB?url=javascript%3Aalert(1)', 'javascript:alert(1)'],
+  ])('sends %s from outside to the Open screen, which names the site and asks', (path, url) => {
+    const to = redirectSystemPath({ path, initial: false });
+    expect(to).toBe(`/open?url=${encodeURIComponent(url)}`);
+    const state = getStateFromPath(to, { screens: { open: 'open' } } as never) as { routes: { params?: Record<string, string> }[] };
+    expect(decodeURIComponent(state.routes[0].params!.url)).toBe(url);
   });
 });
 

@@ -135,6 +135,7 @@ describe('clip titles', () => {
     expect(stripSiteName('Chapter 5: The Fall - Mother of Learning | Royal Road', 'www.royalroad.com')).toBe('Chapter 5: The Fall - Mother of Learning');
     expect(stripSiteName('Episode 1 | NOVELPIA', 'global.novelpia.com')).toBe('Episode 1');
     expect(stripSiteName('The Glass Orchard — Example Reads', 'reads.example.com', 'Example Reads')).toBe('The Glass Orchard');
+    expect(stripSiteName('Glass Orchard - Chapter 1 | Reader', 'reader.example.com')).toBe('Glass Orchard - Chapter 1');
     expect(stripSiteName('Site', 'site.com')).toBe('Site');
     expect(stripSiteName('A Story About Glass', 'site.com')).toBe('A Story About Glass');
   });
