@@ -10,31 +10,34 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 4484f56
+base_commit: 0e93bdd
 base_commit_date: 2026-10-27
 commits_at_base: 164
 updated: 2026-10-27
-next_task: P-CLIP
+next_task: P4
 companion: MASTER_FEATURES.md
 status:
   summary: >-
     The FanFiction.net client, AO3 reading without login and file import (EPUB / HTML / TXT /
     Markdown, stored as the 'local' source) are built, reviewed, verified and pushed. No pending
-    phase has been started. The user approved "Clip this page" for any website on 2026-10-21;
-    it is the next task, ahead of Wattpad.
+    phase has been started. "Clip this page" for any website (approved 2026-10-21) was built and
+    pushed on 2026-10-27 (tests and a headless-Chromium check only; not yet on the phone). Next:
+    P4 Wattpad reading.
   done:
     - M1-M5 FanFiction.net client, reader, audiobook (TTS incl. Piper add-on voices), device fixes
     - P0-P1 source-qualified StoryKeys + storage v2 migration
     - P2 source layer (Source contract, registry, polite HTTP client, sanitizer, remap)
     - P3 AO3 reading loop (no login)
     - P5 file import as the local source + golden import corpus
-  pending_in_order: [P-CLIP, P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA]
+    - P-CLIP "Clip this page" for any https site (device check pending)
+  pending_in_order: [P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "51 suites, 1088 passed + 1 todo (1089 total)"
+    jest: "57 suites, 1153 passed + 1 todo (1154 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
-    expo_export_ios: "bundles; one entry-*.hbc of about 4.8 MB"
+    expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
+    clip_check: "npx tsx scripts/clip-check.ts: 28/28 (headless Chromium, no network)"
     expo_doctor: "20/21: 11 patch-version mismatches (README still says 21/21)"
   device_confirmed: >-
     Builds through e2c8ac5 ("everything works", 2026-10-06) and the Piper Lessac voice (build
@@ -45,6 +48,7 @@ status:
     - afafdf2 / 57ec6be storage v2 migration on the real library
     - bf3f9f5..a315dbe AO3
     - 44a9f71..5cc19e8 file import and "Open in FicShelf" (install message with prebuild sent 2026-10-21)
+    - 1cca7be.. P-CLIP "Clip this page" (JS only, no prebuild; CLIP-A1..A9 to try)
 ---
 
 # FicShelf: next work
@@ -97,15 +101,14 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
    npm run lint
    npx expo export --platform ios --output-dir "$(mktemp -d)"
    ```
-   - jest: 51 suites, 1088 passed + 1 todo. On a cold transform cache `tests/import-screen.test.tsx`
-     can hit jest's 5 s default timeout and fail 7 tests in a cascade; rerun once (PRE-1 fixes it).
-     `tests/sanitize.test.ts:163` asserts a time under 1500 ms and has failed once under load; rerun
-     alone before chasing it.
+   - jest: the count in `checks_at_base`. The cold-cache timeout in `tests/import-screen.test.tsx`
+     and the sanitizer timing check were given headroom in PRE-1 (1cca7be); if a timing test still
+     fails once under load, rerun it alone before chasing it.
    - lint must end with `check-keys: ok`.
    - The export output dir must be outside the repo.
    - Optional, at most once per phase: `npm run live-check -- --source ao3` (5 AO3 requests, 3 s apart).
 6. **Do the preflight items** (§1.1). They are small; commit them with the first phase commit or on their own.
-7. **Pick the task**: the first phase in §3 whose status is `pending` (P-CLIP at this writing). A new
+7. **Pick the task**: the first phase in §3 whose status is `pending` (P4 at this writing). A new
    message from the user overrides this order. Tell the user in one or two plain lines what you are
    picking up.
 8. **Work the phase**:
@@ -204,8 +207,8 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 
 | order | id | title | status | depends_on | prebuild for the user | gate |
 |---|---|---|---|---|---|---|
-| 1 | P-CLIP | "Clip this page" for any website | in_progress (started 2026-10-27; approved 2026-10-21) | P5 (done) | no (https only) | none |
-| 2 | P4 | Wattpad reading, no login | pending | P1–P3 (done) | no | Wattpad terms posture (OQ-1, default yes) |
+| 1 | P-CLIP | "Clip this page" for any website | done (device check pending; built 2026-10-27) | P5 (done) | no (https only) | none |
+| 2 | P4 | Wattpad reading, no login | pending (next) | P1–P3 (done) | no | Wattpad terms posture (OQ-1, default yes) |
 | 3 | P6 | AO3 login and social | pending | P3 (done) | no | user has an AO3 account (invite-only) |
 | 4 | P7 | Wattpad login and social | pending | P4 | no | Wattpad account + the ≤10-request endpoint check |
 | 5 | P8 | Polish and optional extras | pending (per item, user interest first) | P4 for "All" search | no (share extension: yes) | per item |
@@ -222,9 +225,9 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-CLIP
 title: Clip this page (any website)
-status: in_progress
+status: done (device check pending)
 order: 1
-next_task: true
+next_task: false
 depends_on: [P5-import (done)]
 native_rebuild: no   # https only; http:// pages would need an ATS change and a prebuild
 approved_by_user:
@@ -316,7 +319,7 @@ Checklist:
       (fanfiction.net / fictionpress.com → `ffn`); `decideNavigation(url, mode, {isTopFrame, navigationType})
       → {action: 'allow'|'block'|'external'|'ask'|'native', hit?, message?}`; `acceptsCookieMessage(url)`;
       the FFN allowlist regex moved here unchanged. (03e4a59)
-- [ ] CLIP-2 `src/app/web.tsx` two modes:
+- [x] CLIP-2 `src/app/web.tsx` two modes (0e93bdd):
   - `ffn` mode (param `path`, or `url` on fanfiction.net / fictionpress.com): today's behaviour unchanged
     (allowlist, `FFN_WEBVIEW_PROPS`, mobile redirect, cookie push, login prefill, native story/user links);
   - `open` mode (param `url`, any https host): default WebView UA (no `FFN_WEBVIEW_PROPS`); every
@@ -326,6 +329,8 @@ Checklist:
     ask "Open in another app?" before `Linking.openURL`; host always shown; FFN / AO3 / Wattpad links
     tapped inside go through `resolveLink` and open natively; no `loginPrefillScript`;
   - new params `url`, `clipFor`; bottom bar with host + Clip; Clip disabled while a capture is pending.
+  - also: a non-https start page is refused with Safari offered; one link question (alert) at a time, so a
+    redirecting page can't stack them (review fix, CLIP-18 commit).
 - [x] CLIP-3 Accept `{type:'cookies'}` messages only when `acceptsCookieMessage(e.nativeEvent.url)`
       (fanfiction.net). Closes today's any-page hole. (03e4a59)
 - [x] CLIP-4 `src/net/clipScript.ts` (new): `clipScript(nonce: string, maxChars: number): string`,
@@ -344,30 +349,35 @@ Checklist:
 - [x] CLIP-8 `src/features/clips.ts` (new): `commitClip`, `appendClip`, `undoLastClip`,
       `clippedStories(host?)`, `cleanClipUrl`, `isNativeHost`; reuse `hostOf` from `src/net/httpCore.ts`. (4484f56) Plus
       `findClippedPage` and `defaultClipTarget`.
-- [ ] CLIP-9 `src/components/ClipSheet.tsx` (new): preview, editable titles, target picker,
-      duplicate warning, progress and errors; one-time notice (`sources.local.clipNoticeSeen`).
-- [ ] CLIP-10 `src/sources/local/ui.ts`: `GENERATORS.clip = 'Clipped web page'`; clipped stories get
+- [x] CLIP-9 `src/components/ClipSheet.tsx` (new): preview, editable titles, target picker,
+      duplicate warning, progress and errors; one-time notice (`sources.local.clipNoticeSeen`). (0e93bdd) The notice is an
+      Alert in web.tsx before the first capture; "Keep as one chapter" (OQ-CLIP-3) is a switch in the sheet.
+- [x] CLIP-10 `src/sources/local/ui.ts`: `GENERATORS.clip = 'Clipped web page'`; clipped stories get
       **Clip next chapter**, **Remove last chapter** and **Open on <site>** in the story ⋯ menu, and
-      reader end action **Clip next chapter** on the last chapter (`readerActions` returns `end`).
-- [ ] CLIP-11 Entry points: Library **+** sheet "Clip from a web page" (and "Send links from Safari"
+      reader end action **Clip next chapter** on the last chapter (`readerActions` returns `end`). (0e93bdd)
+      Open on <site> opens chapter 1's page in FicShelf's browser (the site's login lives there); the stats show
+      "Clipped web page: <site>"; Remove last chapter only from 2 chapters up.
+- [x] CLIP-11 Entry points: Library **+** sheet "Clip from a web page" (and "Send links from Safari"
       if CLIP-16 is built); `src/app/open.tsx` unknown https link → "Open in FicShelf's browser" +
-      "Open in Safari", and `NOT_A_LINK` wording updated.
-- [ ] CLIP-12 Refuse Clip on hosts FicShelf reads natively (`fanfiction.net`, `fictionpress.com`,
+      "Open in Safari", and `NOT_A_LINK` wording updated. (0e93bdd) `/open?clip=1` shows the clipping hint;
+      a bare "site.com/page" gets https://; http links offer Safari only.
+- [x] CLIP-12 Refuse Clip on hosts FicShelf reads natively (`fanfiction.net`, `fictionpress.com`,
       `archiveofourown.org` and mirrors `ao3.org`, `archiveofourown.com`, `archiveofourown.net`,
       `archive.transformativeworks.org`, `wattpad.com`): "FicShelf reads this site directly" +
-      **Open in FicShelf**. The native adapters carry those sites' rules (e.g. Wattpad paid parts).
-- [ ] CLIP-13 `src/app/+native-intent.tsx`: an external `ficshelf://web?...` with a non-FFN URL is
-      redirected to `/open?url=...`, so outside links can't drop the user into an arbitrary site.
+      **Open in FicShelf**. The native adapters carry those sites' rules (e.g. Wattpad paid parts). (0e93bdd)
+- [x] CLIP-13 `src/app/+native-intent.tsx`: an external `ficshelf://web?...` with a non-FFN URL is
+      redirected to `/open?url=...`, so outside links can't drop the user into an arbitrary site. (0e93bdd)
+      The host helpers moved to `src/net/webHosts.ts` (no registry import) so this stays light.
 - [x] CLIP-14 `src/state/settings.ts`: `SourceSettings.clipNoticeSeen?: boolean` (under `sources.local`). (4484f56)
-- [ ] CLIP-15 `src/components/WhatsNewSheet.tsx`: `WHATS_NEW_VERSION` 1 → 2 with a Clip card.
-- [ ] CLIP-16 (optional, cheap, no rebuild) `src/app/help/share.tsx`: an iOS Shortcut ("Receive URLs
+- [x] CLIP-15 `src/components/WhatsNewSheet.tsx`: `WHATS_NEW_VERSION` 1 → 2 with a Clip card. (0e93bdd) Someone who never saw version 1 also gets the AO3 part.
+- [x] CLIP-16 (optional, cheap, no rebuild) `src/app/help/share.tsx`: an iOS Shortcut ("Receive URLs
       from Share Sheet → URL Encode → Open URL `ficshelf://open?url=…`") and a Safari bookmarklet
       (`javascript:location.href='ficshelf://open?url='+encodeURIComponent(location.href)`); linked
-      from the Library + sheet. Planned in P5 and never built.
-- [ ] CLIP-17 Docs: README "Imported files" (Clip and its limits: text only, one tap per chapter,
+      from the Library + sheet. Planned in P5 and never built. (0e93bdd)
+- [x] CLIP-17 Docs: README "Imported files" (Clip and its limits: text only, one tap per chapter,
       https only, stays on the phone, not in backups) and Known limitations; PLAN.md §2.13;
-      INSTALL.md "no prebuild for this update".
-- [ ] CLIP-18 All checks green, README count, tick this file, commit, push, report (T1, no prebuild).
+      INSTALL.md "no prebuild for this update". (CLIP-18 commit)
+- [x] CLIP-18 All checks green, README count, tick this file, commit, push, report (T1, no prebuild).
 
 ### files
 
@@ -553,12 +563,15 @@ Novelpia findings (2026-10-21; Clip's first target and test site; structure only
       `undoLastClip` removes the row, moves a bookmark in chapter n to n-1, pops the URL;
       `normalizeLocal` keeps a valid `clip` and drops `http:` URLs, more than 5000 urls and bad
       hosts; Replace (file import) keeps `clip`; clipped stories stay out of `exportBackup()`.
-- [ ] CLIP-T6 `tests/clip-screen.test.tsx` (mock `react-native-webview` as the existing screen tests
+- [x] CLIP-T6 `tests/clip-screen.test.tsx` (0e93bdd) (mock `react-native-webview` as the existing screen tests
       do): Clip injects once; wrong nonce or host ignored; preview saves; `clipFor` target is the default.
-- [ ] CLIP-T7 Regression: existing `tests/webview-config.test.ts`, `tests/import-*.test.ts`,
-      `tests/local-*.test.ts`, `tests/backup.test.ts` and the corpus still pass unchanged.
-- [ ] CLIP-T8 (optional) `scripts/clip-check.ts`: run the capture script in headless Chromium
-      (`scripts/browser.ts`, playwright-core) on a local synthetic page, as the reader CSP check was done.
+- [x] CLIP-T7 Regression: existing `tests/webview-config.test.ts`, `tests/import-*.test.ts`,
+      `tests/local-*.test.ts`, `tests/backup.test.ts` and the corpus still pass unchanged. Only `tests/open-link.test.ts`
+      changed on purpose: `https://example.com/whatever` now gets the browser offer instead of "not a link".
+- [x] CLIP-T8 (optional) `scripts/clip-check.ts`: run the capture script in headless Chromium
+      (`scripts/browser.ts`, playwright-core) on a local synthetic page, as the reader CSP check was done. 28/28 (CLIP-18 commit). It found no app bug; the
+      harness itself needed care: Playwright's `setContent` doesn't run `addInitScript`, and tsx adds a `__name`
+      helper to functions passed to `page.evaluate` (pass strings).
 
 ### acceptance (on the phone)
 - [ ] CLIP-A1 Library → **+** → **Clip from a web page**, paste `https://global.novelpia.com/viewer/833813`:
@@ -610,6 +623,9 @@ required. If OQ-CLIP-1 (http pages) is ever turned on, it becomes T2 (prebuild).
 | OQ-CLIP-7 | Keep the original page? | **Never** |
 | OQ-CLIP-8 | Build the Shortcut / bookmarklet help? | Yes if time allows (no rebuild, no App ID) |
 | OQ-CLIP-9 | `sharedCookiesEnabled` in open mode? | Omit it (nothing native fetches those sites); verify on the phone that a site login survives an app restart (WKWebView's default data store should keep it) |
+
+Built on 2026-10-27 with every default above (no question needed asking). Still to confirm on the phone: OQ-CLIP-9
+(a site login surviving an app restart) and CLIP-A1..A9.
 
 ---
 
@@ -1377,4 +1393,5 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 
 | date | commit | change |
 |---|---|---|
-| 2026-10-21 | (this commit) | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
+| 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
+| 2026-10-27 | 1cca7be..(CLIP-18 commit) | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |

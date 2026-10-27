@@ -499,6 +499,14 @@ Then rebuild:
 - **Path C:** rerun the Path C step-2 command.
 - **Path D:** `eas build --platform android --profile preview`, install the new APK the same way.
 
+### The "Clip this page" update
+
+No prebuild for this one: it uses the browser and reader already in the app. Update as usual
+(`git pull --autostash`, `npm install`), then in Xcode (`xed ios`) check Signing still shows your
+Personal Team and the scheme is still Release, and press **Cmd+R** with the iPhone connected.
+Don't delete FicShelf from the phone first. Existing data isn't changed (clipped stories add one
+optional field), so a backup is a good habit but not required.
+
 ### The file-import update (Mac + Xcode)
 
 This update lets FicShelf open story files (EPUB, HTML, text, Markdown) from the Files app,

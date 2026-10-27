@@ -324,8 +324,15 @@ your session · ⏳ not built (reason given).
   data: URIs, only the reader's own scripts by nonce), zip-slip-proof file names, size caps
 - ✅ Settings → Imported files: keep original files (on), space used, "only on this device, not in
   backups"; backups leave imported stories out
-- ⏳ Later: EPUB export, full backup with imported stories, links from other sites (FicHub, page
-  clipping), Wattpad linking
+- ✅ "Clip this page" for any https site: FicShelf's browser opens other sites (their own login and
+  cookies, kept apart from FanFiction.net's); Clip copies what the page shows (hidden decoys,
+  scripts, inline data, form fields and tokens left behind), cleans it like an imported page, keeps
+  text only and previews it; saved as a new local story or the next chapter of a clipped one;
+  Clip next chapter, Remove last chapter, Open on <site>; duplicate pages warned; FanFiction.net,
+  AO3 and Wattpad pages offer the app instead; http pages go to Safari; one tap per chapter, no
+  extra requests; a one-time notice; "Send links from Safari" (Shortcut, bookmarklet)
+- ⏳ Later: EPUB export, full backup with imported and clipped stories, FicHub, Wattpad linking,
+  pictures in clipped pages
 
 ---
 

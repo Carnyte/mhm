@@ -64,6 +64,8 @@ export default function WebScreen() {
   const ref = useRef<WebView>(null);
   const redirected = useRef(new Set<string>());
   const pending = useRef<{ nonce: string; timer: ReturnType<typeof setTimeout> }>(undefined);
+  // One question about a link at a time: a page that keeps redirecting can't stack alerts.
+  const asking = useRef(false);
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useState({ canGoBack: false, canGoForward: false, url: start.uri, title: title ?? '' });
   // Bumped to rebuild the page where the user was, after iOS killed its web process.
@@ -185,6 +187,21 @@ export default function WebScreen() {
     else if (m.type === CLIP_MESSAGE && mode === 'open') onClipMessage(m, e.nativeEvent.url);
   };
 
+  const askOnce = (title: string, message: string, buttons: { text: string; style?: 'cancel'; onPress?: () => void }[]) => {
+    if (asking.current) return;
+    asking.current = true;
+    const done = (fn?: () => void) => () => {
+      asking.current = false;
+      fn?.();
+    };
+    Alert.alert(
+      title,
+      message,
+      buttons.map((b) => ({ ...b, onPress: done(b.onPress) })),
+      { onDismiss: done() },
+    );
+  };
+
   const onShouldStart = (req: { url: string; navigationType?: string; isTopFrame?: boolean }) => {
     const d = decideNavigation(req.url, mode, { isTopFrame: req.isTopFrame, navigationType: req.navigationType });
     switch (d.action) {
@@ -203,7 +220,7 @@ export default function WebScreen() {
         openLinkHit(d.hit!);
         return false;
       case 'ask':
-        Alert.alert('Open in another app?', req.url.length > 200 ? req.url.slice(0, 200) + '…' : req.url, [
+        askOnce('Open in another app?', req.url.length > 200 ? req.url.slice(0, 200) + '…' : req.url, [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Open', onPress: () => Linking.openURL(req.url).catch(() => {}) },
         ]);
@@ -211,7 +228,7 @@ export default function WebScreen() {
       case 'block':
         if (d.message) {
           const http = /^http:/i.test(req.url);
-          Alert.alert('Can’t open this page', d.message, [
+          askOnce('Can’t open this page', d.message, [
             { text: 'OK', style: 'cancel' },
             ...(http ? [{ text: 'Open in Safari', onPress: () => Linking.openURL(req.url).catch(() => {}) }] : []),
           ]);

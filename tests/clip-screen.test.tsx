@@ -230,9 +230,15 @@ describe('browser rules on the screen', () => {
     const go = (url: string, navigationType = 'click') => mockWeb.props!.onShouldStartLoadWithRequest({ url, navigationType, isTopFrame: true });
     expect(go('https://reader.example.com/novel/7/chapter/2')).toBe(true);
     expect(go('http://plain.example/')).toBe(false);
-    expect(alert).toHaveBeenLastCalledWith('Can’t open this page', 'FicShelf’s browser only opens secure (https) pages.', expect.any(Array));
+    expect(alert).toHaveBeenLastCalledWith('Can’t open this page', 'FicShelf’s browser only opens secure (https) pages.', expect.any(Array), expect.any(Object));
+    // A page redirecting again and again gets one question at a time.
+    expect(go('http://plain.example/2', 'other')).toBe(false);
+    expect(alert).toHaveBeenCalledTimes(1);
+    const ok = (alert.mock.calls[0][2] as { text: string; onPress?: () => void }[]).find((b) => b.text === 'OK')!;
+    ok.onPress?.();
     expect(go('mailto:a@example.com')).toBe(false);
-    expect(alert).toHaveBeenLastCalledWith('Open in another app?', 'mailto:a@example.com', expect.any(Array));
+    expect(alert).toHaveBeenLastCalledWith('Open in another app?', 'mailto:a@example.com', expect.any(Array), expect.any(Object));
+    expect(alert).toHaveBeenCalledTimes(2);
     expect(go('https://archiveofourown.org/works/9')).toBe(false);
     expect(router.push).toHaveBeenCalledWith({ pathname: '/story/[id]', params: { id: 'ao3:9' } });
   });

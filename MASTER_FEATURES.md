@@ -14,7 +14,7 @@ base_commit: 5cc19e8
 commits_at_base: 164 (137 unrelated legacy commits + 27 FicShelf commits from 695e10d)
 updated: 2026-10-21
 next_work: FEATURES.md
-next_task: P-CLIP
+next_task: P4
 stack:
   expo: 57.0.27
   react_native: 0.86.3 (Hermes)
@@ -179,7 +179,7 @@ re-run, but recreates `ios/` (redo B8, re-check Team and Release).
 | `fde0496` audiobook (expo-audio, expo-asset) | yes; without it listening stops when the phone locks |
 | `44a9f71` file import (`CFBundleDocumentTypes`, `UTImportedTypeDeclarations`, `LSSupportsOpeningDocumentsInPlace: false`) | yes; without it FicShelf isn't offered in "Open in" (in-app import still works) |
 | TTS / speed / reader fixes, multi-source foundation, source layer, AO3, import fixes | no |
-| P-CLIP (planned) | no |
+| P-CLIP (`1cca7be`..) | no |
 
 Update templates to send the user:
 - **T1, JavaScript-only update (no prebuild)**: (backup advisable) → `cd ~/ficshelf` → `git pull --autostash`
@@ -800,7 +800,13 @@ via `Linking.openURL`) · ⏳ not built (reason given) · 🧪 tests only, not c
 - Known open minor cases: FEATURES.md §11 (ISSUE-M1, D3, G5, NEST).
 - ⏳ Not picked by the user: EPUB export, full backup with imported stories, FicHub / link import,
   Wattpad linking (Wattpad files import as local stories, link kept), share extension, web pictures inside an imported page (P-IMPORT-X).
-- ⏳ **Next: "Clip this page"** for any website (FEATURES.md §4, approved 2026-10-21).
+- ✅ 🧪 **"Clip this page"** for any https website (FEATURES.md §4, approved 2026-10-21, built 2026-10-27):
+  open mode of the in-app browser (`src/app/web.tsx`, rules in `src/net/webPolicy.ts` / `webHosts.ts`),
+  capture script `src/net/clipScript.ts` (hidden elements found on the live page, dropped from an inert copy;
+  scripts, inline data, form fields and token-carrying attributes left behind), `src/import/clip.ts`
+  `parseClip` (reader mode, text only, site name off the title), `src/features/clips.ts` (new story, next
+  chapter, undo), `LocalOrigin.clip`, ClipSheet preview, menus, What's new v2, "Send links from Safari".
+  Not yet run on the phone.
 
 ### 7.4 Reader (all sources)
 - ✅ Local WebView, works offline; themes light, sepia, paper, mint, dusk, dark, black (OLED) + match system;
@@ -900,7 +906,8 @@ P-NOVELPIA; Clip covers it). A pasted Wattpad link shows "Wattpad support is com
 - AO3 has no in-app login; reading doesn't add hits; work skins not applied.
 - Imported stories exist only on the phone (not in backups; deleting the app erases them); no EPUB
   export, no link import from other sites; Wattpad files import as local; web pictures in imported pages not shown.
-- The in-app browser opens only the FFN / Cloudflare / OAuth allowlist (P-CLIP opens it up).
+- The in-app browser's open mode (Clip) takes https pages only; Clip keeps text only, one page per tap, and
+  can't see canvas, cross-origin frames, shadow DOM or scroll-loaded text.
 - Piper voices can vanish after a phone restart until the Piper app is opened; the Piper speed mapping depends on current Piper behaviour.
 - FFN logged-in pages use adaptive parsing never inspected with an account.
 - Cloudflare challenged the container's headless browser after many automated requests (on a phone, the "Quick security check" sheet appears).
@@ -1332,6 +1339,8 @@ snapshots of every tree (`44a9f71`, `16eaf18`, round 1, `99f38f9`, `3212230`; fa
 | `player.test.ts` stubbed `src/features/chapters`, so the real offline-first loader went untested | Keep a test that runs the real code a stub replaces (`tests/chapters.test.ts`) |
 | A helper bug (empty cookies overwriting the session cookie) hid a bridge bug | Review helpers like code |
 | A Python-scripted insert corrupted `Sheet.tsx`'s toast style | Scripted edits assert a unique match and are followed by tsc and lint |
+| `scripts/clip-check.ts` first saw no message at all (P-CLIP): Playwright's `setContent` writes into the current document, so `addInitScript` never ran, and tsx adds a `__name` helper to functions passed to `page.evaluate` | In Playwright checks, install page stubs with `page.evaluate('<string>')` after `setContent`; pass strings, not functions |
+| jsdom has no `checkVisibility` and only part of CSS, so the capture script's real behaviour needed a browser engine | Run DOM scripts that will run in WebKit through `scripts/clip-check.ts` (headless Chromium) as well as jsdom |
 | Real AO3 / FicHub / FanFicFare files were used to check import | Never committed; synthetic fixtures; the corpus is the guard in a fresh container |
 
 ### 10.16 Process and orchestration
