@@ -13,6 +13,8 @@ export const CLIP_PACES: Record<ClipPace, { label: string; min: number; max: num
 /** Run sizes "Clip the next chapters" offers; "until the end" is the cap. */
 export const CLIP_BATCHES = [5, 10, 25, 50];
 export const MAX_CLIP_RUN = 200;
+/** Chapters one background job ("Clip the whole story") may save; a longer story is started again from where it stopped. */
+export const MAX_BACKGROUND_RUN = 2000;
 
 /** "about 2–4 min" for a run of `count` chapters at a pace (the page's own loading adds a little). */
 export function runTime(count: number, pace: ClipPace): string {

@@ -16,6 +16,7 @@ import { Badge, Button, Chip, IconButton, ProgressBar, T } from '../../component
 import { openReader, openStory, storyPageMenu, storyUrl } from '../../features/actions';
 import { afterAdultGate } from '../../features/adultGate';
 import { fetchStory } from '../../features/chapters';
+import { clipJobsStore } from '../../features/clipJobs';
 import { cancelDownload, downloadStory, removeDownload, useDownloadJob } from '../../features/downloads';
 import { useQuery } from '../../hooks/useQuery';
 import { keyFromParam, toKey } from '../../sources/keys';
@@ -32,6 +33,7 @@ import {
   upsertStory,
   useLibraryStory,
 } from '../../state/library';
+import { useStore } from '../../state/store';
 import { useTheme } from '../../theme';
 import { formatDate, relativeTime } from '../../utils/format';
 
@@ -49,6 +51,8 @@ export default function StoryScreen() {
   const lib = useLibraryStory(key);
   const q = useQuery(key ? `story:${key}` : null, () => fetchStory(key!), { staleMs: 10 * 60_000 });
   const job = useDownloadJob(key);
+  // A background clipping job adding to this story ("Clip the whole story").
+  const clipping = useStore(clipJobsStore, (jobs) => jobs.find((j) => !!key && j.key === key && j.state !== 'done' && j.state !== 'stopped'));
   const [bigCover, setBigCover] = useState(false);
   const [chapterSort, setChapterSort] = useState<'asc' | 'desc'>('asc');
 
@@ -199,6 +203,24 @@ export default function StoryScreen() {
             </View>
           </View>
         </View>
+
+        {clipping && (
+          <Pressable
+            onPress={() => router.push('/clips')}
+            accessibilityRole="button"
+            style={[styles.series, { padding: 10, gap: 8, backgroundColor: c.surface, borderColor: clipping.state === 'needs-user' ? c.warning : c.border }]}
+          >
+            <Ionicons name="layers-outline" size={16} color={clipping.state === 'needs-user' ? c.warning : c.textMuted} />
+            <T size={13} style={{ flex: 1 }} numberOfLines={2}>
+              {clipping.state === 'needs-user'
+                ? `Clipping waits for you: ${clipping.message ?? 'the site needs you.'}`
+                : clipping.state === 'paused'
+                  ? 'Clipping in the background is paused.'
+                  : `Clipping in the background · ${clipping.saved} new chapter${clipping.saved === 1 ? '' : 's'} so far`}
+            </T>
+            <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+          </Pressable>
+        )}
 
         {(story.series ?? []).map((sr) => {
           const route = ui.seriesRoute?.(sr);

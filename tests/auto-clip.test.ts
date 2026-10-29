@@ -36,7 +36,7 @@ function book(ch: FakeChapter): ImportedBook {
   return { kind: 'html', generator: 'clip', title: story, authors: [], words: 40 * n, chapters, images: [], warnings: [] };
 }
 
-function site(pages: FakeChapter[], opts: { start?: number; key?: StoryKey | null; lastUrl?: string; count?: number; storyTitle?: string } = {}) {
+function site(pages: FakeChapter[], opts: { start?: number; key?: StoryKey | null; lastUrl?: string; count?: number; storyTitle?: string; background?: boolean } = {}) {
   let at = opts.start ?? 0;
   let loading = false;
   let url = pages[at].url;
@@ -88,6 +88,12 @@ function site(pages: FakeChapter[], opts: { start?: number; key?: StoryKey | nul
       saved.push({ url: u, title: b.chapters[0].title });
       return first;
     },
+    create: async (b, u) => {
+      story = { key: KEY, title: b.title, chapters: b.chapters.length, lastUrl: u, storyTitle: b.title };
+      clipped.set(u, 1);
+      saved.push({ url: u, title: b.chapters[0].title });
+      return KEY;
+    },
     now: () => clock,
     sleep: async (ms) => {
       clock += ms;
@@ -96,7 +102,7 @@ function site(pages: FakeChapter[], opts: { start?: number; key?: StoryKey | nul
     random: () => 0.5,
     onChange: (s) => statuses.push(s),
   };
-  const run = new AutoClip(deps, { key: opts.key === null ? undefined : KEY, count: opts.count ?? 10, pace: 'normal' });
+  const run = new AutoClip(deps, { key: opts.key === null ? undefined : KEY, count: opts.count ?? 10, pace: 'normal', background: opts.background });
   return {
     run,
     deps,
@@ -383,6 +389,55 @@ describe('review fixes', () => {
     s.setStory({ key: other, title: 'Other Story', chapters: 2, lastUrl: b!.url });
     s.run.reviewed({ key: other, first: 1, added: 2, url: b!.url, book: b!.book });
     expect(await settle(s.run)).toMatchObject({ key: other, title: 'Other Story', saved: 4 });
+  });
+});
+
+describe('background runs', () => {
+  it('make a new story of the first page without a preview, and finish at the last chapter', async () => {
+    const s = site(pages(4, (i) => ({ last: i === 3 })), { key: null, count: 2000, background: true });
+    void s.run.start();
+    const end = await settle(s.run);
+    expect(end).toMatchObject({ state: 'finished', saved: 4, first: 1, last: 4, key: KEY, title: 'Glass Orchard' });
+    expect(end.state === 'finished' && end.message).toBe('Reached the last chapter FicShelf can find. Saved 4 chapters (1–4) of “Glass Orchard”.');
+    expect(s.saved.map((x) => x.title)).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3', 'Chapter 4']);
+  });
+
+  it('keep a page’s several chapters, and finish at a page clipped before or another story', async () => {
+    const several = site(pages(3, (i) => (i === 1 ? { chapters: 2 } : { last: i === 2 })), { count: 50, background: true });
+    void several.run.start();
+    expect(await settle(several.run)).toMatchObject({ state: 'finished', saved: 4 });
+
+    const list = pages(4);
+    const dup = site(list, { count: 50, background: true });
+    dup.clipped.set(list[2].url, 1);
+    void dup.run.start();
+    expect(await settle(dup.run)).toMatchObject({ state: 'finished', saved: 2 });
+
+    const other = site(pages(4, (i) => (i === 2 ? { title: 'Iron Harbour - Chapter 9' } : {})), { count: 50, background: true });
+    void other.run.start();
+    const end = await settle(other.run);
+    expect(end).toMatchObject({ state: 'finished', saved: 2 });
+    expect(end.state === 'finished' && end.message).toMatch(/^This looks like a different story\./);
+  });
+
+  it('still wait for the user at a lock or a check, and go on by themselves when the app comes back', async () => {
+    const s = site(pages(4, (i) => (i === 1 ? { lock: ['Unlock (5 coins)'] } : { last: i === 3 })), { count: 50, background: true });
+    void s.run.start();
+    expect(await settle(s.run)).toMatchObject({ state: 'paused', reason: 'blocked', message: MESSAGES.locked, saved: 1 });
+    s.run.resume();
+
+    s.deps.onChange = (st) => {
+      if (st.state === 'running' && st.saved === 2 && st.phase === 'waiting') s.run.setActive(false);
+    };
+    expect(await settle(s.run)).toMatchObject({ state: 'paused', reason: 'background' });
+    s.deps.onChange = () => {};
+    s.run.setActive(true);
+    expect(await settle(s.run)).toMatchObject({ state: 'finished', saved: 4 });
+  });
+
+  it('may save up to 2000 chapters', () => {
+    expect(site(pages(1), { count: 5000, background: true }).run.current.count).toBe(2000);
+    expect(site(pages(1), { count: 5000 }).run.current.count).toBe(200);
   });
 });
 

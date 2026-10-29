@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BridgeBanner } from '../components/BridgeBanner';
+import { ClipBanner } from '../components/ClipBanner';
 import { MigrationFailed } from '../components/MigrationFailed';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { useMiniPlayerInset } from '../components/miniPlayerLayout';
@@ -15,6 +16,7 @@ import { sweepImports } from '../features/importFiles';
 import { checkForUpdates, configureBackgroundChecks, dueSources } from '../features/updates';
 import { bridge } from '../net/bridge';
 import { BridgeHost } from '../net/BridgeHost';
+import { ClipHost } from '../net/ClipHost';
 import { normalizeKey } from '../sources/keys';
 import { reloadLibrary } from '../state/library';
 import { settingsStore } from '../state/settings';
@@ -140,6 +142,7 @@ export default function RootLayout() {
             <Stack.Screen name="open" options={{ presentation: 'modal', title: 'Open link' }} />
             <Stack.Screen name="import" options={{ presentation: 'modal', title: 'Import' }} />
             <Stack.Screen name="help/share" options={{ title: 'Send links from Safari' }} />
+            <Stack.Screen name="clips" options={{ title: 'Clipping' }} />
             <Stack.Screen name="listen" options={{ title: 'Now listening' }} />
             <Stack.Screen name="ao3/works" options={{ title: 'AO3' }} />
             <Stack.Screen name="ao3/fandoms/[medium]" options={{ title: 'Fandoms' }} />
@@ -147,8 +150,10 @@ export default function RootLayout() {
             <Stack.Screen name="ao3/user/[name]" options={{ title: 'Creator' }} />
           </Stack>
           <BridgeHost />
+          <ClipHost />
           <MiniPlayer />
           <BridgeBanner />
+          <ClipBanner />
           <SheetHost />
           <WhatsNewSheet />
         </View>

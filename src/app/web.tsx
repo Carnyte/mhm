@@ -24,12 +24,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Linking, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { withClipNotice } from '../components/clipNotice';
 import { ClipSheet, type ClipResult, type ClipSheetMode } from '../components/ClipSheet';
 import { pickOption, showActions, toast } from '../components/Sheet';
 import { Button, haptic, IconButton, T } from '../components/ui';
 import { openLinkHit } from '../features/actions';
 import { AutoClip, MESSAGES, waitForNextChapter, type AutoClipPage, type AutoClipStatus, type Captured, type PageProbe } from '../features/autoClip';
 import { MAX_CLIP_RUN, runSizeOptions } from '../features/clipPace';
+import { clipEngine, clipJobsStore } from '../features/clipJobs';
 import { clipReport } from '../features/clipReport';
 import { appendClip, clipOddity, defaultClipTarget, findClippedPage } from '../features/clips';
 import { absolute } from '../ffn/urls';
@@ -44,15 +46,14 @@ import { acceptsCookieMessage, decideNavigation, HTTP_REFUSED, isNativeHost, web
 import type { StoryKey } from '../sources/keys';
 import { disabledMessage, resolveLink } from '../sources/registry';
 import { libraryStore } from '../state/library';
-import { clipSettings, settingsStore, updateSource } from '../state/settings';
+import { clipSettings } from '../state/settings';
 import { useTheme } from '../theme';
 import { errorMessage, pluralize } from '../utils/format';
 
 /** How long the page has to answer a tap on Clip (the script itself waits up to 4 s). */
 export const CLIP_TIMEOUT_MS = 10_000;
 
-export const CLIP_NOTICE =
-  'Clip saves a private copy of what this page shows you, on this phone only. Some sites’ terms don’t allow copying; it’s your call. FicShelf never shares it, and clips by itself only when you start “Clip the next chapters”.';
+export { CLIP_NOTICE } from '../components/clipNotice';
 
 export const NO_NEXT = 'FicShelf couldn’t find this site’s Next button. Tap it yourself, then Clip.';
 
@@ -251,22 +252,18 @@ export default function WebScreen() {
   };
 
   /** Asks once (the first time ever) whether clipping is all right, then does it. */
-  const withNotice = (fn: () => void) => {
-    if (settingsStore.get().sources.local?.clipNoticeSeen) {
-      fn();
-      return;
-    }
-    Alert.alert('Clip this page', CLIP_NOTICE, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clip',
-        onPress: () => {
-          updateSource('local', { clipNoticeSeen: true });
-          fn();
-        },
-      },
-    ]);
-  };
+  const withNotice = withClipNotice;
+
+  /** "Clip the rest in the background": a job from this story's last clipped page, or from this page. */
+  const clipInBackground = () =>
+    withNotice(() => {
+      try {
+        const job = clipEngine.start(here.current.url, target?.key);
+        toast(`Clipping ${job.title ? `“${job.title}”` : 'this story'} in the background. Library → + → Clipping shows how far it is.`, 'success');
+      } catch (e) {
+        toast(errorMessage(e), 'error');
+      }
+    });
 
   /** Presses the site's Next and waits for the next chapter ("Clip & next"). */
   const goNext = async () => {
@@ -318,6 +315,11 @@ export default function WebScreen() {
   const startRun = (count: number) => {
     if (runner.current && runner.current.current.state !== 'finished') return;
     if (busy.current || result) return;
+    // One automatic clipper per site at a time.
+    if (clipJobsStore.get().some((j) => j.state === 'running' && j.site === hostOf(here.current.url))) {
+      toast('FicShelf is clipping from this site in the background already. Library → + → Clipping shows how far it is.');
+      return;
+    }
     withNotice(() => {
       const story = defaultClipTarget(here.current.url, clipFor);
       const r = new AutoClip(
@@ -386,6 +388,7 @@ export default function WebScreen() {
       [
         ...(target ? [{ label: 'Clip only (stay on this page)', icon: 'cut-outline' as const, onPress: () => clip(false) }] : []),
         { label: 'Clip the next chapters…', icon: 'play-forward-outline', onPress: pickRun },
+        { label: 'Clip the rest in the background', icon: 'layers-outline', onPress: clipInBackground },
         { label: 'What Clip sees', icon: 'clipboard-outline', onPress: () => void whatClipSees() },
       ],
       host,

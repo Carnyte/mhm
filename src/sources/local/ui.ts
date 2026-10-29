@@ -8,6 +8,7 @@
 import { router } from 'expo-router';
 import { Alert, Linking } from 'react-native';
 import { pickOption, toast, type SheetAction } from '../../components/Sheet';
+import { activeJobFor, clipEngine } from '../../features/clipJobs';
 import { runSizeOptions } from '../../features/clipPace';
 import { undoLastClip } from '../../features/clips';
 import { deleteImportedStory } from '../../features/imports';
@@ -85,6 +86,16 @@ export function openClipPage(key: StoryKey, url: string) {
   router.push({ pathname: '/web', params: { url, clipFor: key } });
 }
 
+/** A background job from the story's last clipped page: every chapter after it, while the app is open. */
+function clipInBackground(key: StoryKey, url: string) {
+  try {
+    clipEngine.start(url, key);
+    toast('Clipping new chapters in the background. Library → + → Clipping shows how far it is.', 'success');
+  } catch (e) {
+    toast(errorMessage(e), 'error');
+  }
+}
+
 /** "Clip the next chapters…": how many, then the story's last clipped page, where the run starts by itself. */
 export function pickClipRun(key: StoryKey, url: string) {
   const st = clipSettings();
@@ -114,6 +125,9 @@ function clipActions(s: { key: StoryKey; title: string; chapters: number }): She
   return [
     { label: 'Clip next chapter', icon: 'cut-outline', onPress: () => openClipPage(s.key, clip.lastUrl) },
     { label: 'Clip the next chapters…', icon: 'play-forward-outline', onPress: () => pickClipRun(s.key, clip.lastUrl) },
+    activeJobFor(s.key)
+      ? { label: 'Clipping in the background…', icon: 'layers-outline', onPress: () => router.push('/clips') }
+      : { label: 'Clip new chapters in the background', icon: 'layers-outline', onPress: () => clipInBackground(s.key, clip.lastUrl) },
     ...(s.chapters > 1 ? [{ label: 'Remove last chapter', icon: 'arrow-undo-outline' as const, destructive: true, onPress: () => confirmUndoClip(s) }] : []),
     { label: `Open on ${siteName(first)}`, icon: 'globe-outline', onPress: () => openClipPage(s.key, first) },
   ];

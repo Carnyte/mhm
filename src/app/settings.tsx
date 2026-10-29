@@ -232,7 +232,7 @@ export default function SettingsScreen() {
 
       <Section
         title="Clipping"
-        footer="“Clip the next chapters” presses the site’s Next for you, waiting this long between chapters, and stops at locked chapters, logins and “are you human” checks. Some sites’ terms don’t allow copying: it’s your call."
+        footer="“Clip the next chapters” and “Clip the whole story” press the site’s Next for you, waiting this long between chapters, and stop at locked chapters, logins and “are you human” checks for you to deal with. Some sites’ terms don’t allow copying: it’s your call."
       >
         <Row
           title="Auto-clip pace"
@@ -258,6 +258,7 @@ export default function SettingsScreen() {
             )
           }
         />
+        <Row icon="layers-outline" title="Clipping in the background" subtitle="Stories FicShelf is clipping by itself" onPress={() => router.push('/clips')} />
         <Row
           title="Save next chapters without asking"
           subtitle="Clip & next adds to the same story straight away; the preview shows only when something looks odd"

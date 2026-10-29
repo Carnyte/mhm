@@ -219,10 +219,10 @@ describe('a clipped story’s menus', () => {
     const info = () => infoFromLibrary(libraryStore.get().stories[key]);
     let menu = localUi.storyActions(info()).menu.map((a) => a.label);
     // One chapter: nothing to remove (Delete is the way out).
-    expect(menu).toEqual(['Clip next chapter', 'Clip the next chapters…', 'Open on reader.example.com', 'Delete from this device']);
+    expect(menu).toEqual(['Clip next chapter', 'Clip the next chapters…', 'Clip new chapters in the background', 'Open on reader.example.com', 'Delete from this device']);
     libraryStore.set((st) => ({ ...st, stories: { ...st.stories, [key]: { ...st.stories[key], chapters: 2 } } }));
     menu = localUi.storyActions(info()).menu.map((a) => a.label);
-    expect(menu).toEqual(['Clip next chapter', 'Clip the next chapters…', 'Remove last chapter', 'Open on reader.example.com', 'Delete from this device']);
+    expect(menu).toEqual(['Clip next chapter', 'Clip the next chapters…', 'Clip new chapters in the background', 'Remove last chapter', 'Open on reader.example.com', 'Delete from this device']);
     // Clip the next chapters… asks how many, then opens the last clipped page with the run's size.
     localUi.storyActions(info()).menu[1].onPress();
     const [, options, , onPick] = (pickOption as jest.Mock).mock.calls[0];
@@ -361,7 +361,7 @@ describe('Clip & next and Clip the next chapters', () => {
       await render({ url: CH2, clipFor: key });
       await press('More clip options');
       const actions = (showActions as jest.Mock).mock.calls[0][0] as { label: string; onPress: () => void }[];
-      expect(actions.map((a) => a.label)).toEqual(['Clip only (stay on this page)', 'Clip the next chapters…', 'What Clip sees']);
+      expect(actions.map((a) => a.label)).toEqual(['Clip only (stay on this page)', 'Clip the next chapters…', 'Clip the rest in the background', 'What Clip sees']);
       await act(async () => actions[1].onPress());
       const [title, options, value, onPick] = (pickOption as jest.Mock).mock.calls[0];
       expect(title).toBe('Clip the next chapters');

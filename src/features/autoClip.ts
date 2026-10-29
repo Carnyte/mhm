@@ -15,7 +15,7 @@
 import { clipChapterNumber, clipStoryTitle, cleanClipUrl, sameClipStory } from '../import/clip';
 import type { ImportedBook } from '../import/types';
 import { hostOf } from '../net/httpCore';
-import { CLIP_PACES, MAX_CLIP_RUN, type ClipPace } from './clipPace';
+import { CLIP_PACES, MAX_BACKGROUND_RUN, MAX_CLIP_RUN, type ClipPace } from './clipPace';
 import type { StoryKey } from '../sources/keys';
 import { htmlToText } from '../utils/format';
 
@@ -85,6 +85,8 @@ export interface AutoClipDeps {
   findClipped(url: string): { title: string; chapter: number } | undefined;
   /** Adds the chapters to the story; the first new chapter's number. */
   append(key: StoryKey, book: ImportedBook, url: string): Promise<number>;
+  /** Background runs: saves the first page as a new story (no preview to show); its key. */
+  create?(book: ImportedBook, url: string): Promise<StoryKey>;
   now(): number;
   sleep(ms: number): Promise<void>;
   random(): number;
@@ -148,9 +150,16 @@ type Rule = 'locked' | 'duplicate' | 'different' | 'bot';
 export interface AutoClipOptions {
   /** The clipped story to add to; none: the first chapter becomes a new story (after its preview). */
   key?: StoryKey;
-  /** Chapters to save (capped at 200). */
+  /** Chapters to save (capped at 200, or 2000 in the background). */
   count: number;
   pace: ClipPace;
+  /**
+   * A background run (src/features/clipJobs.ts): nothing waits for a preview (a new story's first
+   * page is saved as it is, a page with several chapters keeps them), the end of the story
+   * (no Next, a page clipped before, another story) finishes the run, and coming back to the app
+   * goes on by itself. Locks, logins and bot checks still wait for the user.
+   */
+  background?: boolean;
 }
 
 /** One run. Create it, call start(); the screen calls pause / resume / stop / setActive / reviewed. */
@@ -188,7 +197,8 @@ export class AutoClip {
     private opts: AutoClipOptions,
   ) {
     const story = opts.key ? deps.story(opts.key) : undefined;
-    this.progress = { saved: 0, count: Math.max(1, Math.min(MAX_CLIP_RUN, Math.floor(opts.count) || 1)), title: story?.title ?? '', key: story?.key };
+    const cap = opts.background ? MAX_BACKGROUND_RUN : MAX_CLIP_RUN;
+    this.progress = { saved: 0, count: Math.max(1, Math.min(cap, Math.floor(opts.count) || 1)), title: story?.title ?? '', key: story?.key };
     this.runStory = story?.storyTitle ?? '';
     this.status = { ...this.progress, state: 'running', phase: 'reading' };
     this.arm();
@@ -233,9 +243,16 @@ export class AutoClip {
     this.poke();
   }
 
-  /** The app left the screen (false) or came back (true). Leaving pauses; coming back waits for Continue. */
+  /**
+   * The app left the screen (false) or came back (true). Leaving pauses; coming back waits for
+   * Continue, except in a background run, which goes on by itself.
+   */
   setActive(active: boolean) {
-    if (active || this.finished || this.paused) return;
+    if (active) {
+      if (this.opts.background && this.paused === 'background') this.resume();
+      return;
+    }
+    if (this.finished || this.paused) return;
     this.paused = 'background';
     this.emit({ ...this.progress, state: 'paused', reason: 'background' });
     this.poke();
@@ -290,6 +307,12 @@ export class AutoClip {
     this.finished = true;
     this.paused = null;
     this.emit({ ...this.progress, state: 'finished', message });
+  }
+
+  /** The story seems to be over (no Next, a page clipped before, another story): a background run ends. */
+  private end(message: string, extra: { rule?: Rule; url?: string } = {}) {
+    if (this.opts.background) this.finish(this.progress.saved ? `${message} ${summary(this.progress)}` : message);
+    else this.block(message, extra);
   }
 
   private block(message: string, extra: { rule?: Rule; url?: string; review?: Captured } = {}) {
@@ -414,17 +437,38 @@ export class AutoClip {
     // A page clipped before (readers that keep one address for every chapter are told apart by text above).
     if (url !== this.prevUrl && this.waived.get('duplicate') !== url) {
       const dup = this.deps.findClipped(url);
-      if (dup) return this.block(`You clipped this page already (chapter ${dup.chapter} of “${dup.title}”).`, { rule: 'duplicate', url });
+      if (dup) return this.end(`You clipped this page already (chapter ${dup.chapter} of “${dup.title}”).`, { rule: 'duplicate', url });
     }
 
     const name = clipStoryTitle(book);
     if (this.runStory && name && !sameClipStory(this.runStory, name) && this.waived.get('different') !== url) {
       const n = clipChapterNumber(book.chapters[0]?.title);
-      if (!(this.prevNumber != null && n === this.prevNumber + 1)) return this.block(MESSAGES.different, { rule: 'different', url });
+      if (!(this.prevNumber != null && n === this.prevNumber + 1)) return this.end(MESSAGES.different, { rule: 'different', url });
     }
 
+    if (!this.progress.key && this.opts.background && this.deps.create) {
+      this.running_('saving');
+      let key: StoryKey;
+      try {
+        key = await this.deps.create(book, got.url);
+      } catch (e) {
+        return this.failed(e);
+      }
+      this.errors = 0;
+      this.progress.key = key;
+      this.progress.title = this.deps.story(key)?.title ?? book.title;
+      this.recordSaved(book, got.url, 1, book.chapters.length);
+      if (this.stopped) {
+        this.emit({ ...this.progress, state: 'finished', message: summary(this.progress) });
+        throw new Stop();
+      }
+      if (this.progress.saved >= this.progress.count) return this.finish(summary(this.progress));
+      this.step = 'press';
+      this.dwell = 0;
+      return;
+    }
     if (!this.progress.key) return this.block(MESSAGES.first, { review: got });
-    if (book.chapters.length > 1) {
+    if (book.chapters.length > 1 && !this.opts.background) {
       return this.block(`This page shows ${book.chapters.length} chapters. Check them in the preview, then save or stop.`, { review: got });
     }
 
@@ -473,7 +517,7 @@ export class AutoClip {
         this.step = 'capture';
         return;
       }
-      return this.block(probe.lock.length ? MESSAGES.locked : MESSAGES.last);
+      return probe.lock.length ? this.block(MESSAGES.locked) : this.end(MESSAGES.last);
     }
     this.lastLoadAt = this.deps.now();
     this.dwell = 0;

@@ -2,22 +2,26 @@
 // FanFiction.net and AO3 links open in the app; links to a site the app knows but can't read yet
 // (Wattpad) say so instead of failing. A typed number asks which site's story it is. A page of any
 // other site offers FicShelf's browser (where its chapters can be clipped) or Safari, and never
-// opens by itself: a link from outside the app names the site first. `clip=1` comes from Library →
-// + → "Clip from a web page".
+// opens by itself: a link from outside the app names the site first. Such a page can also be the
+// first chapter of a story to clip whole in the background ("Clip the whole story",
+// src/features/clipJobs.ts). `clip=1` comes from Library → + → "Clip a whole story".
 
 import * as Clipboard from 'expo-clipboard';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, View } from 'react-native';
-import { pickOption } from '../components/Sheet';
 import { Notice } from '../components/states';
+import { withClipNotice } from '../components/clipNotice';
+import { pickOption, toast } from '../components/Sheet';
 import { Button, Input, T } from '../components/ui';
+import { clipEngine } from '../features/clipJobs';
 import { openLinkHit } from '../features/actions';
 import { hostOf } from '../net/httpCore';
 import { HTTP_REFUSED } from '../net/webPolicy';
 import { toKey } from '../sources/keys';
 import { disabledNotice, isBareStoryNumber, resolveLink } from '../sources/registry';
 import { useTheme } from '../theme';
+import { errorMessage } from '../utils/format';
 
 const NOT_A_LINK = 'That doesn’t look like a web page address or a story ID.';
 
@@ -98,13 +102,26 @@ export default function OpenLink() {
 
   const openBrowser = (page: string) => router.replace({ pathname: '/web', params: { url: page } });
 
+  /** The whole story, from this first chapter, clipped in the background. */
+  const clipWhole = (page: string) =>
+    withClipNotice(() => {
+      try {
+        clipEngine.start(page);
+        toast('Clipping the story in the background. It appears under Imported as the chapters come in.', 'success');
+        router.replace('/clips');
+      } catch (e) {
+        toast(errorMessage(e), 'error');
+      }
+    });
+
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, padding: 20, gap: 12 }}>
       <Stack.Screen options={{ title: clipping ? 'Clip from a web page' : 'Open link' }} />
       {clipping ? (
         <T muted>
-          Paste the address of the page that shows the chapter. It opens in FicShelf’s browser: log in there if the site needs it, wait until the chapter
-          appears, then tap Clip. Only the text is kept, on this phone.
+          Paste the address of the story’s first chapter (or any chapter to start from). FicShelf clips it and every chapter after it by itself, in the
+          background, while you read; if the site wants you to log in or check you’re human, it asks you. Or open the page in FicShelf’s browser and clip
+          it yourself. Only the text is kept, on this phone.
         </T>
       ) : (
         <T muted>
@@ -130,9 +147,11 @@ export default function OpenLink() {
       {problem && 'web' in problem && (
         <View style={{ gap: 10 }}>
           <T>
-            <T weight="600">{hostOf(problem.web)}</T> isn’t a site FicShelf reads, but its pages can open in FicShelf’s browser, where you can clip their chapters.
+            <T weight="600">{hostOf(problem.web)}</T> isn’t a site FicShelf reads, but it can clip the story from this chapter on, by itself, or you can
+            open the page in FicShelf’s browser and clip it yourself.
           </T>
-          <Button title="Open in FicShelf’s browser" icon="globe-outline" onPress={() => openBrowser(problem.web)} />
+          <Button title="Clip the whole story" icon="layers-outline" onPress={() => clipWhole(problem.web)} />
+          <Button title="Open in FicShelf’s browser" icon="globe-outline" kind="secondary" onPress={() => openBrowser(problem.web)} />
           <Button title="Open in Safari" icon="compass-outline" kind="secondary" onPress={() => Linking.openURL(problem.web).catch(() => {})} />
         </View>
       )}
