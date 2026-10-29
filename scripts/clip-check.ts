@@ -95,7 +95,7 @@ const cfPage = (n: number) =>
     : `<!DOCTYPE html><html lang="en"><head><title>Salt Road - Chapter ${n}</title></head><body><article><h1>Chapter ${n}</h1>${paras(`F${n}`)}</article><p><a href="/cf/${n + 1}">Next chapter</a></p></body></html>`;
 
 /** The runner on a real page: the app's scripts injected as web.tsx does, saving into memory. */
-async function runOn(ctx: BrowserContext, url: string, count: number): Promise<{ status: AutoClipStatus; saved: string[] }> {
+async function runOn(ctx: BrowserContext, url: string, count: number, background = false): Promise<{ status: AutoClipStatus; saved: string[] }> {
   const page: Page = await ctx.newPage();
   const posts: Record<string, unknown>[] = [];
   await page.exposeFunction('__clipPost', (s: string) => void posts.push(JSON.parse(s)));
@@ -132,13 +132,21 @@ async function runOn(ctx: BrowserContext, url: string, count: number): Promise<{
     },
   };
   const key = 'local:check' as StoryKey;
+  // A background run starts with no story: its first page makes one.
+  let made = !background;
   let chapters = 0;
   const saved: string[] = [];
   let clock = Date.now();
   const run = new AutoClip(
     {
       page: pageApi,
-      story: () => ({ key, title: 'Checked story', chapters, lastUrl: 'https://elsewhere.example/' }),
+      story: () => (made ? { key, title: 'Checked story', chapters, lastUrl: 'https://elsewhere.example/' } : undefined),
+      create: async (book) => {
+        made = true;
+        saved.push(`${book.title} / ${book.chapters[0].title}`);
+        chapters = book.chapters.length;
+        return key;
+      },
       findClipped: () => undefined,
       append: async (_k, book) => {
         saved.push(`${book.title} / ${book.chapters[0].title}`);
@@ -154,7 +162,7 @@ async function runOn(ctx: BrowserContext, url: string, count: number): Promise<{
       random: () => 0,
       onChange: () => {},
     },
-    { key, count, pace: 'quick' },
+    { key: background ? undefined : key, count, pace: 'quick', background },
   );
   void run.start();
   for (let i = 0; i < 600 && (run.current.state === 'running' || !run.current.state); i++) await page.waitForTimeout(50);
@@ -235,7 +243,31 @@ async function main() {
     check('stops at the run’s size', capped.status.state === 'finished' && capped.saved.length === 2, 'message' in capped.status ? capped.status.message : '');
     const cf = await runOn(sites, 'https://cf.example.test/cf/1', 10);
     check('bot check: 2 chapters saved, then it stops', cf.saved.length === 2 && cf.status.state === 'paused' && cf.status.message === MESSAGES.bot, `${cf.saved.length} saved; ${'message' in cf.status ? cf.status.message : cf.status.state}`);
+    const bgSpa = await runOn(sites, 'https://spa.example.test/viewer', 2000, true);
+    check('background: the first page makes the story, 3 saved, then it waits at the lock', bgSpa.saved.length === 3 && bgSpa.status.state === 'paused' && bgSpa.status.message === MESSAGES.locked, `${bgSpa.saved.length} saved; ${'message' in bgSpa.status ? bgSpa.status.message : bgSpa.status.state}`);
+    const bgPlain = await runOn(sites, 'https://static.example.test/s/1', 2000, true);
+    check('background: finishes by itself at the last chapter', bgPlain.saved.length === 3 && bgPlain.status.state === 'finished' && bgPlain.status.message.startsWith(MESSAGES.last), 'message' in bgPlain.status ? bgPlain.status.message : '');
     await sites.close();
+
+    // Text in a web component's shadow root (decoys hidden by its own stylesheet) and in a frame.
+    const comp = await ctx.newPage();
+    const compPosts: string[] = [];
+    await comp.exposeFunction('__clipPost', (s: string) => void compPosts.push(s));
+    await comp.setContent(
+      `<!DOCTYPE html><html lang="en"><head><title>Web Tale - Chapter 1</title></head><body><main><h1>Chapter 1</h1><story-body id="sb"></story-body>
+      <iframe id="fr" srcdoc="<p>FRAME-TEXT ${LOREM}</p><p style='display:none'>FRAME-DECOY</p>"></iframe></main>
+      <script>document.getElementById('sb').attachShadow({ mode: 'open' }).innerHTML = '<style>.d { display: none }</style>' + ${JSON.stringify(paras('SHADOW'))} + '<p class="d">SHADOW-DECOY</p>';</script></body></html>`,
+      { waitUntil: 'load' },
+    );
+    await comp.waitForTimeout(300);
+    await comp.evaluate(STUB);
+    await comp.evaluate(clipScript('n-comp'));
+    for (let i = 0; i < 100 && !compPosts.length; i++) await comp.waitForTimeout(50);
+    const compHtml: string = JSON.parse(compPosts[0] ?? '{}').html ?? '';
+    check('keeps a web component’s text and a frame’s', compHtml.includes('SHADOW paragraph 5') && compHtml.includes('FRAME-TEXT'));
+    check('drops decoys hidden inside them', !compHtml.includes('SHADOW-DECOY') && !compHtml.includes('FRAME-DECOY'));
+    const compBook = await parseClip(compHtml, 'https://web.example.test/1', { title: 'Web Tale - Chapter 1' });
+    check('the component’s text makes the chapter', compBook.words > 100 && compBook.chapters.length === 1, String(compBook.words));
   } finally {
     await browser.close();
   }

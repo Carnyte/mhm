@@ -87,6 +87,16 @@ describe('finding the site’s Next', () => {
     expect(m.report!.map((c) => c.label)).toEqual(['Next', 'Next page']);
   });
 
+  it('finds a Next drawn inside a web component, and sees its text change', () => {
+    document.body.innerHTML = '<reader-nav id="nav"></reader-nav>';
+    const shadow = document.getElementById('nav')!.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `<div>${chapter('ONE')}</div><button>Next chapter</button>`;
+    const m = find();
+    expect(m).toMatchObject({ found: true, label: 'Next chapter' });
+    shadow.querySelector('div')!.innerHTML = chapter('TWO');
+    expect(find().fp).not.toBe(m.fp);
+  });
+
   it('doesn’t take an app root named __next for a Next control', () => {
     document.body.innerHTML = `<div id="__next" onclick="void 0">${chapter()}</div>`;
     expect(find().found).toBe(false);

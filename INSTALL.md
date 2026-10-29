@@ -500,6 +500,12 @@ Then rebuild:
 - **Path C:** rerun the Path C step-2 command.
 - **Path D:** `eas build --platform android --profile preview`, install the new APK the same way.
 
+### The background clipping update ("Clip a whole story")
+
+No prebuild: it's JavaScript only (T1). Update as usual (`git pull --autostash`, `npm install`,
+`xed ios`, check Team and Release, **Cmd+R**). Don't delete FicShelf from the phone first. Nothing
+stored changes shape (background jobs are a new list of their own).
+
 ### The automatic clipping update ("Clip & next", "Clip the next chapters")
 
 The feature itself needs no prebuild (the keep-awake module is already in the app), but the

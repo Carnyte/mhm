@@ -13,8 +13,8 @@ branch: claude/ficshelf-fanfiction-app
 base_commit: e1b08ba
 base_commit_date: 2026-10-27
 commits_at_base: 178
-updated: 2026-10-27
-next_task: P-CLIP2
+updated: 2026-10-29
+next_task: P-CLIP3 device check (BG-A1..A5), then P-CLIP2 AC-A / AC-11 from the user's reports
 companion: MASTER_FEATURES.md
 status:
   summary: >-
@@ -22,7 +22,9 @@ status:
     Markdown, stored as the 'local' source) are built, reviewed, verified and pushed. No pending
     phase has been started. "Clip this page" for any website (approved 2026-10-21) was built on
     2026-10-27 and works on the phone ("perfect it works perfectly now", after an Xcode 27 /
-    Swift 6.4 build fix). P-CLIP2 automatic clipping ("Clip & next", "Clip the next N chapters",
+    Swift 6.4 build fix). P-CLIP3 (2026-10-29, the user's top priority): "Clip a whole story" in the
+    background from a pasted first chapter, prompting only for logins / checks, plus text in web
+    components and frames; pushed, tests and headless Chromium only. P-CLIP2 automatic clipping ("Clip & next", "Clip the next N chapters",
     "What Clip sees", Settings → Clipping) was built on 2026-10-27 and is pushed: tests and
     headless-Chromium runs only, not yet on the phone. Next: the user tries it on the phone
     (AC-A1..A6), then AC-11 polish from what they hit. No Wattpad until the user says clipping is
@@ -35,15 +37,16 @@ status:
     - P5 file import as the local source + golden import corpus
     - P-CLIP "Clip this page" for any https site (works on the phone)
     - P-CLIP2 Clip & next, Clip the next chapters, What Clip sees (device check pending)
+    - P-CLIP3 background clipping ("Clip a whole story"), shadow-root / frame text (device check pending)
     - Xcode 27 / Swift 6.4 build fix (570b9ad usePrecompiledModules false; ca4749f Expo patches)
-  pending_in_order: [P-CLIP2 device check + AC-11 polish, P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
+  pending_in_order: [P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "61 suites, 1214 passed + 1 todo (1215 total)"
+    jest: "63 suites, 1230 passed + 1 todo (1231 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
-    clip_check: "npx tsx scripts/clip-check.ts: 34/34 (headless Chromium, synthetic pages and sites, no network)"
+    clip_check: "npx tsx scripts/clip-check.ts: 39/39 (headless Chromium, synthetic pages and sites, no network)"
     expo_doctor: "21/21 (after npx expo install --fix, 2026-10-27)"
   device_confirmed: >-
     Builds through e2c8ac5 ("everything works", 2026-10-06), the Piper Lessac voice (build about
@@ -121,7 +124,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
      fails once under load, rerun it alone before chasing it.
    - lint must end with `check-keys: ok`.
    - The export output dir must be outside the repo.
-   - Clip phases also: `npx tsx scripts/clip-check.ts` (headless Chromium, synthetic pages and sites, no network; 34/34 at base).
+   - Clip phases also: `npx tsx scripts/clip-check.ts` (headless Chromium, synthetic pages and sites, no network; 39/39 at base).
    - `npx expo-doctor` should say 21/21.
    - Optional, at most once per phase: `npm run live-check -- --source ao3` (5 AO3 requests, 3 s apart).
    - If Bash calls fail with "auto mode classifier gave no verdict", that's transient: retry once,
@@ -189,7 +192,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
   docs, commits or messages.
 - **R-4 Network politeness (all sites)**: requests only follow something the user did; the
   exceptions are update checks of followed stories and, in P-CLIP2 only, auto-clip runs the user
-  starts (visible browser, human pace ≥ 4 s, ≤ 200 chapters a run, stop rules; FEATURES §4a). No crawling, no prefetching listings or
+  starts (visible browser, human pace ≥ 4 s, ≤ 200 chapters a run, stop rules; FEATURES §4a), and in P-CLIP3 background jobs the user starts (hidden in-app browser while the app is open, same pace and stop rules, ≤ 2000 chapters a job; §4b). No crawling, no prefetching listings or
   libraries, no background bulk downloads. Every request goes through `src/net/http.ts` /
   `src/net/httpCore.ts` `POLICIES` (one request in flight per host, minimum gaps, 429 / Retry-After
   honoured, rest after any 5xx, GET retried once, POST never). Live checks are budgeted (AO3: 5
@@ -230,6 +233,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 |---|---|---|---|---|---|---|
 | 0 | P-CLIP | "Clip this page" for any website | done (works on the phone 2026-10-27; CLIP-A items not reported one by one) | P5 (done) | no (https only) | none |
 | 1 | P-CLIP2 | "Clip & next", "Clip the next N chapters" (auto-clip), Clip polish | done (device check pending; AC-11 polish waits for the user's reports) | P-CLIP | no (but the next install is T2 because of ca4749f) | none: the user accepted the terms risk |
+| 1b | P-CLIP3 | "Clip a whole story" in the background; Clip for more sites | done (device check pending) | P-CLIP2 | no | none (approved 2026-10-29) |
 | 2 | P4 | Wattpad reading, no login | on hold (user, 2026-10-27: "we're not doign anything wattpad until we perfect clipping feature") | P1–P3 (done) | no | the user says clipping is perfect; then OQ-1 (default yes) |
 | 3 | P6 | AO3 login and social | pending | P3 (done) | no | user has an AO3 account (invite-only) |
 | 4 | P7 | Wattpad login and social | on hold (as P4) | P4 | no | Wattpad account + the ≤10-request endpoint check |
@@ -875,6 +879,7 @@ Built as planned, with these differences (2026-10-27):
 - The user decides about sites' terms for their own use (2026-10-27, quote above). Don't refuse or
   nag on terms grounds; the What's new card and the one-time notice say plainly that some sites
   forbid copying and that it's the user's call.
+- (2026-10-29) For background jobs, "foreground and visible only" below is replaced by P-CLIP3's policy (a hidden in-app browser while the app is open); every other line stays.
 - Hard lines that stay (R-5 and politeness, not terms): never click buy / unlock / subscribe /
   spend coins; never get past a paywall, login or age gate (the user does it on the page, then
   Continue); never solve or bypass a bot check; never read or replay the site's tickets, tokens,
@@ -926,6 +931,62 @@ Team + Release, Cmd+R. Ignore npm's "install-scripts … not yet covered by allo
 | OQ-AC-4 | A duplicate page mid-run? | Stop (except the run's starting page, which presses Next first) |
 | OQ-AC-5 | Build option 2 too? | After AC-3, if the user still wants it |
 | OQ-AC-6 | How to learn Novelpia's Next / lock markup? | Ask the user for a "What Clip sees" report from the phone; no live requests from the container for this |
+
+---
+
+## 4b. P-CLIP3: "Clip a whole story" in the background, and Clip for more sites
+
+```yaml
+id: P-CLIP3
+title: Background clipping from a pasted first chapter; Clip for more sites (shadow roots, frames)
+status: done (device check pending)
+order: 1
+next_task: true
+depends_on: [P-CLIP2 (done, device check pending)]
+native_rebuild: no (JavaScript only; T1)
+approved_by_user:
+  date: 2026-10-29
+  quote: >-
+    "I want you now to prioritize in production and afterwards work on making any website available
+    for clipping and instead of doing it manually it is also able to be just you paste the link of
+    the first chapter and then the algorithm and the app will figure out how to essentially display
+    the same concept as the story as it was clipped, but everything is done in the background and
+    the user has no need to do anything manual in regards to clipping essentially clipping is a
+    background feature that always works, and if there is a problem where it requires the user to
+    login to do a security check it will prompt that for the user, and when that is resolved, it
+    will return back to its processes"
+  reading: >-
+    Top priority: make clipping need nothing from the user. Paste a first chapter → FicShelf clips
+    the story by itself; it prompts only for logins / checks and resumes after. Then widen what Clip
+    can read. iOS limit said to the user: it runs while FicShelf is open (any screen), pauses off
+    screen and resumes by itself.
+policy_change: >-
+    P-CLIP2's "visible browser in the foreground only" is replaced for background jobs by: a hidden
+    in-app browser while the app is open (never with the app suspended, never server-side), one job
+    at a time. What stays: never buy / unlock / subscribe, never solve or bypass a bot check (the
+    user does it on the page), never touch the site's tickets / tokens / API, only what the page
+    renders, human pace (≥ 4 s between presses, Settings pace), at most 2000 chapters a job.
+```
+
+Built (2026-10-29):
+- [x] BG-1 Runner background mode (`AutoClipOptions.background`, `deps.create`): a new story's first page saved without a preview, several chapters on a page kept, the end of the story (no Next, a page clipped before, another story) finishes the run, coming back to the app resumes by itself; locks, logins, bot checks, other sites, empty pages and 3 errors still wait for the user. Cap `MAX_BACKGROUND_RUN` 2000.
+- [x] BG-2 Jobs (`src/features/clipJobs.ts`): `clipEngine.start(url, key?)` / `pause` / `resume` / `cancel` / `clearFinished` / `setActive` / `show`; one job at a time in order; kv `clipJobs` (normalized on read; a job cut off running goes back to the queue and resumes from the story's last clipped page, pressing Next first); a page clipped before goes on with its story; `clipRunStore` for the live status.
+- [x] BG-3 Hidden browser `src/net/ClipHost.tsx` at the root (like BridgeHost): the job's page behind the app (opacity 0.02, zIndex −1, no touches, hidden from VoiceOver), the same nonce'd capture / Next scripts and open-mode navigation rules (nothing opens apps or FicShelf screens); slides up full screen with Continue / Hide when the user opens a waiting job; AppState → `setActive`.
+- [x] BG-4 `ClipBanner` ("… needs you to continue clipping · Open"), the Clipping screen `/clips` (state, saved count, Pause / Continue / Stop / Show the page / Open story, Clear finished), a line on the story page, ways in: Library + "Clip a whole story" (paste → **Clip the whole story**) and "Clipping in the background", browser ⋯ "Clip the rest in the background", clipped story ⋯ "Clip new chapters in the background", Settings → Clipping row. Shared one-time notice (`src/components/clipNotice.ts`). What's new 4.
+- [x] BG-5 Clip for more sites: the capture adds open shadow roots' text (inside their element) and same-origin frames' pages (where the frame was), each checked for hidden decoys; the Next finder and the page fingerprint look inside open shadow roots too.
+- [x] BG-6 Tests: clip-jobs 9 (engine), clip-host 1 (hidden browser + banner), auto-clip +4 (background runs), next-script +1, clip-script +1; clip-check 39/39 (background runs on the synthetic SPA and rel=next sites; a web component + frame page in Chromium).
+
+### acceptance (on the phone)
+- [ ] BG-A1 Library → + → Clip a whole story → paste a first chapter → Clip the whole story: the story appears under Imported and gains chapters while you read something else.
+- [ ] BG-A2 A site that needs a login or shows a check: the banner appears; Open shows the page; after logging in / the check, Continue goes on.
+- [ ] BG-A3 Leaving the app and coming back (and closing FicShelf and opening it again) goes on from the last chapter.
+- [ ] BG-A4 Clipping screen: Pause, Continue, Stop behave; Stop keeps the saved chapters.
+- [ ] BG-A5 The hidden page doesn't show or catch taps; reading and the audiobook work as usual while it runs.
+
+### risks / open
+- WebKit may slow a page it thinks is off screen: the hidden browser is nearly transparent but on screen behind the app for that reason; confirm on the phone that a background job keeps pace (BG-A1).
+- A job waiting for the user holds up the queue until they deal with it or pause it.
+- Scroll-loaded text (pages that load more as you scroll) is still not clipped (next for "any website", with a report of a site that does it).
 
 ---
 
@@ -1700,5 +1761,6 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
 | 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
+| 2026-10-29 | 488b9c5, (this commit) | P-CLIP3 added and built (background clipping, shadow-root / frame text; approval quote recorded; device check pending) |
 | 2026-10-27 | 8271660, e1b08ba | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |
 | 2026-10-27 | 1cca7be..7546679 | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |

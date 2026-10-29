@@ -115,6 +115,7 @@ export function ClipHost() {
         const hit = findClippedPage(url);
         return hit ? { title: hit.story.title, chapter: hit.chapter } : undefined;
       },
+      findClippedKey: (url) => findClippedPage(url)?.story.key,
       onEnded: (j) => toast(endedMessage(j), j.state === 'done' ? 'success' : 'info'),
     });
     const sub = AppState.addEventListener('change', (st) => clipEngine.setActive(st === 'active'));

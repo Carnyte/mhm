@@ -336,6 +336,11 @@ your session · ⏳ not built (reason given).
   reader's pace, never under 4 s, at most 200 a run, screen on, paused off-screen; stops for locked
   chapters, logins, bot checks, other sites, duplicates, a different story, the end; never buys,
   unlocks or solves anything); Settings → Clipping; "What Clip sees" reports without story text
+- ✅ Background clipping: **Clip a whole story** from a pasted first chapter (or the rest of a
+  story, or its new chapters) in a hidden browser while the app is open; jobs one at a time, saved
+  across launches; a banner asks for logins, locks and checks and the page slides up with
+  Continue; the Clipping screen with Pause / Continue / Stop; text in web components and
+  same-origin frames is clipped too
 - ⏳ Later: EPUB export, full backup with imported and clipped stories, FicHub, Wattpad linking,
   pictures in clipped pages
 
@@ -374,7 +379,7 @@ scripts/dev-proxy.ts   lets the web build use a real Chromium session (for scree
 
 ```bash
 npm install
-npm test               # unit tests (1227)
+npm test               # unit tests (1230)
 npm run lint           # eslint + check-keys
 npm run typecheck
 npx expo run:ios       # local dev build (needs Xcode), or:
@@ -386,6 +391,6 @@ use a **development build**, not Expo Go.
 
 ## 5. Verification done
 
-See the **Verification** section of `README.md`: 1227 unit tests, a 17-check live run of the
+See the **Verification** section of `README.md`: 1230 unit tests, a 17-check live run of the
 FanFiction.net parsers and a 5-check live run of the AO3 parsers, typecheck, lint, iOS bundle
 export, expo-doctor, and live-data screenshots.

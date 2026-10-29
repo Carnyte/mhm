@@ -93,6 +93,7 @@ const deps = (): JobsModule.ClipJobDeps => ({
     const hit = clips.findClippedPage(u);
     return hit ? { title: hit.story.title, chapter: hit.chapter } : undefined;
   },
+  findClippedKey: (u) => clips.findClippedPage(u)?.story.key,
   now: () => clock,
   sleep: async (ms) => {
     clock += ms;
@@ -148,6 +149,21 @@ describe('a pasted first chapter', () => {
     // Saved for the next launch, with no ticket in the address.
     expect(JSON.stringify(mem.get('clipJobs'))).not.toContain('TICKET');
     expect(jobs.normalizeJobs(mem.get('clipJobs'))[0]).toMatchObject({ state: 'done', saved: 5 });
+  });
+
+  it('goes on with the story a page was clipped into before, instead of starting another', async () => {
+    const site = story('reads.example.com', 'Glass Orchard', 5);
+    const f = fakeHost([site]);
+    jobs.clipEngine.attach(f.host, deps());
+    jobs.clipEngine.start(site[0].url);
+    await until(() => (jobList()[0].saved ?? 0) >= 2, 'two chapters');
+    jobs.clipEngine.pause(jobList()[0].id);
+    const key = stories()[0].key;
+    const again = jobs.clipEngine.start(site[0].url);
+    expect(again.key).toBe(key);
+    await until(() => jobList().some((j) => j.state === 'done'), 'the end');
+    expect(stories()).toHaveLength(1);
+    expect(stories()[0].chapters).toBe(5);
   });
 
   it('runs jobs one at a time, in order', async () => {

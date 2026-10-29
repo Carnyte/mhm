@@ -155,6 +155,27 @@ describe('clip capture script', () => {
     expect(await message()).toEqual({ type: CLIP_MESSAGE, nonce: 'big', error: 'too-large' });
   });
 
+  it('adds the text of open shadow roots and same-origin frames where it shows, without their hidden parts', async () => {
+    document.body.innerHTML = '<article><h1>Chapter 2</h1><story-text id="host"></story-text><p>After the component.</p><iframe id="f"></iframe></article>';
+    const shadow = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    // (jsdom applies no styles from inside a shadow root: scripts/clip-check.ts checks those in Chromium.)
+    shadow.innerHTML = '<p>SHADOW-TEXT one</p><p style="display:none">SHADOW-DECOY</p><script>SHADOW-SCRIPT</script>';
+    const frame = (document.getElementById('f') as HTMLIFrameElement).contentDocument!;
+    frame.body.innerHTML = '<p>FRAME-TEXT two</p><p style="display:none">FRAME-DECOY</p>';
+    run();
+    const html = String((await message()).html);
+    expect(html).toContain('SHADOW-TEXT one');
+    expect(html).toContain('FRAME-TEXT two');
+    expect(html).not.toContain('SHADOW-DECOY');
+    expect(html).not.toContain('FRAME-DECOY');
+    expect(html).not.toContain('SHADOW-SCRIPT');
+    // In order: the component's text before what follows it, the frame's where the frame was.
+    expect(html.indexOf('SHADOW-TEXT')).toBeLessThan(html.indexOf('After the component.'));
+    expect(html.indexOf('After the component.')).toBeLessThan(html.indexOf('FRAME-TEXT'));
+    // The live page is untouched.
+    expect(document.body.innerHTML).not.toContain('FRAME-TEXT');
+  });
+
   it('stops checking for hidden text on enormous pages and says so', async () => {
     document.body.innerHTML = '<p>a</p>'.repeat(50) + '<p class="x" style="display:none">LATE-DECOY</p>';
     run('n', undefined, { ...FAST, maxElements: 10 });

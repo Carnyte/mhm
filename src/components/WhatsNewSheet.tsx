@@ -1,5 +1,6 @@
 // A one-time "What's new" sheet (settings.whatsNewSeen), with what each release the user hasn't
-// seen added: version 3 is automatic clipping ("Clip & next", "Clip the next chapters"); version 2
+// seen added: version 4 is background clipping ("Clip the whole story" from a pasted first
+// chapter); version 3 was automatic clipping ("Clip & next", "Clip the next chapters"); version 2
 // was "Clip this page" for any website; version 1 was AO3, switched on for everyone, so its part
 // says what that means, offers the switch right there and points to Settings → Sources.
 
@@ -12,7 +13,7 @@ import { useTheme } from '../theme';
 import { Button, T, type IconName } from './ui';
 
 /** Bump to show the sheet again for a later release (with new content). */
-export const WHATS_NEW_VERSION = 3;
+export const WHATS_NEW_VERSION = 4;
 
 function Point({ icon, text, color }: { icon: IconName; text: string; color?: string }) {
   const c = useTheme();
@@ -42,33 +43,57 @@ export function WhatsNewSheet() {
           WHAT’S NEW
         </T>
         <T size={26} weight="800" style={{ marginTop: 6 }}>
-          Clipping, hands-free
+          Clip a whole story, in the background
         </T>
         <T muted size={15} style={{ marginTop: 8, lineHeight: 21 }}>
-          FicShelf can now press a site’s Next for you, so a long story comes in without a tap per chapter.
+          Paste a story’s first chapter and FicShelf clips it and every chapter after it by itself while you read. Nothing to tap per chapter.
         </T>
         <View style={{ marginTop: 20, gap: 14 }}>
-          <Point
-            color={clip}
-            icon="play-forward-outline"
-            text="Clip & next: once a story is being clipped, one tap saves the chapter and opens the next. Turn on “save without asking” in its preview to skip the preview when nothing looks odd."
-          />
-          <Point
-            color={clip}
-            icon="albums-outline"
-            text="Clip the next chapters: from the ⋯ next to Clip, or the story’s ⋯ menu. Pick how many; FicShelf clips them one by one at a reader’s pace (Settings → Clipping), with Pause and Stop."
-          />
+          <Point color={clip} icon="link-outline" text="Library → + → Clip a whole story, paste the first chapter’s address, tap Clip the whole story. The story appears under Imported and fills in." />
           <Point
             color={clip}
             icon="hand-left-outline"
-            text="It stops at locked or paid chapters, log-ins and “are you human” checks: you deal with them on the page, then tap Continue. FicShelf never buys, unlocks or solves anything."
+            text="If the site wants you to log in, unlock a chapter or check you’re human, a banner asks you. Deal with it on the page, tap Continue, and clipping goes on."
           />
           <Point
             color={clip}
             icon="phone-portrait-outline"
-            text="Runs keep the screen on and pause when you leave the app. Some sites’ terms don’t allow copying or automated reading: it’s your call."
+            text="It works while FicShelf is open (any screen). iPhones pause apps you leave, so clipping waits and goes on by itself when you come back, even after a restart."
           />
+          <Point color={clip} icon="layers-outline" text="Library → + → Clipping in the background shows every story being clipped, with Pause and Stop. A clipped story’s ⋯ menu gets new chapters the same way." />
         </View>
+        {seen < 3 && (
+          <>
+            <T size={22} weight="800" style={{ marginTop: 32 }}>
+              Clipping, hands-free
+            </T>
+            <T muted size={15} style={{ marginTop: 8, lineHeight: 21 }}>
+              FicShelf can now press a site’s Next for you, so a long story comes in without a tap per chapter.
+            </T>
+            <View style={{ marginTop: 20, gap: 14 }}>
+              <Point
+                color={clip}
+                icon="play-forward-outline"
+                text="Clip & next: once a story is being clipped, one tap saves the chapter and opens the next. Turn on “save without asking” in its preview to skip the preview when nothing looks odd."
+              />
+              <Point
+                color={clip}
+                icon="albums-outline"
+                text="Clip the next chapters: from the ⋯ next to Clip, or the story’s ⋯ menu. Pick how many; FicShelf clips them one by one at a reader’s pace (Settings → Clipping), with Pause and Stop."
+              />
+              <Point
+                color={clip}
+                icon="hand-left-outline"
+                text="It stops at locked or paid chapters, log-ins and “are you human” checks: you deal with them on the page, then tap Continue. FicShelf never buys, unlocks or solves anything."
+              />
+              <Point
+                color={clip}
+                icon="phone-portrait-outline"
+                text="Runs keep the screen on and pause when you leave the app. Some sites’ terms don’t allow copying or automated reading: it’s your call."
+              />
+            </View>
+          </>
+        )}
         {seen < 2 && (
           <>
             <T size={22} weight="800" style={{ marginTop: 32 }}>
@@ -89,7 +114,7 @@ export function WhatsNewSheet() {
           </>
         )}
         <Button
-          title="Clip from a web page"
+          title="Clip a whole story"
           icon="cut-outline"
           style={{ marginTop: 22 }}
           onPress={() => {

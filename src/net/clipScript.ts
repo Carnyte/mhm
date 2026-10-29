@@ -10,6 +10,10 @@
 //
 // The live page is never changed: hidden elements are found on the page and dropped from an exact,
 // inert copy, walked side by side.
+//
+// Text a copy of the page doesn't carry is added where it shows: what open shadow roots hold (web
+// components some readers draw the chapter with) and same-origin frames' pages, each checked for
+// hidden text the same way. Frames from other sites can't be read.
 
 /** The `type` of the message the capture posts. */
 export const CLIP_MESSAGE = 'ficshelf-clip';
@@ -83,32 +87,86 @@ export function clipScript(nonce: string, maxChars: number = MAX_CLIP_CHARS, tim
       if (!w.parentNode()) return false;
     }
   }
+  // Open shadow roots and same-origin frames under an element, with what holds their text.
+  function extrasOf(scope) {
+    var out = [];
+    var all = scope.getElementsByTagName('*');
+    for (var i = 0; i < all.length && out.length < 200; i++) {
+      var el = all[i];
+      if (el.shadowRoot) out.push({ el: el, kind: 'shadow', root: el.shadowRoot });
+      else if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+        try {
+          var d = el.contentDocument;
+          if (d && d.body && d.body.textContent.trim()) out.push({ el: el, kind: 'frame', root: d.body });
+        } catch (e) {}
+      }
+    }
+    return out;
+  }
+  // The copy of a live element, by the path of child positions from the top.
+  function pathOf(el, top) {
+    var path = [];
+    for (var e = el; e && e !== top; e = e.parentNode) {
+      if (!e.parentNode) return null;
+      path.unshift(Array.prototype.indexOf.call(e.parentNode.childNodes, e));
+    }
+    return e === top ? path : null;
+  }
+  function follow(path, top) {
+    var n = top;
+    for (var i = 0; n && i < path.length; i++) n = n.childNodes[path[i]];
+    return n || null;
+  }
+  function attached(n, top) {
+    for (var e = n; e; e = e.parentNode) if (e === top) return true;
+    return false;
+  }
+  var seen = 0;
+  var capped = false;
+  // Walks a live tree and its copy side by side; the copies of hidden elements go in drop.
+  function markHidden(liveRoot, copyRoot, drop) {
+    var a = (liveRoot.ownerDocument || document).createTreeWalker(liveRoot, 1);
+    var b = copyRoot.ownerDocument.createTreeWalker(copyRoot, 1);
+    var more = !!a.nextNode() && !!b.nextNode();
+    while (more) {
+      if (++seen > C.maxElements) { capped = true; return; }
+      if (isHidden(a.currentNode)) {
+        drop.push(b.currentNode);
+        more = afterSubtree(a) && afterSubtree(b);
+      } else {
+        more = !!a.nextNode() && !!b.nextNode();
+      }
+    }
+  }
   function copyPage() {
     var live = document.documentElement;
     // A template's document has no scripts or custom elements: the copy stays inert.
     var inert = document.createElement('template').content.ownerDocument || document;
     var root = inert.importNode(live, true);
-    var capped = false;
     var liveBody = document.body;
     var index = liveBody ? Array.prototype.indexOf.call(live.children, liveBody) : -1;
     var copyBody = index >= 0 ? root.children[index] : null;
     var drop = [];
-    if (liveBody && copyBody) {
-      var a = document.createTreeWalker(liveBody, 1);
-      var b = inert.createTreeWalker(copyBody, 1);
-      var seen = 0;
-      var more = !!a.nextNode() && !!b.nextNode();
-      while (more) {
-        if (++seen > C.maxElements) { capped = true; break; }
-        if (isHidden(a.currentNode)) {
-          drop.push(b.currentNode);
-          more = afterSubtree(a) && afterSubtree(b);
-        } else {
-          more = !!a.nextNode() && !!b.nextNode();
-        }
-      }
+    // Where shadow roots' and frames' text goes in the copy, found before anything moves.
+    var extras = liveBody && copyBody ? extrasOf(liveBody) : [];
+    for (var x = 0; x < extras.length; x++) {
+      var path = pathOf(extras[x].el, live);
+      extras[x].copy = path ? follow(path, root) : null;
     }
+    if (liveBody && copyBody) markHidden(liveBody, copyBody, drop);
     for (var i = 0; i < drop.length; i++) if (drop[i].parentNode) drop[i].parentNode.removeChild(drop[i]);
+    for (x = 0; x < extras.length; x++) {
+      var ex = extras[x];
+      if (!ex.copy || !attached(ex.copy, root)) continue;
+      var holder = inert.createElement('div');
+      for (var k = 0; k < ex.root.childNodes.length; k++) holder.appendChild(inert.importNode(ex.root.childNodes[k], true));
+      var hid = [];
+      markHidden(ex.root, holder, hid);
+      for (k = 0; k < hid.length; k++) if (hid[k].parentNode) hid[k].parentNode.removeChild(hid[k]);
+      // A shadow root's text inside its element; a frame's page where the frame was.
+      if (ex.kind === 'shadow') ex.copy.appendChild(holder);
+      else ex.copy.parentNode.insertBefore(holder, ex.copy);
+    }
     var gone = root.querySelectorAll(DROP);
     for (i = 0; i < gone.length; i++) if (gone[i].parentNode) gone[i].parentNode.removeChild(gone[i]);
     var metas = root.querySelectorAll('meta');
@@ -144,7 +202,7 @@ export function clipScript(nonce: string, maxChars: number = MAX_CLIP_CHARS, tim
         }
       }
     }
-    return { html: '<!DOCTYPE html>' + root.outerHTML, capped: capped, dropped: drop.length };
+    return { html: '<!DOCTYPE html>' + root.outerHTML, capped: capped, dropped: drop.length, extras: extras.length };
   }
   function send() {
     try {

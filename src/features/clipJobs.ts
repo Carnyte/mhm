@@ -58,6 +58,8 @@ export interface ClipJobDeps {
   append(key: StoryKey, book: ImportedBook, url: string): Promise<number>;
   create(book: ImportedBook, url: string): Promise<StoryKey>;
   findClipped(url: string): { title: string; chapter: number } | undefined;
+  /** The clipped story a page belongs to, if it was clipped before. */
+  findClippedKey?(url: string): StoryKey | undefined;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
@@ -157,10 +159,14 @@ class ClipEngine {
     if (id && jobOf(id)?.state === 'running') patchJob(id, { state: 'queued' });
   }
 
-  /** Starts clipping a story from `url` (a new story) or after the clipped story `key`'s last page. */
+  /**
+   * Starts clipping a story from `url` (a new story) or after the clipped story `key`'s last page.
+   * A page clipped before (into any story) goes on with that story instead of starting another.
+   */
   start(url: string, key?: StoryKey): ClipJob {
     const clean = cleanClipUrl(url);
     if (!clean.startsWith('https://')) throw new Error('Only secure (https) pages can be clipped.');
+    key ??= this.deps?.findClippedKey?.(clean);
     const existing = key ? activeJobFor(key) : clipJobsStore.get().find((j) => !j.key && j.startUrl === clean && ACTIVE.includes(j.state));
     if (existing) {
       if (existing.state === 'paused') this.resume(existing.id);

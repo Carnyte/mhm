@@ -186,9 +186,18 @@ export function nextScript(nonce: string, action: NextAction): string {
     }
     return best || document.body;
   }
+  // Open shadow roots on the page (web components some readers draw the chapter or buttons with).
+  function shadowRoots() {
+    var out = [];
+    var all = document.getElementsByTagName('*');
+    for (var i = 0; i < all.length && out.length < 200; i++) if (all[i].shadowRoot) out.push(all[i].shadowRoot);
+    return out;
+  }
+  var SHADOWS = shadowRoots();
   function fingerprint() {
     var el = mainText();
     var t = el ? squash(el.innerText || el.textContent) : '';
+    for (var r = 0; r < SHADOWS.length && t.length < 20000; r++) t += ' ' + squash(SHADOWS[r].textContent);
     var s = t.slice(0, 5000);
     var h = 2166136261;
     for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
@@ -235,7 +244,9 @@ export function nextScript(nonce: string, action: NextAction): string {
     var list = [];
     var relLink = document.querySelector('link[rel~=next][href]');
     var relHref = relLink ? relLink.href : '';
-    var els = document.querySelectorAll('a[href],a[rel],button,[role=button],[role=link],input[type=button],input[type=submit],[onclick]');
+    var SEL = 'a[href],a[rel],button,[role=button],[role=link],input[type=button],input[type=submit],[onclick]';
+    var els = Array.prototype.slice.call(document.querySelectorAll(SEL));
+    for (var r = 0; r < SHADOWS.length; r++) els = els.concat(Array.prototype.slice.call(SHADOWS[r].querySelectorAll(SEL)));
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       var ls = labels(el);
