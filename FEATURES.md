@@ -10,8 +10,8 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: e1b08ba
-base_commit_date: 2026-10-27
+base_commit: 5371b6d
+base_commit_date: 2026-10-29
 commits_at_base: 178
 updated: 2026-10-29
 next_task: P-CLIP3 device check (BG-A1..A5), then P-CLIP2 AC-A / AC-11 from the user's reports
@@ -1761,6 +1761,6 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
 | 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
-| 2026-10-29 | 488b9c5, (this commit) | P-CLIP3 added and built (background clipping, shadow-root / frame text; approval quote recorded; device check pending) |
+| 2026-10-29 | 488b9c5, 5371b6d | P-CLIP3 added and built (background clipping, shadow-root / frame text; approval quote recorded; device check pending) |
 | 2026-10-27 | 8271660, e1b08ba | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |
 | 2026-10-27 | 1cca7be..7546679 | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |

@@ -10,7 +10,7 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: e1b08ba
+base_commit: 5371b6d
 commits_at_base: 178 (137 unrelated legacy commits + 41 FicShelf commits from 695e10d)
 updated: 2026-10-29
 next_work: FEATURES.md
@@ -779,7 +779,7 @@ the auto-mode classifier ("Third-Party Attack")**; no chapter text was pulled. T
   human pace (≥ 4 s between presses, default 8–15 s); ≤ 200 chapters a run; every stop rule pauses
   with Continue / Stop. Not yet on the phone; AC-11 polish (scroll-loaded text, frames, shadow DOM)
   waits for the user's reports.
-- **Built (P-CLIP3, FEATURES.md §4b, `488b9c5` + the next commit, 2026-10-29)**: "Clip a whole
+- **Built (P-CLIP3, FEATURES.md §4b, `488b9c5`, `5371b6d`, 2026-10-29)**: "Clip a whole
   story" in the background (jobs, ClipHost, banner, Clipping screen); the user asked for clipping
   that needs nothing manual and prompts only for logins / checks. Policy change: background jobs use
   a hidden in-app browser while the app is open (replacing "visible, foreground only" for them);
@@ -1481,7 +1481,7 @@ FicShelf (27 commits, 2026-10-06 → 2026-10-21). "README count" = the Verificat
 | M12 | `1cca7be`..`abac63f` | 10-27 | Preflight (flaky tests, stale docs, live-check flag); "Clip this page": browser policy + cookie guard, capture script, parseClip, clipped stories (new / next / undo), browser open mode, ClipSheet, menus, entry points, What's new 2, Send links from Safari, Chromium check | 1088 → 1153 | no |
 | M13 | `570b9ad`, `ca4749f` | 10-27 | Xcode 27 / Swift 6.4 build fix: precompiled Expo modules off; Expo SDK 57 patches (expo-modules-jsi 57.1.3); expo-doctor 21/21; the build works on the phone | 1153 | yes (T2) |
 | handoff 2 | `324ae66` | 10-27 | P-CLIP2 (automatic clipping) written up as the top priority; Wattpad on hold | 1153 | no |
-| M15 | `2d33d0f`, `488b9c5` + the next commit | 10-27 → 10-29 | Story page reloads clipped chapters + pull to refresh (device report); P-CLIP3 background clipping (jobs, hidden browser, banner, Clipping screen, resume after relaunch), shadow-root / frame text, What's new 4 | 1213 → 1230 | no |
+| M15 | `2d33d0f`, `488b9c5`, `5371b6d` | 10-27 → 10-29 | Story page reloads clipped chapters + pull to refresh (device report); P-CLIP3 background clipping (jobs, hidden browser, banner, Clipping screen, resume after relaunch), shadow-root / frame text, What's new 4 | 1213 → 1230 | no |
 | M14 | `8271660`, `e1b08ba` | 10-27 | P-CLIP2: Next finder, auto-clip runner, Clip & next, Clip the next chapters, What Clip sees, Settings → Clipping, What's new 3; inline review (6 fixes, each mutation-checked) | 1153 → 1213 | no (but T2 because of `ca4749f`) |
 
 User decisions in time order:
