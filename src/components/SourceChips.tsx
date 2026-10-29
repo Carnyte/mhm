@@ -45,11 +45,11 @@ export function SourceChips({ sources, value, onChange }: { sources: SourceId[];
             accessibilityLabel={LABELS[id]}
             style={({ pressed }) => [
               styles.chip,
-              { backgroundColor: active ? color + '22' : c.chip, borderColor: active ? color : 'transparent', opacity: pressed ? 0.75 : 1 },
+              active ? { backgroundColor: c.secondaryContainer, borderColor: c.secondaryContainer } : { backgroundColor: pressed ? c.surfaceAlt : 'transparent', borderColor: c.border },
             ]}
           >
             <View style={[styles.dot, { backgroundColor: color }]} />
-            <T size={13} weight={active ? '700' : '500'} style={{ color: active ? color : c.chipText }}>
+            <T size={13} weight={active ? '600' : '500'} style={{ color: active ? c.onSecondaryContainer : c.text }}>
               {LABELS[id]}
             </T>
           </Pressable>
@@ -60,7 +60,7 @@ export function SourceChips({ sources, value, onChange }: { sources: SourceId[];
 }
 
 const styles = StyleSheet.create({
-  row: { paddingHorizontal: 12, gap: 8, paddingVertical: 4 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
+  row: { paddingHorizontal: 16, gap: 8, paddingVertical: 4 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, minHeight: 32, borderRadius: 8, borderWidth: 1 },
   dot: { width: 8, height: 8, borderRadius: 4 },
 });

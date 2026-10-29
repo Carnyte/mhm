@@ -29,7 +29,7 @@ export function MiniPlayer() {
           : `${player.chapterLabel(s.story, s.chapter)}${s.total ? ` · ${Math.round(((s.index + 1) / s.total) * 100)}%` : ''}`;
   return (
     <View pointerEvents="box-none" style={[styles.wrap, { bottom }]}>
-      <View style={[styles.bar, { backgroundColor: c.surface, borderColor: c.border }]}>
+      <View style={[styles.bar, { backgroundColor: c.surfaceContainerHigh }]}>
         <Pressable
           onPress={() => router.push('/listen')}
           accessibilityRole="button"
@@ -38,7 +38,7 @@ export function MiniPlayer() {
         >
           <Cover path={s.story.coverUrl} width={36} height={48} title={s.story.title} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <T size={14} weight="700" numberOfLines={1}>
+            <T size={14} weight="600" numberOfLines={1}>
               {s.story.title}
             </T>
             <T size={12} muted numberOfLines={1} style={s.status === 'error' ? { color: c.danger } : undefined}>
@@ -69,10 +69,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingLeft: 8,
     paddingRight: 4,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 20,
     shadowColor: '#000',
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.14,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 6,

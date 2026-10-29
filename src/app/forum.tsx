@@ -79,6 +79,6 @@ export default function ForumScreen() {
 }
 
 const styles = StyleSheet.create({
-  head: { margin: 12, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  head: { margin: 12, padding: 14, borderRadius: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
 });

@@ -35,8 +35,7 @@ const styles = StyleSheet.create({
   stats: {
     marginHorizontal: 16,
     marginVertical: 12,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingVertical: 6,

@@ -203,5 +203,5 @@ export function Notice({ icon = 'information-circle-outline', title, message }: 
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, minHeight: 240 },
-  notice: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  notice: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: 16 },
 });

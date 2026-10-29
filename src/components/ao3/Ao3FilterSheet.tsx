@@ -5,7 +5,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AO3_CATEGORIES,
@@ -22,7 +22,7 @@ import type { Ao3Facet } from '../../sources/ao3/parsers/listing';
 import { countFilters, type Ao3Filters, type Ao3Search } from '../../sources/ao3/urls';
 import { useTheme } from '../../theme';
 import { pickOption } from '../Sheet';
-import { Button, Row, Section, T } from '../ui';
+import { Button, Row, Section, Switch, T } from '../ui';
 
 type FacetGroup = 'fandom' | 'character' | 'relationship' | 'freeform';
 const FACET_LABELS: Record<FacetGroup, string> = { fandom: 'Fandoms', character: 'Characters', relationship: 'Relationships', freeform: 'Additional tags' };

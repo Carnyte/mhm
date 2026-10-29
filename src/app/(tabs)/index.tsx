@@ -1,5 +1,6 @@
-// Browse: "Continue reading" across sites, then the chosen site's Browse home (FanFiction.net's
-// categories, AO3's media). The site chips only appear when more than one site is on.
+// Browse: a search bar (Search, or a pasted link), "Continue reading" across sites, then the chosen
+// site's Browse home (FanFiction.net's categories, AO3's media). The site chips only appear when
+// more than one site is on.
 
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
@@ -32,16 +33,26 @@ export default function BrowseScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerRight: () => <IconButton icon="link-outline" label="Open a link" onPress={() => router.push('/open')} style={{ marginRight: 12 }} />,
-        }}
-      />
+      <Stack.Screen options={{ headerTitle: 'FicShelf' }} />
       <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ paddingBottom: 32 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+          <Pressable
+            onPress={() => router.navigate('/search')}
+            style={({ pressed }) => [styles.searchBar, { backgroundColor: pressed ? c.surfaceContainerHigh : c.surfaceAlt }]}
+            accessibilityRole="search"
+            accessibilityLabel="Search stories and authors"
+          >
+            <Ionicons name="search" size={22} color={c.textMuted} />
+            <T muted size={16} style={{ flex: 1 }} numberOfLines={1}>
+              Search stories and authors
+            </T>
+            <IconButton icon="link-outline" label="Open or clip a link" onPress={() => router.push('/open')} />
+          </Pressable>
+        </View>
         {recent.length > 0 && (
           <View style={{ marginTop: 14 }}>
-            <T size={13} weight="600" muted style={styles.label}>
-              CONTINUE READING
+            <T size={14} weight="600" style={[styles.label, { color: c.primary }]}>
+              Continue reading
             </T>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}>
               {recent.map((s) => (
@@ -121,10 +132,10 @@ function FfnBrowseHome() {
             accessibilityRole="button"
             accessibilityLabel={`${cat.label} ${mode}`}
           >
-            <View style={[styles.tileIcon, { backgroundColor: c.primary + (c.dark ? '33' : '14') }]}>
-              <Ionicons name={cat.icon as never} size={22} color={c.primary} />
+            <View style={[styles.tileIcon, { backgroundColor: c.secondaryContainer }]}>
+              <Ionicons name={cat.icon as never} size={22} color={c.onSecondaryContainer} />
             </View>
-            <T size={14} weight="600" numberOfLines={1}>
+            <T size={14} weight="500" numberOfLines={1}>
               {cat.short}
             </T>
           </Pressable>
@@ -134,8 +145,8 @@ function FfnBrowseHome() {
             onPress={() => router.push({ pathname: '/groups/dir', params: { path: mode === 'forums' ? '/forums/general/0/' : '/communities/general/0/', title: 'General' } })}
             style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
           >
-            <View style={[styles.tileIcon, { backgroundColor: c.primary + '14' }]}>
-              <Ionicons name="globe-outline" size={22} color={c.primary} />
+            <View style={[styles.tileIcon, { backgroundColor: c.secondaryContainer }]}>
+              <Ionicons name="globe-outline" size={22} color={c.onSecondaryContainer} />
             </View>
             <T size={14} weight="600">
               General
@@ -163,8 +174,8 @@ function FfnBrowseHome() {
 
       {pinned.length > 0 && (
         <View style={{ marginTop: 18 }}>
-          <T size={13} weight="600" muted style={styles.label}>
-            MY FANDOMS
+          <T size={14} weight="600" style={[styles.label, { color: c.primary }]}>
+            My fandoms
           </T>
           {pinned.map((f) => (
             <Pressable
@@ -188,27 +199,26 @@ function FfnBrowseHome() {
 }
 
 const styles = StyleSheet.create({
-  label: { paddingHorizontal: 16, marginBottom: 8, letterSpacing: 0.4 },
+  label: { paddingHorizontal: 16, marginBottom: 10 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, borderRadius: 28, paddingLeft: 18, paddingRight: 6 },
   continue: {
     width: 240,
     flexDirection: 'row',
     gap: 10,
     padding: 10,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, marginTop: 12 },
   tile: {
     width: '31%',
     flexGrow: 1,
     margin: 4,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
     gap: 8,
-    borderWidth: StyleSheet.hairlineWidth,
   },
-  tileIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tileIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   wide: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -216,8 +226,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginTop: 12,
     padding: 14,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
   },
   pinRow: {
     flexDirection: 'row',
@@ -226,7 +235,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 6,
     padding: 14,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
   },
 });

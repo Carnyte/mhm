@@ -121,5 +121,5 @@ export default function Ao3SeriesScreen() {
 }
 
 const styles = StyleSheet.create({
-  head: { margin: 12, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  head: { margin: 12, padding: 14, borderRadius: 16 },
 });

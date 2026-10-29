@@ -285,6 +285,6 @@ export default function LibraryScreen() {
 }
 
 const styles = StyleSheet.create({
-  syncBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, padding: 10, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
+  syncBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, padding: 10, borderRadius: 10 },
   author: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
 });

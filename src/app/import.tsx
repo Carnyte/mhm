@@ -618,8 +618,8 @@ function Row({ item, saving, onChange }: { item: Item; saving: boolean; onChange
 
 const styles = StyleSheet.create({
   cover: { width: 96, height: 128, borderRadius: 8, overflow: 'hidden' },
-  choice: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
-  box: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  choice: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: 16, borderWidth: 1 },
+  box: { borderRadius: 16, overflow: 'hidden' },
   chapter: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 9 },
-  row: { padding: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, gap: 10 },
+  row: { padding: 12, borderRadius: 16, gap: 10 },
 });

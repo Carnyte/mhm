@@ -222,5 +222,5 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 8, paddingHorizontal: 12 },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 },
   author: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  bio: { margin: 12, padding: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  bio: { margin: 12, padding: 14, borderRadius: 16 },
 });

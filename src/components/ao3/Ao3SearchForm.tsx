@@ -5,7 +5,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { fetchFandomSuggestions } from '../../sources/ao3/api';
 import {
   AO3_CATEGORIES,
@@ -20,7 +20,7 @@ import {
 import type { Ao3Search } from '../../sources/ao3/urls';
 import { useTheme } from '../../theme';
 import { pickOption } from '../Sheet';
-import { Button, Chip, Row, Section, T } from '../ui';
+import { Button, Chip, Row, Section, Switch, T } from '../ui';
 import { wordCountQuery } from './Ao3FilterSheet';
 
 const label = (opts: { value: string; label: string }[], v: string | undefined) => opts.find((o) => o.value === (v ?? ''))?.label ?? opts[0].label;

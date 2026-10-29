@@ -30,6 +30,7 @@ status:
     (AC-A1..A6), then AC-11 polish from what they hit. No Wattpad until the user says clipping is
     perfect.
   done:
+    - UI-1 Material You look, colours following the reader theme (2026-10-29; JS only, device check pending)
     - M1-M5 FanFiction.net client, reader, audiobook (TTS incl. Piper add-on voices), device fixes
     - P0-P1 source-qualified StoryKeys + storage v2 migration
     - P2 source layer (Source contract, registry, polite HTTP client, sanitizer, remap)
@@ -42,7 +43,7 @@ status:
   pending_in_order: [P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "63 suites, 1230 passed + 1 todo (1231 total)"
+    jest: "64 suites, 1288 passed + 1 todo (1289 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
@@ -1761,6 +1762,7 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
 | 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
+| 2026-10-29 | (this commit) | UI-1 Material You look (the user, 2026-10-29: "I think the gui can be more user friendly, if not more refined. I want something google like"; picked "Material You" and "Follow the reader theme" for colour) |
 | 2026-10-29 | 488b9c5, 5371b6d | P-CLIP3 added and built (background clipping, shadow-root / frame text; approval quote recorded; device check pending) |
 | 2026-10-27 | 8271660, e1b08ba | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |
 | 2026-10-27 | 1cca7be..7546679 | Preflight PRE-1..3 done (PRE-4 waits for a native change); P-CLIP built (CLIP-1..18, T1..T8), device check pending; next P4 |

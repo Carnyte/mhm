@@ -8,7 +8,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { settingsStore, updateSource } from '../state/settings';
 import { appendClip, clippedStories, commitClip, defaultClipTarget, findClippedPage, type ClippedStory } from '../features/clips';
@@ -19,7 +19,7 @@ import type { StoryKey } from '../sources/keys';
 import { useTheme } from '../theme';
 import { errorMessage, formatFull, htmlToText, pluralize } from '../utils/format';
 import { toast } from './Sheet';
-import { Button, Input, T } from './ui';
+import { Button, Input, Switch, T } from './ui';
 
 /** Clipped stories offered as targets besides the page's own site's (the rest are a pick away in Library). */
 const MAX_TARGETS = 12;
@@ -145,7 +145,7 @@ export function ClipSheet({
       <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 28, gap: 14 }} keyboardShouldPersistTaps="handled">
         <View>
           <T size={13} weight="700" muted style={{ letterSpacing: 0.5 }}>
-            {`CLIPPED FROM ${host.toUpperCase()}`}
+            {`Clipped from ${host}`}
           </T>
           <T size={22} weight="800" style={{ marginTop: 4 }} numberOfLines={3}>
             {story ? story.title : title || book.title}
@@ -259,8 +259,8 @@ export function ClipSheet({
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
-  notice: { flexDirection: 'row', gap: 10, alignItems: 'center', padding: 12, borderRadius: 12, borderWidth: 1 },
+  card: { padding: 14, borderRadius: 16 },
+  notice: { flexDirection: 'row', gap: 10, alignItems: 'center', padding: 12, borderRadius: 16, borderWidth: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  target: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 1 },
+  target: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, borderWidth: 1 },
 });

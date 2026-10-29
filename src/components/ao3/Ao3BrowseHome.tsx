@@ -89,8 +89,8 @@ export function Ao3BrowseHome() {
 const styles = StyleSheet.create({
   label: { paddingHorizontal: 16, marginBottom: 8, letterSpacing: 0.4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, marginTop: 12 },
-  tile: { width: '31%', flexGrow: 1, margin: 4, borderRadius: 14, paddingVertical: 16, alignItems: 'center', gap: 8, borderWidth: StyleSheet.hairlineWidth },
-  tileIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tile: { width: '31%', flexGrow: 1, margin: 4, borderRadius: 16, paddingVertical: 16, alignItems: 'center', gap: 8 },
+  tileIcon: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   pinRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -98,7 +98,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 6,
     padding: 14,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
   },
 });

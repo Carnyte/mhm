@@ -3,20 +3,38 @@
 import { useColorScheme } from 'react-native';
 import type { SourceId } from '../sources/keys';
 import { useSettings, type ReaderThemeKey } from '../state/settings';
+import { schemeFrom } from './material';
 
 export interface Palette {
   dark: boolean;
+  /** The screen's background (Material "surface"). */
   bg: string;
+  /** Cards, grouped lists, sheets (surface container low). */
   surface: string;
+  /** Pressed rows, text fields, tonal fills (surface container high). */
   surfaceAlt: string;
   card: string;
+  /** Bars (tab bar, mini player): surface container. */
+  surfaceContainer: string;
+  surfaceContainerHigh: string;
   text: string;
   textMuted: string;
   textFaint: string;
+  /** Hairlines and outlines (outline variant). */
   border: string;
+  /** Outlined buttons and chips (outline). */
+  outline: string;
   primary: string;
   primaryText: string;
   accent: string;
+  primaryContainer: string;
+  onPrimaryContainer: string;
+  /** Selected chips, the tab indicator, tonal buttons. */
+  secondaryContainer: string;
+  onSecondaryContainer: string;
+  /** Toasts (snackbars). */
+  inverseSurface: string;
+  inverseText: string;
   danger: string;
   success: string;
   warning: string;
@@ -27,55 +45,81 @@ export interface Palette {
   source: Record<SourceId, string>;
 }
 
-export const LIGHT: Palette = {
-  dark: false,
-  bg: '#F4F5F8',
-  surface: '#FFFFFF',
-  surfaceAlt: '#EEF1F6',
-  card: '#FFFFFF',
-  text: '#15202B',
-  textMuted: '#536170',
-  textFaint: '#8A96A3',
-  border: '#E1E5EB',
-  primary: '#1F3A5F',
-  primaryText: '#FFFFFF',
-  accent: '#2F6FED',
-  danger: '#C62828',
-  success: '#2E7D32',
-  warning: '#B26A00',
-  chip: '#E8EDF5',
-  chipText: '#2A3B52',
-  overlay: 'rgba(10,20,30,0.45)',
-  source: { ffn: '#2B4C9B', ao3: '#990000', wp: '#9A3412', local: '#556170' },
+const SOURCE_LIGHT: Record<SourceId, string> = { ffn: '#2B4C9B', ao3: '#990000', wp: '#9A3412', local: '#556170' };
+const SOURCE_DARK: Record<SourceId, string> = { ffn: '#8FA8F0', ao3: '#F28B82', wp: '#FF9A5C', local: '#A9B4C2' };
+
+/** The app's palette (Material You) from a seed colour, light or dark. */
+export function paletteFrom(seed: string, dark: boolean): Palette {
+  const m = schemeFrom(seed, dark);
+  return {
+    dark,
+    bg: m.background,
+    surface: m.surfaceContainerLow,
+    surfaceAlt: m.surfaceContainerHigh,
+    card: m.surfaceContainerLow,
+    surfaceContainer: m.surfaceContainer,
+    surfaceContainerHigh: m.surfaceContainerHigh,
+    text: m.onSurface,
+    textMuted: m.onSurfaceVariant,
+    textFaint: m.outline,
+    border: m.outlineVariant,
+    outline: m.outline,
+    primary: m.primary,
+    primaryText: m.onPrimary,
+    accent: m.primary,
+    primaryContainer: m.primaryContainer,
+    onPrimaryContainer: m.onPrimaryContainer,
+    secondaryContainer: m.secondaryContainer,
+    onSecondaryContainer: m.onSecondaryContainer,
+    inverseSurface: m.inverseSurface,
+    inverseText: m.inverseOnSurface,
+    danger: m.error,
+    success: m.success,
+    warning: m.warning,
+    chip: m.secondaryContainer,
+    chipText: m.onSecondaryContainer,
+    overlay: dark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.38)',
+    source: dark ? SOURCE_DARK : SOURCE_LIGHT,
+  };
+}
+
+/** Each reader theme's seed: the app's tint follows the reader theme (Light is Google blue). */
+export const THEME_SEEDS: Record<ReaderThemeKey, string> = {
+  light: '#1A73E8',
+  sepia: '#9C6B3C',
+  paper: '#7D7461',
+  mint: '#1E8A5A',
+  dusk: '#6466C0',
+  dark: '#4F7BC9',
+  black: '#6B6F76',
 };
 
-export const DARK: Palette = {
-  dark: true,
-  bg: '#0E1116',
-  surface: '#161B22',
-  surfaceAlt: '#1D232C',
-  card: '#161B22',
-  text: '#E6EAF0',
-  textMuted: '#A3ADBA',
-  textFaint: '#6F7A87',
-  border: '#272E38',
-  primary: '#7FA8E8',
-  primaryText: '#0E1116',
-  accent: '#6EA0FF',
-  danger: '#EF5350',
-  success: '#66BB6A',
-  warning: '#FFB74D',
-  chip: '#232B36',
-  chipText: '#C9D4E3',
-  overlay: 'rgba(0,0,0,0.6)',
-  source: { ffn: '#8FA8F0', ao3: '#F28B82', wp: '#FF9A5C', local: '#A9B4C2' },
-};
+const cache = new Map<string, Palette>();
+/** The palette for a reader theme in light or dark (made once, then reused). */
+export function themePalette(key: ReaderThemeKey, dark: boolean): Palette {
+  const id = `${key}:${dark}`;
+  let p = cache.get(id);
+  if (!p) {
+    p = paletteFrom(THEME_SEEDS[key] ?? THEME_SEEDS.light, dark);
+    cache.set(id, p);
+  }
+  return p;
+}
 
+export const LIGHT: Palette = themePalette('light', false);
+export const DARK: Palette = themePalette('light', true);
+
+/**
+ * The app's colours: light or dark from Settings → Appearance (or the phone), tinted by the reader
+ * theme in use (its dark-mode theme when "match system" picks that one).
+ */
 export function useTheme(): Palette {
   const scheme = useColorScheme();
   const appearance = useSettings((s) => s.appearance);
+  const reader = useSettings((s) => s.reader);
   const dark = appearance === 'system' ? scheme === 'dark' : appearance === 'dark';
-  return dark ? DARK : LIGHT;
+  const key = reader.matchSystem && scheme === 'dark' ? reader.darkTheme : reader.theme;
+  return themePalette(key, dark);
 }
 
 export interface ReaderTheme {

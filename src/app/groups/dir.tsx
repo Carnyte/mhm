@@ -90,5 +90,5 @@ export default function GroupDirectory() {
 }
 
 const styles = StyleSheet.create({
-  card: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  card: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 16 },
 });

@@ -116,7 +116,7 @@ export default function UpdatesScreen() {
 }
 
 const styles = StyleSheet.create({
-  head: { margin: 12, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  head: { margin: 12, padding: 14, borderRadius: 16 },
   actions: { flexDirection: 'row', gap: 8, marginHorizontal: 18, marginTop: -2, marginBottom: 8 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
 });

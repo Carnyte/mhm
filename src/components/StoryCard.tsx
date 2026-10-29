@@ -42,13 +42,13 @@ function StoryCardImpl({
       accessibilityRole="button"
       accessibilityLabel={`${story.title}${story.author ? ` by ${story.author.name}` : ''}`}
       accessibilityHint="Opens the story. Long press for more actions."
-      style={({ pressed }) => [styles.card, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
+      style={({ pressed }) => [styles.card, { backgroundColor: pressed ? c.surfaceAlt : c.surface }]}
     >
       <View style={styles.top}>
         <Cover path={story.coverUrl} width={compact ? 44 : 54} height={compact ? 58 : 72} title={story.title} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.titleRow}>
-            <T size={16} weight="700" numberOfLines={2} style={{ flex: 1 }}>
+            <T size={16} weight="600" numberOfLines={2} style={{ flex: 1 }}>
               {story.title}
             </T>
             {fresh > 0 && <Badge label={`+${fresh}`} color={c.success} />}
@@ -87,8 +87,8 @@ function StoryCardImpl({
         <SourceBadge source={splitKey(key).source} label={lib?.source === 'local' ? (lib.local?.kind ?? 'file') : undefined} />
         {story.complete ? (
           <View style={[styles.status, { backgroundColor: c.success + '22' }]}>
-            <T size={11} weight="700" style={{ color: c.success }}>
-              COMPLETE
+            <T size={11} weight="600" style={{ color: c.success }}>
+              Complete
             </T>
           </View>
         ) : null}
@@ -109,15 +109,14 @@ export const StoryCard = memo(StoryCardImpl);
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: 12,
-    marginVertical: 5,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    borderRadius: 20,
+    padding: 16,
   },
   top: { flexDirection: 'row', gap: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   meta: { flexDirection: 'row', marginTop: 8 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  status: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  status: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
 });

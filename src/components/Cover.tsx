@@ -21,7 +21,7 @@ export function Cover({
 }) {
   const c = useTheme();
   const uri = useImage(path);
-  const radius = round ? width / 2 : 6;
+  const radius = round ? width / 2 : 8;
   const hue = title ? [...title].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7) : 210;
   return (
     <View
