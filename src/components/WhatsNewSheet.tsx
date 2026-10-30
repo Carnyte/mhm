@@ -6,11 +6,11 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { updateSettings, updateSource, useSettings } from '../state/settings';
 import { useTheme } from '../theme';
-import { Button, Switch, T, type IconName } from './ui';
+import { Button, T, type IconName } from './ui';
 
 /** Bump to show the sheet again for a later release (with new content). */
 export const WHATS_NEW_VERSION = 4;
@@ -40,7 +40,7 @@ export function WhatsNewSheet() {
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={done}>
       <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 22, paddingBottom: insets.bottom + 28 }}>
         <T size={13} weight="700" style={{ color: clip, letterSpacing: 0.5 }}>
-          What’s new
+          WHAT’S NEW
         </T>
         <T size={26} weight="800" style={{ marginTop: 6 }}>
           Clip a whole story, in the background
@@ -203,5 +203,5 @@ function Ao3News({ ao3On, done }: { ao3On: boolean; done: () => void }) {
 
 const styles = StyleSheet.create({
   point: { flexDirection: 'row', gap: 12 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24, padding: 14, borderRadius: 16 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
 });

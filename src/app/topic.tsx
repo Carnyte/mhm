@@ -80,6 +80,6 @@ export default function TopicScreen() {
 
 const styles = StyleSheet.create({
   pager: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12 },
-  post: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 16 },
+  post: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   postHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });

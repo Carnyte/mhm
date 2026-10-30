@@ -83,5 +83,5 @@ export default function ShareHelp() {
 
 const styles = StyleSheet.create({
   step: { flexDirection: 'row', gap: 6 },
-  code: { padding: 12, borderRadius: 10 },
+  code: { padding: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
 });

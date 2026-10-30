@@ -381,10 +381,10 @@ const styles = StyleSheet.create({
   hero: { flexDirection: 'row', gap: 14, padding: 16 },
   badges: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
   actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 8 },
-  box: { marginHorizontal: 16, marginTop: 8, padding: 14, borderRadius: 16 },
-  series: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 4, borderRadius: 16 },
+  box: { marginHorizontal: 16, marginTop: 8, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  series: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   chapterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 12, marginBottom: 6 },
-  chapters: { marginHorizontal: 16, borderRadius: 16, overflow: 'hidden' },
+  chapters: { marginHorizontal: 16, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   chapterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   coverModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center' },
 });

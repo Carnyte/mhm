@@ -289,11 +289,11 @@ function ToggleRow({ label, value, onChange, c }: { label: string; value: boolea
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  textBox: { borderRadius: 16, padding: 16, minHeight: 120, justifyContent: 'center' },
+  textBox: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 16, minHeight: 120, justifyContent: 'center' },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' },
   play: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
   chips: { flexDirection: 'row', gap: 8, justifyContent: 'center', flexWrap: 'wrap' },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 20, maxWidth: 200 },
-  box: { borderRadius: 16, paddingHorizontal: 14 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, maxWidth: 200 },
+  box: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14 },
   row: { flexDirection: 'row', alignItems: 'center', minHeight: 48 },
 });

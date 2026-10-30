@@ -98,7 +98,7 @@ export default function RootLayout() {
       ...(c.dark ? DarkTheme : DefaultTheme).colors,
       primary: c.accent,
       background: c.bg,
-      card: c.bg,
+      card: c.surface,
       text: c.text,
       border: c.border,
     },
@@ -126,10 +126,9 @@ export default function RootLayout() {
           <StatusBar style={c.dark ? 'light' : 'dark'} />
           <Stack
             screenOptions={{
-              headerTintColor: c.textMuted,
-              headerTitleStyle: { color: c.text, fontWeight: '500' },
-              headerStyle: { backgroundColor: c.bg },
-              headerShadowVisible: false,
+              headerTintColor: c.accent,
+              headerTitleStyle: { color: c.text },
+              headerStyle: { backgroundColor: c.surface },
               // Leave room for the floating mini player (tab screens handle it in the tab layout).
               contentStyle: { backgroundColor: c.bg, paddingBottom: playerInset },
               headerBackButtonDisplayMode: 'minimal',

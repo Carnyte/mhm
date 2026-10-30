@@ -139,11 +139,11 @@ describe('Clip in the browser', () => {
     await post({ type: CLIP_MESSAGE, nonce: 'guess', url: PAGE_URL, title: 'x', html: HTML });
     await post({ type: CLIP_MESSAGE, nonce, url: PAGE_URL, title: 'x', html: HTML }, 'https://evil.example/');
     await settle();
-    expect(text()).not.toContain('Clipped from');
+    expect(text()).not.toContain('CLIPPED FROM');
 
     await post({ type: CLIP_MESSAGE, nonce, url: PAGE_URL, title: 'Glass Orchard - Chapter 1 | Reader', lang: 'en', html: HTML });
     await settle();
-    expect(text()).toContain('Clipped from reader.example.com');
+    expect(text()).toContain('CLIPPED FROM READER.EXAMPLE.COM');
     expect(text()).toContain('Glass Orchard');
     await press('Save');
     await settle();
@@ -152,7 +152,7 @@ describe('Clip in the browser', () => {
     expect(story.local?.clip).toEqual({ site: 'reader.example.com', lastUrl: 'https://reader.example.com/novel/7/chapter/1', urls: ['https://reader.example.com/novel/7/chapter/1'], storyTitle: 'Glass Orchard' });
     expect(JSON.stringify(libraryStore.get())).not.toContain('TICKET');
     expect(toast).toHaveBeenCalledWith('Saved “Glass Orchard” to your library', 'success');
-    expect(text()).not.toContain('Clipped from');
+    expect(text()).not.toContain('CLIPPED FROM');
 
     // The next tap offers Clip & next for the story just saved, without the notice.
     alert.mockClear();
@@ -336,7 +336,7 @@ describe('Clip & next and Clip the next chapters', () => {
     await press('Clip & next');
     await answerClip(2, CH2);
     await until(() => scripts('press').length === 1, 'the press');
-    expect(text()).not.toContain('Clipped from');
+    expect(text()).not.toContain('CLIPPED FROM');
     expect(toast).toHaveBeenCalledWith('Added chapter 2', 'success');
     // Nothing to press on the next page: it says so.
     await answerNext('press', { pressed: false, found: false }, CH2);

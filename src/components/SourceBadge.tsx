@@ -1,4 +1,4 @@
-// A small pill naming a story's site ("FFN", "AO3", "Wattpad"), styled like the Complete pill.
+// A small pill naming a story's site ("FFN", "AO3", "WATTPAD"), styled like the COMPLETE pill.
 // It only appears once more than one site is switched on: with FanFiction.net alone every story
 // is from there, so nothing changes on screen. Imported stories always have theirs, naming the
 // kind of file ("EPUB", "HTML", "TXT").
@@ -24,13 +24,13 @@ export function SourceBadge({ source, always, label }: { source: SourceId; alway
   const color = c.source[source];
   return (
     <View style={[styles.pill, { backgroundColor: color + '22' }]} accessibilityLabel={label ? `Imported ${label} file` : `From ${src.name}`}>
-      <T size={11} weight="600" style={{ color }}>
-        {label ? label.toUpperCase() : src.short}
+      <T size={11} weight="700" style={{ color }}>
+        {(label ?? src.short).toUpperCase()}
       </T>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  pill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
 });

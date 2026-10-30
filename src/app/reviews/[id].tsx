@@ -110,7 +110,7 @@ export default function ReviewsScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
-  review: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 16 },
+  review: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   reviewHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });
 

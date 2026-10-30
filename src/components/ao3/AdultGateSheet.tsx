@@ -55,5 +55,5 @@ export function AdultGateSheet({ rating, onContinue, onAlways }: { rating?: stri
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  card: { width: '100%', maxWidth: 420, alignItems: 'center', padding: 22, borderRadius: 16 },
+  card: { width: '100%', maxWidth: 420, alignItems: 'center', padding: 22, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
 });

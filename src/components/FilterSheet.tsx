@@ -1,14 +1,14 @@
 // Story-list filters: every option the site's filter dialog offers, with live character / world
 // lists taken from the page itself.
 
-import { Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GENRES, LANGUAGES, LENGTHS, RATINGS, SORTS, STATUSES, TIME_RANGES, type Opt } from '../ffn/constants';
 import type { SelectField } from '../ffn/types';
 import type { StoryFilters } from '../ffn/urls';
 import { useTheme } from '../theme';
 import { pickOption } from './Sheet';
-import { Button, Row, Section, Switch, T } from './ui';
+import { Button, Row, Section, T } from './ui';
 
 function optsFromField(f: SelectField | undefined, allLabel: string): Opt[] {
   if (!f) return [];

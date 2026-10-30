@@ -54,7 +54,7 @@ export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; on
       <View style={[styles.sheet, { backgroundColor: theme.chrome, paddingBottom: insets.bottom + 8, maxHeight: '80%' }]}>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 4 }}>
           <T size={12} weight="700" style={{ color: theme.muted }}>
-            Theme
+            THEME
           </T>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
             {READER_THEMES.map((t) => {
@@ -102,7 +102,7 @@ export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; on
           {toggle('Justify text', s.justify, (v) => updateReader({ justify: v }))}
           {toggle('Hyphenation', s.hyphenate, (v) => updateReader({ hyphenate: v }))}
           <T size={12} weight="700" style={{ color: theme.muted, marginTop: 10 }}>
-            Layout
+            LAYOUT
           </T>
           <Segmented
             value={s.paged ? 'paged' : 'scroll'}
@@ -140,7 +140,7 @@ export function ReaderSettingsPanel({ visible, onClose }: { visible: boolean; on
             </>
           )}
           <T size={12} weight="700" style={{ color: theme.muted, marginTop: 10 }}>
-            Read aloud
+            READ ALOUD
           </T>
           {stepper('Speed', `${s.ttsRate.toFixed(1)}×`, () => (updateReader({ ttsRate: clamp(s.ttsRate - 0.1, 0.5, 2) }), player.applyVoiceSettings()), () => (updateReader({ ttsRate: clamp(s.ttsRate + 0.1, 0.5, 2) }), player.applyVoiceSettings()))}
           {stepper('Pitch', s.ttsPitch.toFixed(1), () => (updateReader({ ttsPitch: clamp(s.ttsPitch - 0.1, 0.5, 2) }), player.applyVoiceSettings()), () => (updateReader({ ttsPitch: clamp(s.ttsPitch + 0.1, 0.5, 2) }), player.applyVoiceSettings()))}

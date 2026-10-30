@@ -2,9 +2,9 @@
 
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Switch, TextInput, View } from 'react-native';
 import { pickOption, toast } from '../../components/Sheet';
-import { Button, Input, Row, Section, Switch, T } from '../../components/ui';
+import { Button, Input, Row, Section, T } from '../../components/ui';
 import { getStory, postReview } from '../../ffn/api';
 import { invalidate } from '../../hooks/useQuery';
 import { ffnKey } from '../../sources/ffn/map';

@@ -192,8 +192,8 @@ export default function SearchScreen() {
           {recents.length > 0 && (
             <>
               <View style={styles.recentHead}>
-                <T size={14} weight="600" style={{ color: c.primary }}>
-                  Recent searches
+                <T size={13} weight="600" muted>
+                  RECENT SEARCHES
                 </T>
                 <T size={13} style={{ color: c.accent }} onPress={() => clearRecentSearches(scope)}>
                   Clear
@@ -237,8 +237,8 @@ export default function SearchScreen() {
           )}
           {hidden.length > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
-              <T size={14} weight="600" style={{ width: '100%', color: c.primary }}>
-                Hidden fandoms
+              <T size={13} weight="600" muted style={{ width: '100%' }}>
+                HIDDEN FANDOMS
               </T>
               {hidden.map((e) => (
                 <Chip key={e} label={e} onRemove={() => setFandomHidden(scope, e, false)} />
@@ -375,8 +375,8 @@ export default function SearchScreen() {
 
 const styles = StyleSheet.create({
   recentHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 },
-  recent: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, marginBottom: 6 },
-  tip: { marginTop: 14, padding: 14, borderRadius: 16 },
+  recent: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth },
+  tip: { marginTop: 14, padding: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  group: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 16 },
+  group: { marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
 });

@@ -30,7 +30,7 @@ function Group({ group, route }: { group: TagGroup; route?: (tag: string) => Rou
   return (
     <View style={{ marginBottom: 10 }}>
       <T size={12} weight="600" muted style={{ marginBottom: 6, letterSpacing: 0.3 }}>
-        {group.label}
+        {group.label.toUpperCase()}
       </T>
       <View style={styles.tags}>
         {tags.map((t) => {
@@ -50,7 +50,8 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingHorizontal: 14,
     paddingBottom: 2,
-    borderRadius: 16,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 });

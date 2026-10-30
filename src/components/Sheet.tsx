@@ -1,6 +1,4 @@
-// Global action sheet + option picker + toast, rendered once at the root. Material style: a bottom
-// sheet with large rounded corners and a drag handle, list items without dividers, and toasts as
-// snackbars (the inverse surface; errors and successes marked by an icon in their colour).
+// Global action sheet + option picker + toast, rendered once at the root.
 
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
@@ -78,18 +76,18 @@ export function SheetHost() {
       >
         <Pressable style={[styles.backdrop, { backgroundColor: c.overlay }]} onPress={close} accessibilityLabel="Close" />
         {sheet && (
-          <View style={[styles.sheet, { backgroundColor: c.surfaceContainer, paddingBottom: insets.bottom + 8 }]}>
-            <View style={[styles.grabber, { backgroundColor: c.outline }]} />
+          <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 8 }]}>
+            <View style={[styles.grabber, { backgroundColor: c.border }]} />
             {sheet.kind === 'actions' && (
               <>
                 {(sheet.title || sheet.message) && (
                   <View style={styles.header}>
                     {!!sheet.title && (
-                      <Text style={{ color: c.text, fontWeight: '500', fontSize: 18 }} numberOfLines={2}>
+                      <Text style={{ color: c.text, fontWeight: '700', fontSize: 16 }} numberOfLines={2}>
                         {sheet.title}
                       </Text>
                     )}
-                    {!!sheet.message && <Text style={{ color: c.textMuted, marginTop: 6, fontSize: 14, lineHeight: 20 }}>{sheet.message}</Text>}
+                    {!!sheet.message && <Text style={{ color: c.textMuted, marginTop: 4 }}>{sheet.message}</Text>}
                   </View>
                 )}
                 <ScrollView style={{ maxHeight: 460 }}>
@@ -101,9 +99,9 @@ export function SheetHost() {
                         close();
                         setTimeout(a.onPress, 250);
                       }}
-                      style={({ pressed }) => [styles.action, { backgroundColor: pressed ? c.surfaceContainerHigh : 'transparent' }]}
+                      style={({ pressed }) => [styles.action, { borderColor: c.border, backgroundColor: pressed ? c.surfaceAlt : 'transparent' }]}
                     >
-                      {a.icon && <Ionicons name={a.icon} size={22} color={a.destructive ? c.danger : c.textMuted} />}
+                      {a.icon && <Ionicons name={a.icon} size={20} color={a.destructive ? c.danger : c.text} />}
                       <Text style={{ color: a.destructive ? c.danger : c.text, fontSize: 16 }}>{a.label}</Text>
                     </Pressable>
                   ))}
@@ -113,7 +111,7 @@ export function SheetHost() {
             {sheet.kind === 'picker' && (
               <>
                 <View style={styles.header}>
-                  <Text style={{ color: c.text, fontWeight: '500', fontSize: 18 }}>{sheet.title}</Text>
+                  <Text style={{ color: c.text, fontWeight: '700', fontSize: 16 }}>{sheet.title}</Text>
                 </View>
                 <ScrollView style={{ maxHeight: 520 }}>
                   {sheet.options.map((o, i) => {
@@ -127,21 +125,21 @@ export function SheetHost() {
                           close();
                           sheet.onPick(o.value);
                         }}
-                        style={({ pressed }) => [styles.action, { backgroundColor: active ? c.secondaryContainer : pressed ? c.surfaceContainerHigh : 'transparent' }]}
+                        style={({ pressed }) => [styles.action, { borderColor: c.border, backgroundColor: pressed ? c.surfaceAlt : 'transparent' }]}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: active ? c.onSecondaryContainer : c.text, fontSize: 16, fontWeight: active ? '600' : '400' }}>{o.label}</Text>
-                          {!!o.sub && <Text style={{ color: active ? c.onSecondaryContainer : c.textMuted, fontSize: 13, marginTop: 2 }}>{o.sub}</Text>}
+                          <Text style={{ color: c.text, fontSize: 16, fontWeight: active ? '600' : '400' }}>{o.label}</Text>
+                          {!!o.sub && <Text style={{ color: c.textMuted, fontSize: 12 }}>{o.sub}</Text>}
                         </View>
-                        {active && <Ionicons name="checkmark" size={20} color={c.onSecondaryContainer} />}
+                        {active && <Ionicons name="checkmark" size={20} color={c.accent} />}
                       </Pressable>
                     );
                   })}
                 </ScrollView>
               </>
             )}
-            <Pressable onPress={close} style={({ pressed }) => [styles.cancel, { backgroundColor: pressed ? c.surfaceContainerHigh : 'transparent' }]} accessibilityRole="button">
-              <Text style={{ color: c.primary, fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+            <Pressable onPress={close} style={[styles.cancel, { backgroundColor: c.surfaceAlt }]} accessibilityRole="button">
+              <Text style={{ color: c.text, fontWeight: '600', fontSize: 16 }}>Cancel</Text>
             </Pressable>
           </View>
         )}
@@ -162,17 +160,14 @@ function ToastView() {
     return () => clearTimeout(timer);
   }, [visible]);
   if (!visible) return null;
-  // A snackbar: the inverse surface; an icon in the error / success colour says which kind.
-  const mark = visible.kind === 'error' ? 'alert-circle' : visible.kind === 'success' ? 'checkmark-circle' : null;
-  const markColor = visible.kind === 'error' ? (c.dark ? '#B3261E' : '#F2B8B5') : c.dark ? '#146C2E' : '#6DD58C';
+  const bg = visible.kind === 'error' ? c.danger : visible.kind === 'success' ? c.success : c.dark ? '#2A323D' : '#1F2A37';
   return (
     <View
       pointerEvents="none"
-      style={[styles.toast, { bottom: insets.bottom + 90 + (lifted ? MINI_PLAYER_HEIGHT + 8 : 0), backgroundColor: c.inverseSurface }]}
+      style={[styles.toast, { bottom: insets.bottom + 90 + (lifted ? MINI_PLAYER_HEIGHT + 8 : 0), backgroundColor: bg }]}
       accessibilityLiveRegion="polite"
     >
-      {mark && <Ionicons name={mark} size={20} color={markColor} />}
-      <Text style={{ color: c.inverseText, fontSize: 14, flex: 1, lineHeight: 20 }}>{visible.message}</Text>
+      <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>{visible.message}</Text>
     </View>
   );
 }
@@ -184,34 +179,32 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 12,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 8,
     maxWidth: 640,
     alignSelf: 'center',
     width: '100%',
   },
-  grabber: { width: 32, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12, opacity: 0.6 },
-  header: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 12 },
+  grabber: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginBottom: 8 },
+  header: { paddingHorizontal: 20, paddingVertical: 10 },
   action: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 24,
-    minHeight: 56,
-    paddingVertical: 12,
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  cancel: { margin: 12, marginBottom: 4, borderRadius: 999, alignItems: 'center', paddingVertical: 12 },
+  cancel: { margin: 12, marginBottom: 4, borderRadius: 12, alignItems: 'center', paddingVertical: 14 },
   toast: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 24,
+    right: 24,
     alignSelf: 'center',
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    gap: 12,
+    paddingVertical: 12,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.2,
