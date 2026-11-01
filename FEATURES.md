@@ -1915,7 +1915,7 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
 | 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
-| 2026-11-01 | (this commit) | P-UI1 Kindle-style look added as the FIRST phase: preview approved ("I like this a lot better"), spec + build steps in §3a, preview committed at design/kindle-preview/index.html, scripts/web-shots.cjs for visual checks |
+| 2026-11-01 | ef9038e | P-UI1 Kindle-style look added as the FIRST phase: preview approved ("I like this a lot better"), spec + build steps in §3a, preview committed at design/kindle-preview/index.html, scripts/web-shots.cjs for visual checks |
 | 2026-10-30 | 72a9e95 → reverted | UI-1 Material You look built, then reverted at the user's request ("Actually revert changes … Only undoing the change of the gui"): the app keeps its original look; don't redo a restyle without asking |
 | 2026-10-29 | 488b9c5, 5371b6d | P-CLIP3 added and built (background clipping, shadow-root / frame text; approval quote recorded; device check pending) |
 | 2026-10-27 | 8271660, e1b08ba | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |
