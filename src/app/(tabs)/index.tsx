@@ -7,17 +7,27 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ao3BrowseHome } from '../../components/ao3/Ao3BrowseHome';
 import { Cover } from '../../components/Cover';
 import { pickSource, SourceChips, useSourcesWith } from '../../components/SourceChips';
-import { IconButton, ProgressBar, Segmented, T } from '../../components/ui';
+import { Chip, IconButton, ProgressBar, Segmented, T } from '../../components/ui';
 import { openReader } from '../../features/actions';
 import { CATEGORIES } from '../../ffn/constants';
 import { storyProgress, useLibrary } from '../../state/library';
 import { togglePinnedFandom, updateSettings, useLook, useSettings } from '../../state/settings';
 import { KindleHome } from '../../components/kindle/Home';
+import { CategoryTile, SectionHead, TileGrid, WashRow } from '../../components/kindle/Tiles';
 import { useTheme } from '../../theme';
 import { useState } from 'react';
 import { compareKeys } from '../../sources/keys';
 
 type Mode = 'stories' | 'crossovers' | 'communities' | 'forums' | 'betas';
+
+/** The quiet line under each category card (Kindle-style Discover). */
+const MODE_LINE: Record<Mode, string> = {
+  stories: 'Browse fandoms',
+  crossovers: 'Crossovers',
+  communities: 'Communities',
+  forums: 'Forums',
+  betas: 'Beta readers',
+};
 
 /** The first tab: Home in the Kindle-style look, Browse in the classic one. */
 export default function FirstTab() {
@@ -110,6 +120,57 @@ function FfnBrowseHome() {
     else if (mode === 'betas') router.push({ pathname: '/betas/[cat]', params: { cat: key } });
     else router.push({ pathname: '/groups/[kind]/[cat]', params: { kind: mode, cat: key } });
   };
+  const modes: { value: Mode; label: string }[] = [
+    { value: 'stories', label: 'Stories' },
+    { value: 'crossovers', label: 'Crossovers' },
+    { value: 'communities', label: 'Groups' },
+    { value: 'forums', label: 'Forums' },
+    { value: 'betas', label: 'Betas' },
+  ];
+
+  if (c.look === 'kindle') {
+    // Discover, Kindle-style: category cards two across, Misc last, then Just In and pinned fandoms.
+    const general = mode === 'communities' || mode === 'forums';
+    return (
+      <>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, marginTop: 14 }}>
+          {modes.map((m) => (
+            <Chip key={m.value} label={m.label} active={mode === m.value} onPress={() => setMode(m.value)} />
+          ))}
+        </ScrollView>
+        <TileGrid>
+          {[...CATEGORIES.filter((x) => x.key !== 'misc'), ...CATEGORIES.filter((x) => x.key === 'misc')].map((cat) => (
+            <CategoryTile key={cat.key} label={cat.short} sub={MODE_LINE[mode]} accessibilityLabel={`${cat.label} ${mode}`} onPress={() => openCategory(cat.key)} />
+          ))}
+          {general && (
+            <CategoryTile
+              label="General"
+              sub={MODE_LINE[mode]}
+              onPress={() => router.push({ pathname: '/groups/dir', params: { path: mode === 'forums' ? '/forums/general/0/' : '/communities/general/0/', title: 'General' } })}
+            />
+          )}
+        </TileGrid>
+        <View style={{ marginTop: 18 }}>
+          <WashRow icon="flash-outline" title="Just In" sub="The newest stories and updates on FanFiction.net" onPress={() => router.push('/justin')} />
+        </View>
+        {pinned.length > 0 && (
+          <>
+            <SectionHead title="Your fandoms" />
+            {pinned.map((f) => (
+              <WashRow
+                key={`${f.source}:${f.path}`}
+                icon="star-outline"
+                title={f.name}
+                hint="Long press to unpin"
+                onPress={() => router.push({ pathname: '/list', params: { path: f.path, title: f.name } })}
+                onLongPress={() => togglePinnedFandom(f)}
+              />
+            ))}
+          </>
+        )}
+      </>
+    );
+  }
 
   return (
     <>

@@ -10,6 +10,7 @@ import { AO3_MEDIA } from '../../sources/ao3/constants';
 import { togglePinnedFandom, useSettings } from '../../state/settings';
 import { useTheme } from '../../theme';
 import { formatNumber } from '../../utils/format';
+import { CategoryTile, SectionHead, TileGrid, WashRow } from '../kindle/Tiles';
 import { Chip, T } from '../ui';
 
 const openTag = (tag: string) => router.push({ pathname: '/ao3/works', params: { tag } });
@@ -21,6 +22,40 @@ export function Ao3BrowseHome() {
   // The most-used fandoms across media, each once.
   const popular = [...new Map((media.data ?? []).flatMap((m) => m.top).map((f) => [f.name, f])).values()].sort((a, b) => b.count - a.count).slice(0, 12);
   const tint = c.source.ao3;
+
+  if (c.look === 'kindle') {
+    // Discover, Kindle-style: media cards two across, then pinned and popular fandoms.
+    return (
+      <View>
+        <TileGrid>
+          {AO3_MEDIA.map((m) => (
+            <CategoryTile key={m.name} label={m.short} sub="Browse fandoms" accessibilityLabel={`${m.name} fandoms`} onPress={() => router.push({ pathname: '/ao3/fandoms/[medium]', params: { medium: m.name } })} />
+          ))}
+        </TileGrid>
+        {pinned.length > 0 && (
+          <>
+            <SectionHead title="Your AO3 fandoms" />
+            {pinned.map((f) => (
+              <WashRow key={`${f.source}:${f.path}`} icon="star-outline" title={f.name} hint="Long press to unpin" onPress={() => openTag(f.path)} onLongPress={() => togglePinnedFandom(f)} />
+            ))}
+          </>
+        )}
+        {popular.length > 0 && (
+          <>
+            <SectionHead title="Popular on AO3" />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+              {popular.map((f) => (
+                <Chip key={f.name} label={`${f.name} · ${formatNumber(f.count)}`} onPress={() => openTag(f.name)} />
+              ))}
+            </ScrollView>
+          </>
+        )}
+        <T muted size={12} style={{ paddingHorizontal: 16, marginTop: 18, lineHeight: 17 }}>
+          Works are loaded from archiveofourown.org. FicShelf isn’t affiliated with AO3 or the Organization for Transformative Works.
+        </T>
+      </View>
+    );
+  }
 
   return (
     <View>

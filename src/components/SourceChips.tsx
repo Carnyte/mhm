@@ -8,7 +8,7 @@ import { enabledSources } from '../sources/registry';
 import type { SourceCaps } from '../sources/types';
 import { useSettings } from '../state/settings';
 import { useTheme } from '../theme';
-import { haptic, T } from './ui';
+import { haptic, Segmented, T } from './ui';
 
 /** Sites that are on and have the given screen (Browse or Search), in display order. */
 export function useSourcesWith(cap: keyof Pick<SourceCaps, 'browse' | 'search'>): SourceId[] {
@@ -28,6 +28,14 @@ const LABELS: Record<SourceId, string> = { ffn: 'FanFiction.net', ao3: 'AO3', wp
 export function SourceChips({ sources, value, onChange }: { sources: SourceId[]; value: SourceId; onChange: (s: SourceId) => void }) {
   const c = useTheme();
   if (sources.length < 2) return null;
+  if (c.look === 'kindle') {
+    // Kindle-style: one quiet switch across the width, no site colours.
+    return (
+      <View style={{ paddingHorizontal: 16 }} accessibilityRole="tablist">
+        <Segmented value={value} onChange={onChange} options={sources.map((id) => ({ value: id, label: LABELS[id] }))} />
+      </View>
+    );
+  }
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} style={{ flexGrow: 0 }}>
       {sources.map((id) => {

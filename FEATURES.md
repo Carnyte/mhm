@@ -44,7 +44,7 @@ status:
   pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "70 suites, 1282 passed + 1 todo (1283 total)"
+    jest: "71 suites, 1286 passed + 1 todo (1287 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 5.2 MB (the reader's embedded Literata adds about 0.2 MB)"
@@ -255,7 +255,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: in_progress (UI-1..UI-8 done; building UI-9 onwards)
+status: in_progress (UI-1..UI-9 done; UI-10 (Kindle-style as the default) next)
 order: 0
 next_task: true
 depends_on: [nothing; every feature it restyles is built]
@@ -410,13 +410,17 @@ lessons_from_the_revert: >-
       text: Reader controls (hidden chrome, tap zones, footer line, top / bottom bars, scrubber
       with chapter ticks, Aa sheet, chapter heading fix). Keep blank-page recovery, bookmarks,
       find, auto-scroll, audiobook start, review end actions, clip-next end action.
-- [ ] UI-9 Discover and More.
+- [x] UI-9 (UI9) Discover and More. As built: src/components/kindle/Tiles.tsx (`CategoryTile`,
+      `TileGrid`, `SectionHead`, `WashRow`) used by FfnBrowseHome (index.tsx; the five browse modes
+      as chips, Misc last, Just In, "Your fandoms") and Ao3BrowseHome in the Kindle-style look;
+      `SourceChips` becomes one Segmented switch there (Discover and Search). More was built in
+      UI-5.
 - [ ] UI-10 Make 'kindle' the default (classic stays in Settings), What's new card (bump
       WHATS_NEW_VERSION), README / FEATURES / MASTER_FEATURES, install message (T1).
 - [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all tests green (1282 after UI-8). Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1286 after UI-9). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 
