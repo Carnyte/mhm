@@ -169,7 +169,7 @@ export default function StoryScreen() {
       >
         <View style={styles.hero}>
           <Pressable onPress={() => story.coverLargeUrl && setBigCover(true)} accessibilityLabel="Enlarge cover">
-            <Cover path={story.coverUrl} width={96} height={128} title={story.title} />
+            <Cover path={story.coverUrl} width={96} height={128} title={story.title} storyKey={key ?? undefined} author={story.author?.name} />
           </Pressable>
           <View style={{ flex: 1 }}>
             <T size={21} weight="800" selectable>

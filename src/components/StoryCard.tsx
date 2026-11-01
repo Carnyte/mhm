@@ -45,7 +45,7 @@ function StoryCardImpl({
       style={({ pressed }) => [styles.card, { backgroundColor: pressed ? c.surfaceAlt : c.surface, borderColor: c.border }]}
     >
       <View style={styles.top}>
-        <Cover path={story.coverUrl} width={compact ? 44 : 54} height={compact ? 58 : 72} title={story.title} />
+        <Cover path={story.coverUrl} width={compact ? 44 : 54} height={compact ? 58 : 72} title={story.title} storyKey={key} author={story.author?.name} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.titleRow}>
             <T size={16} weight="700" numberOfLines={2} style={{ flex: 1 }}>

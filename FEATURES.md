@@ -44,7 +44,7 @@ status:
   pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "65 suites, 1247 passed + 1 todo (1248 total)"
+    jest: "66 suites, 1256 passed + 1 todo (1257 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 5.2 MB (the reader's embedded Literata adds about 0.2 MB)"
@@ -255,7 +255,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: in_progress (UI-1, UI-2 done; building UI-3 onwards)
+status: in_progress (UI-1..UI-3 done; building UI-4 onwards)
 order: 0
 next_task: true
 depends_on: [nothing; every feature it restyles is built]
@@ -370,7 +370,11 @@ lessons_from_the_revert: >-
       already installed: JS only, no prebuild). Reader page font: embed Literata as an `@font-face`
       data: URI in the reader HTML (src/reader/template.ts) and add `font-src data:` to LOCAL_CSP
       (src/sources/local/adapter.ts) or the local reader will block it.
-- [ ] UI-3 Generated covers: a `GeneratedCover` component (pure layout from title / author / site;
+- [x] UI-3 (UI3) Generated covers. As built: src/theme/cover.ts (pure: `fnv1a`, `coverColour`,
+      `coverBand`, `coverTitleSize`, `coverSiteLabel`), src/components/GeneratedCover.tsx (+
+      `CoverFlag`), `Cover` takes `storyKey` / `author` / `flag` and draws a generated cover in the
+      Kindle-style look when a story has no image (callers updated: StoryCard, Browse's Continue
+      row, mini player, Now listening, story page). Original text: a `GeneratedCover` component (pure layout from title / author / site;
       the spine shade can be two or three Views with opacity, no gradient library needed) used by
       Cover.tsx whenever there's no image (and for local stories without a cover). A pure
       `coverColour(title)` with a test (stable, spread across all 9 colours).
@@ -389,7 +393,7 @@ lessons_from_the_revert: >-
 - [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all tests green (1247 after UI-2). Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1256 after UI-3). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 

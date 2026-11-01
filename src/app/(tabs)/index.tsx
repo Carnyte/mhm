@@ -52,7 +52,7 @@ export default function BrowseScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Continue ${s.title}, chapter ${s.lastChapter ?? 1}`}
                 >
-                  <Cover path={s.coverUrl} width={44} height={58} title={s.title} />
+                  <Cover path={s.coverUrl} width={44} height={58} title={s.title} storyKey={s.key} author={s.author?.name} />
                   <View style={{ flex: 1 }}>
                     <T size={14} weight="600" numberOfLines={2}>
                       {s.title}

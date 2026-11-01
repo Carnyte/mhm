@@ -36,7 +36,7 @@ export function MiniPlayer() {
           accessibilityLabel={`Now listening: ${s.story.title}, ${subtitle}. Open player`}
           style={styles.open}
         >
-          <Cover path={s.story.coverUrl} width={36} height={48} title={s.story.title} />
+          <Cover path={s.story.coverUrl} width={36} height={48} title={s.story.title} storyKey={s.story.key} author={s.story.author} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <T size={14} weight="700" numberOfLines={1}>
               {s.story.title}

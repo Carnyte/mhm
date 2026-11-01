@@ -97,7 +97,7 @@ export default function ListenScreen() {
       />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 18, maxWidth: 640, width: '100%', alignSelf: 'center' }}>
         <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
-          <Cover path={story.coverUrl} width={72} height={96} title={story.title} />
+          <Cover path={story.coverUrl} width={72} height={96} title={story.title} storyKey={story.key} author={story.author} />
           <View style={{ flex: 1 }}>
             <T size={19} weight="800" numberOfLines={2}>
               {story.title}
