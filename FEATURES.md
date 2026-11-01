@@ -10,9 +10,9 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 5371b6d
-base_commit_date: 2026-10-29
-commits_at_base: 178
+base_commit: a16fe35
+base_commit_date: 2026-11-01
+commits_at_base: 204
 updated: 2026-11-01
 next_task: the user tries the Kindle-style look on the phone (P-UI1 acceptance UI-A1..A6, §3a); then the P-CLIP3 / P-CLIP2 device checks and AC-11 polish
 companion: MASTER_FEATURES.md
@@ -72,7 +72,7 @@ status:
     - ca4749f Expo patch updates (not installed yet)
     - P-CLIP2 (8271660, e1b08ba): Clip & next, Clip the next chapters, What Clip sees,
       Settings → Clipping, What's new 3
-    - P-UI1 (e7b3221..UI10): the Kindle-style look, What's new 5 (JavaScript and fonts only, T1)
+    - P-UI1 (e7b3221..a16fe35): the Kindle-style look, What's new 5 (JavaScript and fonts only, T1)
 ---
 
 # FicShelf: next work
@@ -419,7 +419,7 @@ lessons_from_the_revert: >-
       as chips, Misc last, Just In, "Your fandoms") and Ao3BrowseHome in the Kindle-style look;
       `SourceChips` becomes one Segmented switch there (Discover and Search). More was built in
       UI-5.
-- [x] UI-10 (UI10) Done as written: `DEFAULT_LOOK = 'kindle'`; What's new 5 ("A calmer FicShelf",
+- [x] UI-10 (a16fe35) Done as written: `DEFAULT_LOOK = 'kindle'`; What's new 5 ("A calmer FicShelf",
       with a Kindle-style / Classic switch right there; the clipping news only for those who
       missed version 4); switching to a look that hides the current tab lands on the first tab
       (`hiddenTabRoute`). The user's saved reader font stays as it was (Georgia unless changed):

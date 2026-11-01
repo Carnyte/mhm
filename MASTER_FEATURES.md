@@ -10,8 +10,8 @@ repo: https://github.com/Carnyte/mhm
 local_clone: /home/user/mhm
 user_clone: ~/ficshelf (the user's Mac)
 branch: claude/ficshelf-fanfiction-app
-base_commit: 5371b6d
-commits_at_base: 178 (137 unrelated legacy commits + 41 FicShelf commits from 695e10d)
+base_commit: a16fe35
+commits_at_base: 204 (137 unrelated legacy commits + the FicShelf commits from 695e10d)
 updated: 2026-11-01
 next_work: FEATURES.md
 next_task: the user tries the Kindle-style look on the phone (P-UI1 acceptance, FEATURES.md §3a); then the clipping device checks and polish; no Wattpad until clipping is perfect
@@ -1494,7 +1494,7 @@ FicShelf (27 commits, 2026-10-06 → 2026-10-21). "README count" = the Verificat
 | M13 | `570b9ad`, `ca4749f` | 10-27 | Xcode 27 / Swift 6.4 build fix: precompiled Expo modules off; Expo SDK 57 patches (expo-modules-jsi 57.1.3); expo-doctor 21/21; the build works on the phone | 1153 | yes (T2) |
 | handoff 2 | `324ae66` | 10-27 | P-CLIP2 (automatic clipping) written up as the top priority; Wattpad on hold | 1153 | no |
 | M15 | `2d33d0f`, `488b9c5`, `5371b6d` | 10-27 → 10-29 | Story page reloads clipped chapters + pull to refresh (device report); P-CLIP3 background clipping (jobs, hidden browser, banner, Clipping screen, resume after relaunch), shadow-root / frame text, What's new 4 | 1213 → 1230 | no |
-| M16 | `e7b3221`..UI10 | 11-01 | P-UI1 Kindle-style look behind Settings → Look, built in 10 steps with screenshots after each: switch, palette + Literata, generated covers, four tabs + Home, Library, story page, reader, Discover / More, default + What's new 5 | 1230 → 1290 | no (T1) |
+| M16 | `e7b3221`..`a16fe35` | 11-01 | P-UI1 Kindle-style look behind Settings → Look, built in 10 steps with screenshots after each: switch, palette + Literata, generated covers, four tabs + Home, Library, story page, reader, Discover / More, default + What's new 5 | 1230 → 1290 | no (T1) |
 | M14 | `8271660`, `e1b08ba` | 10-27 | P-CLIP2: Next finder, auto-clip runner, Clip & next, Clip the next chapters, What Clip sees, Settings → Clipping, What's new 3; inline review (6 fixes, each mutation-checked) | 1153 → 1213 | no (but T2 because of `ca4749f`) |
 
 User decisions in time order:
