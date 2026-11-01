@@ -378,7 +378,7 @@ lessons_from_the_revert: >-
       the spine shade can be two or three Views with opacity, no gradient library needed) used by
       Cover.tsx whenever there's no image (and for local stories without a cover). A pure
       `coverColour(title)` with a test (stable, spread across all 9 colours).
-- [x] UI-4 (UI45) Tabs. As built: `TABS` in src/app/(tabs)/_layout.tsx; order index, search,
+- [x] UI-4 (e5f9303) Tabs. As built: `TABS` in src/app/(tabs)/_layout.tsx; order index, search,
       library, discover, updates, account, more; hidden ones get `href: null`; Home badge = stories
       with new chapters (ink). New tab routes `discover.tsx` (search field → `/find`,
       `BrowseCatalogue` from index.tsx, Clip callout; UI-9 restyles the catalogue) and `more.tsx`.
@@ -386,7 +386,7 @@ lessons_from_the_revert: >-
       it in the Kindle-style look), `/fanfiction-account` (account). Original text: Home, Library, Discover, More when look = kindle (Tabs.Screen `href: null` hides
       a tab; keep the `updates`, `search`, `account` routes alive: notifications push `/updates`,
       src/components/miniPlayerLayout.ts lists tab routes). Classic keeps today's five.
-- [x] UI-5 (UI45) Home: src/components/kindle/Home.tsx, shown by index.tsx when look = kindle;
+- [x] UI-5 (e5f9303) Home: src/components/kindle/Home.tsx, shown by index.tsx when look = kindle;
       `readingSpot()` in src/state/library.ts (chapter, story % incl. place in chapter, words left).
       Original text: Home (new screen file, e.g. src/app/(tabs)/home.tsx or a branch in index.tsx).
 - [ ] UI-6 Library: grid / list, filter chips, sort, "+" sheet; every current shelf still reachable.
