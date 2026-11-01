@@ -15,6 +15,8 @@ import { syncAccount } from '../../features/updates';
 import { newChapterCount, storyProgress, unreadCount, useLibrary, type LibraryStory } from '../../state/library';
 import { useSession } from '../../state/session';
 import { useTheme } from '../../theme';
+import { useLook } from '../../state/settings';
+import { KindleLibrary } from '../../components/kindle/Library';
 import { errorMessage, relativeMs } from '../../utils/format';
 import { compareKeys } from '../../sources/keys';
 
@@ -56,7 +58,12 @@ const SORTS: { value: Sort; label: string }[] = [
   { value: 'progress', label: 'Progress' },
 ];
 
-export default function LibraryScreen() {
+/** The Library tab: the Kindle-style cover grid, or the classic shelves. */
+export default function LibraryTab() {
+  return useLook() === 'kindle' ? <KindleLibrary /> : <LibraryScreen />;
+}
+
+function LibraryScreen() {
   const c = useTheme();
   const session = useSession();
   const [shelf, setShelf] = useState<Shelf>('reading');

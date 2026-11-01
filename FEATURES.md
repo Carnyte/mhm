@@ -44,7 +44,7 @@ status:
   pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "67 suites, 1263 passed + 1 todo (1264 total)"
+    jest: "68 suites, 1273 passed + 1 todo (1274 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 5.2 MB (the reader's embedded Literata adds about 0.2 MB)"
@@ -255,7 +255,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: in_progress (UI-1..UI-5 done; building UI-6 onwards)
+status: in_progress (UI-1..UI-6 done; building UI-7 onwards)
 order: 0
 next_task: true
 depends_on: [nothing; every feature it restyles is built]
@@ -389,7 +389,12 @@ lessons_from_the_revert: >-
 - [x] UI-5 (e5f9303) Home: src/components/kindle/Home.tsx, shown by index.tsx when look = kindle;
       `readingSpot()` in src/state/library.ts (chapter, story % incl. place in chapter, words left).
       Original text: Home (new screen file, e.g. src/app/(tabs)/home.tsx or a branch in index.tsx).
-- [ ] UI-6 Library: grid / list, filter chips, sort, "+" sheet; every current shelf still reachable.
+- [x] UI-6 (UI6) Library. As built: src/components/kindle/Library.tsx (shown by library.tsx when
+      look = kindle) + pure src/features/libraryFilters.ts. Chips: All (saved, read, downloaded or
+      imported), New · n, Downloaded, Unread, In progress, Finished, Collections, then Follows,
+      Favorites, Imported, Authors (sync bar on Follows / Favorites / Authors; Sync also in +).
+      Grid / list choice stored as `AppSettings.libraryView`. Home's "See all" passes
+      `?filter=new&at=<ms>`. Original text: Library: grid / list, filter chips, sort, "+" sheet; every current shelf still reachable.
 - [ ] UI-7 Story page (keep every slot action; Contents sheet; Details).
 - [ ] UI-8 Reader controls (hidden chrome, tap zones, footer line, top / bottom bars, scrubber
       with chapter ticks, Aa sheet, chapter heading fix). Keep blank-page recovery, bookmarks,
@@ -400,7 +405,7 @@ lessons_from_the_revert: >-
 - [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all tests green (1263 after UI-5). Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1273 after UI-6). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 

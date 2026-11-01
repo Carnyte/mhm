@@ -57,7 +57,7 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen name="search" options={{ title: 'Search', tabBarIcon: icon('search'), ...tab('search') }} />
-      <Tabs.Screen name="library" options={{ title: 'Library', tabBarIcon: icon('library') }} />
+      <Tabs.Screen name="library" options={{ title: 'Library', tabBarIcon: icon('library'), headerShown: !kindle }} />
       <Tabs.Screen name="discover" options={{ title: 'Discover', tabBarIcon: icon('compass'), headerShown: false, ...tab('discover') }} />
       <Tabs.Screen
         name="updates"

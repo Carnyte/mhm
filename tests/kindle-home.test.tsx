@@ -115,7 +115,7 @@ describe('Home', () => {
     render(<KindleHome />);
     expect(texts()).toEqual(expect.arrayContaining(['New chapters', '2 new · Ch. 30', 'Clipping now', 'Chapter 31 · clipping', 'NEW']));
     press('New chapters: See all');
-    expect(router.navigate).toHaveBeenCalledWith({ pathname: '/library', params: { filter: 'new' } });
+    expect(router.navigate).toHaveBeenCalledWith({ pathname: '/library', params: { filter: 'new', at: expect.any(String) } });
     press('Clipping now: Details');
     expect(router.push).toHaveBeenCalledWith('/clips');
   });

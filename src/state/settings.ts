@@ -100,6 +100,8 @@ export interface AppSettings {
   appearance: 'system' | 'light' | 'dark';
   /** Settings → Appearance → Look; missing = DEFAULT_LOOK. */
   look?: Look;
+  /** Kindle-style Library: covers in a grid or a compact list. */
+  libraryView?: 'grid' | 'list';
   /** FanFiction.net browsing defaults (its own rating / language / sort codes). */
   defaultRating: number;
   defaultLanguage: number;

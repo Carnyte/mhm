@@ -62,7 +62,7 @@ export function KindleHome() {
 
       {fresh.length > 0 && (
         <>
-          <RowHead title="New chapters" link="See all" onPress={() => router.navigate({ pathname: '/library', params: { filter: 'new' } })} />
+          <RowHead title="New chapters" link="See all" onPress={() => router.navigate({ pathname: '/library', params: { filter: 'new', at: String(Date.now()) } })} />
           <Shelf
             items={fresh.map((s) => ({ story: s, line: `${newChapterCount(s)} new · Ch. ${s.chapters}`, flag: 'NEW' }))}
           />

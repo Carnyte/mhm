@@ -8,7 +8,8 @@
 //   node scripts/web-shots.cjs <that dir> <screenshot dir> [light|dark]
 // CHROMIUM_PATH overrides the browser (default: the container's Playwright Chromium).
 // LOOK=kindle|classic picks Settings → Look (default: the app's default); ONLY=home,settings takes
-// only those screenshots; EMPTY=1 starts with an empty library. File names: <light|dark>[-<look>]-<route>.png.
+// only those screenshots; EMPTY=1 starts with an empty library; SETTINGS_JSON='{...}' adds settings
+// (e.g. '{"libraryView":"list"}'); SUFFIX=x adds "-x" to the file names. File names: <light|dark>[-<look>]-<route>.png.
 
 const http = require('http');
 const fs = require('fs');
@@ -50,7 +51,8 @@ const STORIES = {
   'local:s3': story('s3', 'A Lantern for the Drowned', 'Ines Varga', 2, 18, 76000),
 };
 const look = process.env.LOOK === 'kindle' || process.env.LOOK === 'classic' ? process.env.LOOK : undefined;
-const SETTINGS = { appearance: 'system', ...(look ? { look } : {}), whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
+const extra = process.env.SETTINGS_JSON ? JSON.parse(process.env.SETTINGS_JSON) : {};
+const SETTINGS = { appearance: 'system', ...(look ? { look } : {}), ...extra, whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
   sources: { ffn: { enabled: true }, ao3: { enabled: true, askAdult: true }, wp: { enabled: false }, local: { enabled: true, clipNoticeSeen: true } } };
 const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], ['updates', '/updates'], ['account', '/account'],
   ['story', '/story/local:s1'], ['reader', '/read/local:s1?ch=4'], ['settings', '/settings'], ['discover', '/discover'], ['more', '/more']];
@@ -77,7 +79,7 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   for (const [name, url] of routes) {
     await page.goto(`http://localhost:${port}${url}`, { waitUntil: 'load' });
     await page.waitForTimeout(2500);
-    await page.screenshot({ path: path.join(out, `${scheme}${look ? `-${look}` : ''}${process.env.EMPTY ? '-empty' : ''}-${name}.png`) });
+    await page.screenshot({ path: path.join(out, `${scheme}${look ? `-${look}` : ''}${process.env.EMPTY ? '-empty' : ''}${process.env.SUFFIX ? `-${process.env.SUFFIX}` : ''}-${name}.png`) });
   }
   await browser.close();
   server.close();
