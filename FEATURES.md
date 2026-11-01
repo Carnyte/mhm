@@ -370,7 +370,7 @@ lessons_from_the_revert: >-
       already installed: JS only, no prebuild). Reader page font: embed Literata as an `@font-face`
       data: URI in the reader HTML (src/reader/template.ts) and add `font-src data:` to LOCAL_CSP
       (src/sources/local/adapter.ts) or the local reader will block it.
-- [x] UI-3 (UI3) Generated covers. As built: src/theme/cover.ts (pure: `fnv1a`, `coverColour`,
+- [x] UI-3 (6556e4f) Generated covers. As built: src/theme/cover.ts (pure: `fnv1a`, `coverColour`,
       `coverBand`, `coverTitleSize`, `coverSiteLabel`), src/components/GeneratedCover.tsx (+
       `CoverFlag`), `Cover` takes `storyKey` / `author` / `flag` and draws a generated cover in the
       Kindle-style look when a story has no image (callers updated: StoryCard, Browse's Continue
