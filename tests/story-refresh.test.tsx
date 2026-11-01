@@ -27,6 +27,7 @@ import StoryScreen from '../src/app/story/[id]';
 import { appendClip, commitClip, undoLastClip } from '../src/features/clips';
 import type { ImportedBook } from '../src/import/types';
 import { libraryStore } from '../src/state/library';
+import { updateSettings } from '../src/state/settings';
 
 jest.setTimeout(30_000);
 
@@ -61,13 +62,19 @@ beforeEach(() => {
 
 afterEach(() => act(async () => tree?.unmount()));
 
-it('shows chapters a clip adds or removes without leaving the page, and pulls to refresh', async () => {
+// The classic page lists chapters on the page; the Kindle-style one in its Contents sheet, kept open here.
+it.each(['classic', 'kindle'] as const)('shows chapters a clip adds or removes without leaving the page, and pulls to refresh (%s look)', async (look) => {
+  updateSettings({ look });
   const key = await commitClip(chapter('The First Door'), { url: 'https://reader.example.com/novel/7/1' });
   mockParams.current = { id: key };
   await act(async () => {
     tree = create(<StoryScreen />);
   });
   await settle();
+  if (look === 'kindle') {
+    const contents = tree.root.findAll((n) => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Contents,') && !!n.props.onPress)[0];
+    act(() => contents.props.onPress());
+  }
   expect(text()).toContain('The First Door');
 
   // Clip & next in the browser on top adds a chapter.

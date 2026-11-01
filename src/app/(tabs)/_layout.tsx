@@ -1,10 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router, usePathname } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
+import { useEffect } from 'react';
 import type { ColorValue } from 'react-native';
 import { useMiniPlayerInset } from '../../components/miniPlayerLayout';
 import { useLibrary, newChapterCount } from '../../state/library';
 import { useLook } from '../../state/settings';
 import { useTheme } from '../../theme';
+
+/** True for a tab route the look doesn't show (/more in the classic look, /search in the Kindle-style one). */
+export function hiddenTabRoute(pathname: string, look: keyof typeof TABS): boolean {
+  const name = pathname === '/' ? 'index' : pathname.slice(1);
+  const all = new Set<string>([...TABS.kindle, ...TABS.classic]);
+  return all.has(name) && !(TABS[look] as readonly string[]).includes(name);
+}
 
 /** The tabs each look shows, in order (the others stay as routes, without a tab button). */
 export const TABS = {
@@ -26,6 +35,13 @@ export default function TabsLayout() {
   // A hidden tab keeps its route (notifications open /updates; old links open /search).
   const tab = (name: string) => (shown(name) ? {} : { href: null });
   const playerInset = useMiniPlayerInset();
+  // Switching look in Settings can leave you on a tab the new look hides (More after picking
+  // Classic): coming back from Settings then lands on the first tab instead.
+  const pathname = usePathname();
+  const stranded = hiddenTabRoute(pathname, look);
+  useEffect(() => {
+    if (stranded) router.navigate('/');
+  }, [stranded]);
   const updates = useLibrary((s) => Object.values(s.stories).filter((x) => newChapterCount(x) > 0).length);
   const icon = (name: IconName) => {
     const render = (p: { color: ColorValue; size: number; focused: boolean }) => <TabIcon name={name} {...p} />;

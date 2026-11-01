@@ -27,7 +27,7 @@ jest.mock('expo-router', () => ({
 import { router } from 'expo-router';
 import { Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import TabsLayout, { TABS } from '../src/app/(tabs)/_layout';
+import TabsLayout, { hiddenTabRoute, TABS } from '../src/app/(tabs)/_layout';
 import { KindleHome } from '../src/components/kindle/Home';
 import { clipJobsStore } from '../src/features/clipJobs';
 import { libraryStore, readingSpot, type LibraryStory } from '../src/state/library';
@@ -71,6 +71,17 @@ describe('tabs', () => {
     expect(mockTabScreens.find((s) => s.name === 'index')!.options.title).toBe('Home');
     // Hidden tabs keep their routes (notifications push /updates).
     expect(mockTabScreens.map((s) => s.name).sort()).toEqual(['account', 'discover', 'index', 'library', 'more', 'search', 'updates']);
+  });
+
+  it('sends you to the first tab when the look you picked hides the one you were on', () => {
+    expect(hiddenTabRoute('/more', 'classic')).toBe(true);
+    expect(hiddenTabRoute('/discover', 'classic')).toBe(true);
+    expect(hiddenTabRoute('/search', 'kindle')).toBe(true);
+    expect(hiddenTabRoute('/updates', 'kindle')).toBe(true);
+    expect(hiddenTabRoute('/', 'kindle')).toBe(false);
+    expect(hiddenTabRoute('/library', 'classic')).toBe(false);
+    expect(hiddenTabRoute('/settings', 'classic')).toBe(false);
+    expect(hiddenTabRoute('/new-chapters', 'kindle')).toBe(false);
   });
 
   it('keeps the classic five in the classic look', () => {

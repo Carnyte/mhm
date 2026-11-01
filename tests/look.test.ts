@@ -12,8 +12,8 @@ describe('look', () => {
     expect(lookOf(DEFAULT_SETTINGS)).toBe(DEFAULT_LOOK);
   });
 
-  it('stays classic by default until the Kindle-style screens are all built', () => {
-    expect(DEFAULT_LOOK).toBe('classic');
+  it('is Kindle-style by default now that every screen is built', () => {
+    expect(DEFAULT_LOOK).toBe('kindle');
   });
 
   it('treats an unknown stored value as the default', () => {

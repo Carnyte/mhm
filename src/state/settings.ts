@@ -89,10 +89,10 @@ export function clipSettings(st: AppSettings = settingsStore.get()): { pace: Cli
 export type Look = 'kindle' | 'classic';
 
 /**
- * The look for anyone who never picked one. Stays 'classic' while the Kindle-style screens are
- * being built (FEATURES.md §3a, UI-1..UI-9), so nothing half-built shows by default.
+ * The look for anyone who never picked one: the Kindle-style one (FEATURES.md §3a, UI-10). Classic
+ * stays in Settings → Appearance → Look and in the What's new sheet.
  */
-export const DEFAULT_LOOK: Look = 'classic';
+export const DEFAULT_LOOK: Look = 'kindle';
 
 export const LOOK_LABELS: Record<Look, string> = { kindle: 'Kindle-style', classic: 'Classic' };
 

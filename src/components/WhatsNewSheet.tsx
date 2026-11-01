@@ -1,5 +1,6 @@
 // A one-time "What's new" sheet (settings.whatsNewSeen), with what each release the user hasn't
-// seen added: version 4 is background clipping ("Clip the whole story" from a pasted first
+// seen added: version 5 is the Kindle-style look (with Classic one tap away, right there);
+// version 4 was background clipping ("Clip the whole story" from a pasted first
 // chapter); version 3 was automatic clipping ("Clip & next", "Clip the next chapters"); version 2
 // was "Clip this page" for any website; version 1 was AO3, switched on for everyone, so its part
 // says what that means, offers the switch right there and points to Settings → Sources.
@@ -8,12 +9,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Modal, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { updateSettings, updateSource, useSettings } from '../state/settings';
+import { LOOK_LABELS, lookOf, updateSettings, updateSource, useSettings, type Look } from '../state/settings';
 import { useTheme } from '../theme';
-import { Button, T, type IconName } from './ui';
+import { Button, Segmented, T, type IconName } from './ui';
 
 /** Bump to show the sheet again for a later release (with new content). */
-export const WHATS_NEW_VERSION = 4;
+export const WHATS_NEW_VERSION = 5;
 
 function Point({ icon, text, color }: { icon: IconName; text: string; color?: string }) {
   const c = useTheme();
@@ -32,6 +33,7 @@ export function WhatsNewSheet() {
   const insets = useSafeAreaInsets();
   const seen = useSettings((s) => s.whatsNewSeen ?? 0);
   const ao3On = useSettings((s) => s.sources.ao3?.enabled !== false);
+  const look = useSettings(lookOf);
   if (seen >= WHATS_NEW_VERSION) return null;
   const done = () => updateSettings({ whatsNewSeen: WHATS_NEW_VERSION, onboarded: true });
 
@@ -39,29 +41,65 @@ export function WhatsNewSheet() {
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={done}>
       <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 22, paddingBottom: insets.bottom + 28 }}>
-        <T size={13} weight="700" style={{ color: clip, letterSpacing: 0.5 }}>
-          WHAT’S NEW
+        <T size={13} weight="600" muted>
+          What’s new
         </T>
-        <T size={26} weight="800" style={{ marginTop: 6 }}>
-          Clip a whole story, in the background
+        <T serif size={28} weight="600" style={{ marginTop: 6, lineHeight: 33 }}>
+          A calmer FicShelf
         </T>
         <T muted size={15} style={{ marginTop: 8, lineHeight: 21 }}>
-          Paste a story’s first chapter and FicShelf clips it and every chapter after it by itself while you read. Nothing to tap per chapter.
+          FicShelf has a new look, made for reading: covers first, white space, one colour, and a page that fills the screen.
         </T>
         <View style={{ marginTop: 20, gap: 14 }}>
-          <Point color={clip} icon="link-outline" text="Library → + → Clip a whole story, paste the first chapter’s address, tap Clip the whole story. The story appears under Imported and fills in." />
-          <Point
-            color={clip}
-            icon="hand-left-outline"
-            text="If the site wants you to log in, unlock a chapter or check you’re human, a banner asks you. Deal with it on the page, tap Continue, and clipping goes on."
-          />
-          <Point
-            color={clip}
-            icon="phone-portrait-outline"
-            text="It works while FicShelf is open (any screen). iPhones pause apps you leave, so clipping waits and goes on by itself when you come back, even after a restart."
-          />
-          <Point color={clip} icon="layers-outline" text="Library → + → Clipping in the background shows every story being clipped, with Pause and Stop. A clipped story’s ⋯ menu gets new chapters the same way." />
+          <Point color={c.text} icon="home-outline" text="Home opens on the story you’re reading, with rows for new chapters, stories clipping and ones you added." />
+          <Point color={c.text} icon="library-outline" text="The Library is a shelf of covers (or a list), with one row of filters. Stories without a cover get one made from their title." />
+          <Point color={c.text} icon="book-outline" text="In the reader, tap the middle to show the controls and the edges to turn the page. Aa changes the page colour, size and font." />
+          <Point color={c.text} icon="compass-outline" text="Four tabs: Home, Library, Discover (search and the sites’ catalogues) and More. New chapters are on Home and in the Library’s New filter." />
         </View>
+        <View style={[styles.card, { backgroundColor: c.surfaceAlt, borderColor: c.border, flexDirection: 'column', alignItems: 'stretch' }]}>
+          <T size={15} weight="600">
+            Look
+          </T>
+          <T muted size={13} style={{ marginTop: 2, marginBottom: 10 }}>
+            Prefer how it was? Pick Classic, here or any time in Settings → Appearance → Look. Nothing in your library changes.
+          </T>
+          <Segmented value={look} onChange={(v: Look) => updateSettings({ look: v })} options={(['kindle', 'classic'] as const).map((v) => ({ value: v, label: LOOK_LABELS[v] }))} />
+        </View>
+        <Button title="Start reading" icon="book-outline" style={{ marginTop: 22 }} onPress={done} />
+        {seen < 4 && (
+          <>
+            <T size={22} weight="800" style={{ marginTop: 32 }}>
+              Clip a whole story, in the background
+            </T>
+            <T muted size={15} style={{ marginTop: 8, lineHeight: 21 }}>
+              Paste a story’s first chapter and FicShelf clips it and every chapter after it by itself while you read. Nothing to tap per chapter.
+            </T>
+            <View style={{ marginTop: 20, gap: 14 }}>
+              <Point color={clip} icon="link-outline" text="Library → + → Clip a whole story, paste the first chapter’s address, tap Clip the whole story. The story appears under Imported and fills in." />
+              <Point
+                color={clip}
+                icon="hand-left-outline"
+                text="If the site wants you to log in, unlock a chapter or check you’re human, a banner asks you. Deal with it on the page, tap Continue, and clipping goes on."
+              />
+              <Point
+                color={clip}
+                icon="phone-portrait-outline"
+                text="It works while FicShelf is open (any screen). iPhones pause apps you leave, so clipping waits and goes on by itself when you come back, even after a restart."
+              />
+              <Point color={clip} icon="layers-outline" text="Library → + → Clipping in the background shows every story being clipped, with Pause and Stop. A clipped story’s ⋯ menu gets new chapters the same way." />
+            </View>
+            <Button
+              title="Clip a whole story"
+              icon="cut-outline"
+              kind="secondary"
+              style={{ marginTop: 22 }}
+              onPress={() => {
+                done();
+                router.push({ pathname: '/open', params: { clip: '1' } });
+              }}
+            />
+          </>
+        )}
         {seen < 3 && (
           <>
             <T size={22} weight="800" style={{ marginTop: 32 }}>
@@ -113,15 +151,6 @@ export function WhatsNewSheet() {
             </View>
           </>
         )}
-        <Button
-          title="Clip a whole story"
-          icon="cut-outline"
-          style={{ marginTop: 22 }}
-          onPress={() => {
-            done();
-            router.push({ pathname: '/open', params: { clip: '1' } });
-          }}
-        />
         {seen < 1 && <Ao3News ao3On={ao3On} done={done} />}
         <Button title="Done" kind="ghost" style={{ marginTop: 6 }} onPress={done} />
       </ScrollView>

@@ -14,12 +14,14 @@ base_commit: 5371b6d
 base_commit_date: 2026-10-29
 commits_at_base: 178
 updated: 2026-11-01
-next_task: P-UI1 (Kindle-style look; FIRST, before anything else — §3a)
+next_task: the user tries the Kindle-style look on the phone (P-UI1 acceptance UI-A1..A6, §3a); then the P-CLIP3 / P-CLIP2 device checks and AC-11 polish
 companion: MASTER_FEATURES.md
 status:
   summary: >-
-    NEXT: P-UI1 (§3a), a Kindle-style look built from the approved preview
-    (design/kindle-preview/index.html) behind a Settings switch; do it before anything else.
+    P-UI1 (§3a), the Kindle-style look from the approved preview (design/kindle-preview/index.html),
+    was built on 2026-11-01 in ten steps (UI-1..UI-10), a commit and screenshots per step, and is now
+    the default; Classic stays in Settings → Appearance → Look and in What's new 5. Tests and
+    headless-Chromium screenshots only: the user hasn't tried it on the phone yet (UI-A1..A6).
     The FanFiction.net client, AO3 reading without login and file import (EPUB / HTML / TXT /
     Markdown, stored as the 'local' source) are built, reviewed, verified and pushed. No pending
     phase has been started. "Clip this page" for any website (approved 2026-10-21) was built on
@@ -41,13 +43,14 @@ status:
     - P-CLIP2 Clip & next, Clip the next chapters, What Clip sees (device check pending)
     - P-CLIP3 background clipping ("Clip a whole story"), shadow-root / frame text (device check pending)
     - Xcode 27 / Swift 6.4 build fix (570b9ad usePrecompiledModules false; ca4749f Expo patches)
-  pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
+    - P-UI1 Kindle-style look, default since UI-10, Classic in Settings (device check pending)
+  pending_in_order: [P-UI1 device check (UI-A1..A6), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "71 suites, 1286 passed + 1 todo (1287 total)"
+    jest: "73 suites, 1290 passed + 1 todo (1291 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
-    expo_export_ios: "bundles; one entry-*.hbc of about 5.2 MB (the reader's embedded Literata adds about 0.2 MB)"
+    expo_export_ios: "bundles; one entry-*.hbc of about 5.3 MB (the reader's embedded Literata adds about 0.2 MB)"
     clip_check: "npx tsx scripts/clip-check.ts: 39/39 (headless Chromium, synthetic pages and sites, no network)"
     expo_doctor: "21/21 (after npx expo install --fix, 2026-10-27)"
   device_confirmed: >-
@@ -69,6 +72,7 @@ status:
     - ca4749f Expo patch updates (not installed yet)
     - P-CLIP2 (8271660, e1b08ba): Clip & next, Clip the next chapters, What Clip sees,
       Settings → Clipping, What's new 3
+    - P-UI1 (e7b3221..UI10): the Kindle-style look, What's new 5 (JavaScript and fonts only, T1)
 ---
 
 # FicShelf: next work
@@ -132,9 +136,9 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
    - If Bash calls fail with "auto mode classifier gave no verdict", that's transient: retry once,
      use Read / Grep / Glob meanwhile, and don't burn ten failures in a row (the turn stops).
 6. **Do the preflight items** (§1.1). They are small; commit them with the first phase commit or on their own.
-7. **Pick the task**: **P-UI1 (§3a) comes first** (user, 2026-11-01: "Let this current task be the
-   first phase to be dealt with before anything else"). After it: the first phase in §3 whose
-   status is `pending` (clipping device checks and polish; P4 / P7 Wattpad are on hold). A new
+7. **Pick the task**: P-UI1 (§3a) is built (2026-11-01) and waits for the user's phone check;
+   fix what they report there first (keep matching the preview; ask before deviating). Then the
+   first phase in §3 whose status is `pending` (clipping device checks and polish; P4 / P7 Wattpad are on hold). A new
    message from the user overrides this order. Tell the user in one or two plain lines what you are
    picking up.
 8. **Work the phase**:
@@ -234,7 +238,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 
 | order | id | title | status | depends_on | prebuild for the user | gate |
 |---|---|---|---|---|---|---|
-| **-1 (first)** | **P-UI1** | **Kindle-style look behind a "New look" switch (§3a)** | **in_progress (started 2026-11-01; see §3a ticks)** | none | no | none: preview approved |
+| -1 (first) | P-UI1 | Kindle-style look behind a "Look" switch (§3a) | done (device check pending; built 2026-11-01, default since UI-10) | none | no | none: preview approved |
 | 0 | P-CLIP | "Clip this page" for any website | done (works on the phone 2026-10-27; CLIP-A items not reported one by one) | P5 (done) | no (https only) | none |
 | 1 | P-CLIP2 | "Clip & next", "Clip the next N chapters" (auto-clip), Clip polish | done (device check pending; AC-11 polish waits for the user's reports) | P-CLIP | no (but the next install is T2 because of ca4749f) | none: the user accepted the terms risk |
 | 1b | P-CLIP3 | "Clip a whole story" in the background; Clip for more sites | done (device check pending) | P-CLIP2 | no | none (approved 2026-10-29) |
@@ -255,9 +259,9 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: in_progress (UI-1..UI-9 done; UI-10 (Kindle-style as the default) next)
+status: done (device check pending; UI-1..UI-10 built 2026-11-01, Kindle-style is the default)
 order: 0
-next_task: true
+next_task: false (built; the phone check UI-A1..A6 is next)
 depends_on: [nothing; every feature it restyles is built]
 native_rebuild: no (JavaScript and font assets only; T1). Keep it that way: no new native modules.
 reference:
@@ -415,12 +419,16 @@ lessons_from_the_revert: >-
       as chips, Misc last, Just In, "Your fandoms") and Ao3BrowseHome in the Kindle-style look;
       `SourceChips` becomes one Segmented switch there (Discover and Search). More was built in
       UI-5.
-- [ ] UI-10 Make 'kindle' the default (classic stays in Settings), What's new card (bump
+- [x] UI-10 (UI10) Done as written: `DEFAULT_LOOK = 'kindle'`; What's new 5 ("A calmer FicShelf",
+      with a Kindle-style / Classic switch right there; the clipping news only for those who
+      missed version 4); switching to a look that hides the current tab lands on the first tab
+      (`hiddenTabRoute`). The user's saved reader font stays as it was (Georgia unless changed):
+      Literata is one tap away in Aa. Original text: Make 'kindle' the default (classic stays in Settings), What's new card (bump
       WHATS_NEW_VERSION), README / FEATURES / MASTER_FEATURES, install message (T1).
-- [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
+- [x] UI-T (each step's commit) Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all tests green (1286 after UI-9). Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1290 after UI-10). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 
