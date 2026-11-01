@@ -355,7 +355,7 @@ lessons_from_the_revert: >-
       once UI-2..UI-4 exist; until then default 'classic' so nothing half-built shows), Settings →
       Appearance row "Look: Kindle-style / Classic", `useLook()` hook. Classic must stay exactly
       today's app (existing screen tests run against it).
-- [x] UI-2 (UI2) Tokens and fonts. As built: `KINDLE_LIGHT` / `KINDLE_DARK` with a `look` field on
+- [x] UI-2 (9a80d40) Tokens and fonts. As built: `KINDLE_LIGHT` / `KINDLE_DARK` with a `look` field on
       `Palette`; `primary` = `accent` = navy (the preview's primary buttons are navy), and the shared
       controls in src/components/ui.tsx use ink where the preview does (selected chips, progress
       bars, current tab, header tint) when `c.look === 'kindle'`; Card / Button / Chip / Row /
