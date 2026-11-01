@@ -3,7 +3,14 @@ import { Tabs } from 'expo-router/js-tabs';
 import type { ColorValue } from 'react-native';
 import { useMiniPlayerInset } from '../../components/miniPlayerLayout';
 import { useLibrary, newChapterCount } from '../../state/library';
+import { useLook } from '../../state/settings';
 import { useTheme } from '../../theme';
+
+/** The tabs each look shows, in order (the others stay as routes, without a tab button). */
+export const TABS = {
+  kindle: ['index', 'library', 'discover', 'more'],
+  classic: ['index', 'search', 'library', 'updates', 'account'],
+} as const;
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -13,6 +20,11 @@ function TabIcon({ name, color, size, focused }: { name: IconName; color: ColorV
 
 export default function TabsLayout() {
   const c = useTheme();
+  const look = useLook();
+  const kindle = look === 'kindle';
+  const shown = (name: string) => (TABS[look] as readonly string[]).includes(name);
+  // A hidden tab keeps its route (notifications open /updates; old links open /search).
+  const tab = (name: string) => (shown(name) ? {} : { href: null });
   const playerInset = useMiniPlayerInset();
   const updates = useLibrary((s) => Object.values(s.stories).filter((x) => newChapterCount(x) > 0).length);
   const icon = (name: IconName) => {
@@ -33,14 +45,26 @@ export default function TabsLayout() {
         sceneStyle: { paddingBottom: playerInset, backgroundColor: c.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Browse', tabBarIcon: icon('compass') }} />
-      <Tabs.Screen name="search" options={{ title: 'Search', tabBarIcon: icon('search') }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: kindle ? 'Home' : 'Browse',
+          tabBarIcon: icon(kindle ? 'home' : 'compass'),
+          // Kindle-style: Home draws its own title bar; new chapters show as a badge on it.
+          headerShown: !kindle,
+          tabBarBadge: kindle && updates > 0 ? updates : undefined,
+          tabBarBadgeStyle: kindle ? { backgroundColor: c.text, color: c.bg, fontSize: 10, fontWeight: '700' } : undefined,
+        }}
+      />
+      <Tabs.Screen name="search" options={{ title: 'Search', tabBarIcon: icon('search'), ...tab('search') }} />
       <Tabs.Screen name="library" options={{ title: 'Library', tabBarIcon: icon('library') }} />
+      <Tabs.Screen name="discover" options={{ title: 'Discover', tabBarIcon: icon('compass'), headerShown: false, ...tab('discover') }} />
       <Tabs.Screen
         name="updates"
-        options={{ title: 'Updates', tabBarIcon: icon('notifications'), tabBarBadge: updates > 0 ? updates : undefined }}
+        options={{ title: 'Updates', tabBarIcon: icon('notifications'), tabBarBadge: updates > 0 ? updates : undefined, ...tab('updates') }}
       />
-      <Tabs.Screen name="account" options={{ title: 'Account', tabBarIcon: icon('person-circle') }} />
+      <Tabs.Screen name="account" options={{ title: 'Account', tabBarIcon: icon('person-circle'), ...tab('account') }} />
+      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('menu'), headerShown: false, ...tab('more') }} />
     </Tabs>
   );
 }

@@ -44,7 +44,7 @@ status:
   pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "66 suites, 1256 passed + 1 todo (1257 total)"
+    jest: "67 suites, 1263 passed + 1 todo (1264 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 5.2 MB (the reader's embedded Literata adds about 0.2 MB)"
@@ -255,7 +255,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: in_progress (UI-1..UI-3 done; building UI-4 onwards)
+status: in_progress (UI-1..UI-5 done; building UI-6 onwards)
 order: 0
 next_task: true
 depends_on: [nothing; every feature it restyles is built]
@@ -378,10 +378,17 @@ lessons_from_the_revert: >-
       the spine shade can be two or three Views with opacity, no gradient library needed) used by
       Cover.tsx whenever there's no image (and for local stories without a cover). A pure
       `coverColour(title)` with a test (stable, spread across all 9 colours).
-- [ ] UI-4 Tabs: Home, Library, Discover, More when look = kindle (Tabs.Screen `href: null` hides
+- [x] UI-4 (UI45) Tabs. As built: `TABS` in src/app/(tabs)/_layout.tsx; order index, search,
+      library, discover, updates, account, more; hidden ones get `href: null`; Home badge = stories
+      with new chapters (ink). New tab routes `discover.tsx` (search field → `/find`,
+      `BrowseCatalogue` from index.tsx, Clip callout; UI-9 restyles the catalogue) and `more.tsx`.
+      Pushed copies of hidden tabs: `/find` (search), `/new-chapters` (updates; notifications use
+      it in the Kindle-style look), `/fanfiction-account` (account). Original text: Home, Library, Discover, More when look = kindle (Tabs.Screen `href: null` hides
       a tab; keep the `updates`, `search`, `account` routes alive: notifications push `/updates`,
       src/components/miniPlayerLayout.ts lists tab routes). Classic keeps today's five.
-- [ ] UI-5 Home (new screen file, e.g. src/app/(tabs)/home.tsx or a branch in index.tsx).
+- [x] UI-5 (UI45) Home: src/components/kindle/Home.tsx, shown by index.tsx when look = kindle;
+      `readingSpot()` in src/state/library.ts (chapter, story % incl. place in chapter, words left).
+      Original text: Home (new screen file, e.g. src/app/(tabs)/home.tsx or a branch in index.tsx).
 - [ ] UI-6 Library: grid / list, filter chips, sort, "+" sheet; every current shelf still reachable.
 - [ ] UI-7 Story page (keep every slot action; Contents sheet; Details).
 - [ ] UI-8 Reader controls (hidden chrome, tap zones, footer line, top / bottom bars, scrubber
@@ -393,7 +400,7 @@ lessons_from_the_revert: >-
 - [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all tests green (1256 after UI-3). Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1263 after UI-5). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 

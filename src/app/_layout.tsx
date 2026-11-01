@@ -20,7 +20,7 @@ import { BridgeHost } from '../net/BridgeHost';
 import { ClipHost } from '../net/ClipHost';
 import { normalizeKey } from '../sources/keys';
 import { reloadLibrary } from '../state/library';
-import { settingsStore } from '../state/settings';
+import { lookOf, settingsStore } from '../state/settings';
 import { SERIF, useTheme } from '../theme';
 
 // Literata (assets/fonts, SIL OFL 1.1) under its PostScript names (SERIF). Bundled files: loading
@@ -55,7 +55,8 @@ function useNotificationRouting(enabled: boolean) {
       // `{ storyKey }` now; notifications delivered by an older build carry `{ storyId }` (FFN).
       const key = normalizeKey(data?.storyKey) ?? normalizeKey(data?.storyId);
       if (key) router.push({ pathname: '/story/[id]', params: { id: key } });
-      else if (data?.screen === 'updates') router.push('/updates');
+      // Kindle-style: the list of new chapters is a pushed screen (Updates isn't a tab there).
+      else if (data?.screen === 'updates') router.push(lookOf() === 'kindle' ? '/new-chapters' : '/updates');
     };
     Notifications.getLastNotificationResponseAsync().then((r) => r && go(r.notification.request.content.data));
     const sub = Notifications.addNotificationResponseReceivedListener((r) => go(r.notification.request.content.data));
@@ -156,6 +157,9 @@ export default function RootLayout() {
             <Stack.Screen name="import" options={{ presentation: 'modal', title: 'Import' }} />
             <Stack.Screen name="help/share" options={{ title: 'Send links from Safari' }} />
             <Stack.Screen name="clips" options={{ title: 'Clipping' }} />
+            <Stack.Screen name="find" options={{ title: 'Search' }} />
+            <Stack.Screen name="new-chapters" options={{ title: 'New chapters' }} />
+            <Stack.Screen name="fanfiction-account" options={{ title: 'FanFiction.net account' }} />
             <Stack.Screen name="listen" options={{ title: 'Now listening' }} />
             <Stack.Screen name="ao3/works" options={{ title: 'AO3' }} />
             <Stack.Screen name="ao3/fandoms/[medium]" options={{ title: 'Fandoms' }} />

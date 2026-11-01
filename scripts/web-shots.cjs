@@ -8,7 +8,7 @@
 //   node scripts/web-shots.cjs <that dir> <screenshot dir> [light|dark]
 // CHROMIUM_PATH overrides the browser (default: the container's Playwright Chromium).
 // LOOK=kindle|classic picks Settings → Look (default: the app's default); ONLY=home,settings takes
-// only those screenshots. File names: <light|dark>[-<look>]-<route>.png.
+// only those screenshots; EMPTY=1 starts with an empty library. File names: <light|dark>[-<look>]-<route>.png.
 
 const http = require('http');
 const fs = require('fs');
@@ -53,7 +53,7 @@ const look = process.env.LOOK === 'kindle' || process.env.LOOK === 'classic' ? p
 const SETTINGS = { appearance: 'system', ...(look ? { look } : {}), whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
   sources: { ffn: { enabled: true }, ao3: { enabled: true, askAdult: true }, wp: { enabled: false }, local: { enabled: true, clipNoticeSeen: true } } };
 const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], ['updates', '/updates'], ['account', '/account'],
-  ['story', '/story/local:s1'], ['reader', '/read/local:s1?ch=4'], ['settings', '/settings']];
+  ['story', '/story/local:s1'], ['reader', '/read/local:s1?ch=4'], ['settings', '/settings'], ['discover', '/discover'], ['more', '/more']];
 
 (async () => {
   await new Promise((r) => server.listen(0, r));
@@ -64,11 +64,12 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   await ctx.addInitScript(([settings, stories, para]) => {
     localStorage.setItem('ficshelf:settings', JSON.stringify(settings));
     localStorage.setItem('ficshelf:schemaVersion', '2');
+    if (stories === null) return;
     for (const [k, v] of Object.entries(stories)) {
       localStorage.setItem(`ficshelf:story:${k}`, JSON.stringify(v));
       for (let n = 1; n <= v.chapters; n++) localStorage.setItem(`ficshelf:ch:${k}:${n}`, Array.from({ length: 14 }, () => `<p>${para.repeat(3)}</p>`).join(''));
     }
-  }, [SETTINGS, STORIES, PARA]);
+  }, [SETTINGS, process.env.EMPTY ? null : STORIES, PARA]);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('page error:', String(e).slice(0, 200)));
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
@@ -76,7 +77,7 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   for (const [name, url] of routes) {
     await page.goto(`http://localhost:${port}${url}`, { waitUntil: 'load' });
     await page.waitForTimeout(2500);
-    await page.screenshot({ path: path.join(out, `${scheme}${look ? `-${look}` : ''}-${name}.png`) });
+    await page.screenshot({ path: path.join(out, `${scheme}${look ? `-${look}` : ''}${process.env.EMPTY ? '-empty' : ''}-${name}.png`) });
   }
   await browser.close();
   server.close();

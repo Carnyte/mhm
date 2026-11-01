@@ -475,6 +475,20 @@ export function storyProgress(s: LibraryStory): number {
   return Math.min(1, read / s.chapters);
 }
 
+/**
+ * Where the reader is in a story: the chapter, how far through the whole story (0–1, counting the
+ * place inside the current chapter) and about how many words are left in that chapter.
+ */
+export function readingSpot(s: LibraryStory): { chapter: number; progress: number; finished: boolean; wordsLeftInChapter: number } {
+  const chapters = Math.max(1, s.chapters || 1);
+  const chapter = Math.min(chapters, Math.max(1, s.lastChapter ?? 1));
+  const raw = s.chapterProgress?.[chapter] ?? (s.lastChapter === chapter ? s.lastProgress : undefined) ?? 0;
+  const within = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0;
+  const finished = s.chapters > 0 && (s.readChapters?.length ?? 0) >= s.chapters;
+  const progress = finished ? 1 : s.lastReadAt ? Math.min(1, (chapter - 1 + within) / chapters) : 0;
+  return { chapter, progress, finished, wordsLeftInChapter: Math.max(0, Math.round(((s.words || 0) / chapters) * (1 - within))) };
+}
+
 export function clearHistory() {
   libraryStore.set((st) => {
     const stories: Record<StoryKey, LibraryStory> = {};

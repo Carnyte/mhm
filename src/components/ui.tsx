@@ -39,7 +39,9 @@ export function T({
   center,
   onPress,
   serif,
+  accessibilityRole,
 }: {
+  accessibilityRole?: 'header' | 'text';
   onPress?: () => void;
   /** Literata, for what the book says (titles, descriptions); the weight picks the face. */
   serif?: boolean;
@@ -59,6 +61,7 @@ export function T({
       numberOfLines={numberOfLines}
       selectable={selectable}
       onPress={onPress}
+      accessibilityRole={accessibilityRole}
       suppressHighlighting
       style={[
         { color: faint ? c.textFaint : muted ? c.textMuted : c.text, fontSize: size, fontWeight: weight },

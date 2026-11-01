@@ -11,18 +11,39 @@ import { IconButton, ProgressBar, Segmented, T } from '../../components/ui';
 import { openReader } from '../../features/actions';
 import { CATEGORIES } from '../../ffn/constants';
 import { storyProgress, useLibrary } from '../../state/library';
-import { togglePinnedFandom, updateSettings, useSettings } from '../../state/settings';
+import { togglePinnedFandom, updateSettings, useLook, useSettings } from '../../state/settings';
+import { KindleHome } from '../../components/kindle/Home';
 import { useTheme } from '../../theme';
 import { useState } from 'react';
 import { compareKeys } from '../../sources/keys';
 
 type Mode = 'stories' | 'crossovers' | 'communities' | 'forums' | 'betas';
 
-export default function BrowseScreen() {
-  const c = useTheme();
+/** The first tab: Home in the Kindle-style look, Browse in the classic one. */
+export default function FirstTab() {
+  return useLook() === 'kindle' ? <KindleHome /> : <BrowseScreen />;
+}
+
+/** Each site's Browse home (FanFiction.net's categories, AO3's media), with the site chips. */
+export function BrowseCatalogue() {
   const sources = useSourcesWith('browse');
   const saved = useSettings((s) => s.browseSource);
   const source = pickSource(saved, sources);
+  return (
+    <>
+      {sources.length > 1 && (
+        <View style={{ marginTop: 14 }}>
+          <SourceChips sources={sources} value={source} onChange={(id) => updateSettings({ browseSource: id })} />
+        </View>
+      )}
+
+      {source === 'ao3' ? <Ao3BrowseHome /> : <FfnBrowseHome />}
+    </>
+  );
+}
+
+function BrowseScreen() {
+  const c = useTheme();
   const recent = useLibrary((s) =>
     Object.values(s.stories)
       .filter((x) => x.lastReadAt)
@@ -70,13 +91,7 @@ export default function BrowseScreen() {
           </View>
         )}
 
-        {sources.length > 1 && (
-          <View style={{ marginTop: 14 }}>
-            <SourceChips sources={sources} value={source} onChange={(id) => updateSettings({ browseSource: id })} />
-          </View>
-        )}
-
-        {source === 'ao3' ? <Ao3BrowseHome /> : <FfnBrowseHome />}
+        <BrowseCatalogue />
       </ScrollView>
     </>
   );

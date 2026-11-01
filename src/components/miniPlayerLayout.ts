@@ -7,7 +7,7 @@ import { usePlayer } from '../audio/state';
 export const MINI_PLAYER_HEIGHT = 60;
 /** Tab bar height above the safe area (react-navigation's default). */
 export const TAB_BAR_HEIGHT = 49;
-const TAB_ROUTES = new Set(['/', '/search', '/library', '/updates', '/account']);
+const TAB_ROUTES = new Set(['/', '/search', '/library', '/updates', '/account', '/discover', '/more']);
 
 export function isTabRoute(pathname: string): boolean {
   return TAB_ROUTES.has(pathname);
