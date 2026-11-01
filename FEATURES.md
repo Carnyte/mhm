@@ -389,7 +389,7 @@ lessons_from_the_revert: >-
 - [x] UI-5 (e5f9303) Home: src/components/kindle/Home.tsx, shown by index.tsx when look = kindle;
       `readingSpot()` in src/state/library.ts (chapter, story % incl. place in chapter, words left).
       Original text: Home (new screen file, e.g. src/app/(tabs)/home.tsx or a branch in index.tsx).
-- [x] UI-6 (UI6) Library. As built: src/components/kindle/Library.tsx (shown by library.tsx when
+- [x] UI-6 (8ae5e1d) Library. As built: src/components/kindle/Library.tsx (shown by library.tsx when
       look = kindle) + pure src/features/libraryFilters.ts. Chips: All (saved, read, downloaded or
       imported), New · n, Downloaded, Unread, In progress, Finished, Collections, then Follows,
       Favorites, Imported, Authors (sync bar on Follows / Favorites / Authors; Sync also in +).
