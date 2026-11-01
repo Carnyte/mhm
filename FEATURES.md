@@ -400,7 +400,7 @@ lessons_from_the_revert: >-
       (endorse / follow / discuss) are labelled icons after Listen / Download / Collection / Share;
       Details = `statCells` + Status, Rating, Language, Genres, Characters; Contents is a
       pageSheet Modal (reverse order, long-press menu kept). Original text: Story page (keep every slot action; Contents sheet; Details).
-- [x] UI-8 (UI8) Reader controls. As built: src/components/kindle/ReaderChrome.tsx (`KindleTopBar`
+- [x] UI-8 (4b8641d) Reader controls. As built: src/components/kindle/ReaderChrome.tsx (`KindleTopBar`
       with back / title / Aa / find / bookmark / ⋯ (readerMenu kept), `KindleBottomPanel` with a
       custom chapter-tick scrubber (story position; another chapter opens at the place let go via
       `chapterProgress`), Contents / Previous / Listen / Auto-scroll (scroll mode) / Next,
