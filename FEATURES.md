@@ -395,7 +395,7 @@ lessons_from_the_revert: >-
       Favorites, Imported, Authors (sync bar on Follows / Favorites / Authors; Sync also in +).
       Grid / list choice stored as `AppSettings.libraryView`. Home's "See all" passes
       `?filter=new&at=<ms>`. Original text: Library: grid / list, filter chips, sort, "+" sheet; every current shelf still reachable.
-- [x] UI-7 (UI7) Story page. As built: src/components/kindle/StoryPage.tsx, rendered by
+- [x] UI-7 (2099901) Story page. As built: src/components/kindle/StoryPage.tsx, rendered by
       story/[id].tsx under the same header (save + ⋯) when look = kindle. The site slots
       (endorse / follow / discuss) are labelled icons after Listen / Download / Collection / Share;
       Details = `statCells` + Status, Rating, Language, Genres, Characters; Contents is a
