@@ -410,7 +410,7 @@ lessons_from_the_revert: >-
       text: Reader controls (hidden chrome, tap zones, footer line, top / bottom bars, scrubber
       with chapter ticks, Aa sheet, chapter heading fix). Keep blank-page recovery, bookmarks,
       find, auto-scroll, audiobook start, review end actions, clip-next end action.
-- [x] UI-9 (UI9) Discover and More. As built: src/components/kindle/Tiles.tsx (`CategoryTile`,
+- [x] UI-9 (2b91234) Discover and More. As built: src/components/kindle/Tiles.tsx (`CategoryTile`,
       `TileGrid`, `SectionHead`, `WashRow`) used by FfnBrowseHome (index.tsx; the five browse modes
       as chips, Misc last, Just In, "Your fandoms") and Ao3BrowseHome in the Kindle-style look;
       `SourceChips` becomes one Segmented switch there (Discover and Search). More was built in
