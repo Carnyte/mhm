@@ -22,12 +22,13 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: c.accent,
-        tabBarInactiveTintColor: c.textFaint,
+        // Kindle-style: the current tab in ink, the others in ink-2.
+        tabBarActiveTintColor: c.look === 'kindle' ? c.text : c.accent,
+        tabBarInactiveTintColor: c.look === 'kindle' ? c.textMuted : c.textFaint,
         tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border },
         headerStyle: { backgroundColor: c.surface },
         headerTitleStyle: { color: c.text },
-        headerTintColor: c.accent,
+        headerTintColor: c.look === 'kindle' ? c.text : c.accent,
         // Leave room for the floating mini player above the tab bar.
         sceneStyle: { paddingBottom: playerInset, backgroundColor: c.bg },
       }}

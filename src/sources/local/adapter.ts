@@ -13,7 +13,7 @@ import { toKey } from '../keys';
 import { infoFromLibrary } from '../meta';
 import type { Source } from '../types';
 
-export const LOCAL_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'";
+export const LOCAL_CSP = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'";
 
 /** An imported story or chapter that isn't on this device (deleted, or never fully saved). */
 export class LocalMissingError extends Error {

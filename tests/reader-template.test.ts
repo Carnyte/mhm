@@ -47,3 +47,25 @@ describe('reader page', () => {
     expect(build({ csp: "default-src 'none'" })).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'">`);
   });
 });
+
+describe('Literata on the reader page', () => {
+  const withFont = (font: string) => buildReaderHtml(payload, { ...DEFAULT_READER, font }, READER_THEMES[0]);
+
+  it('embeds the font only when Literata is the chosen font', () => {
+    const html = withFont('Literata');
+    expect(html.match(/@font-face\{font-family:'Literata';src:url\(data:font\/woff2;base64,/g)).toHaveLength(3);
+    expect(html).toContain("--font:'Literata', Georgia, serif");
+    expect(withFont('Georgia')).not.toContain('@font-face');
+  });
+
+  it('embeds real WOFF2 data for regular, italic and bold', () => {
+    const faces = [...withFont('Literata').matchAll(/base64,([A-Za-z0-9+/=]+)\) format\('woff2'\);font-weight:(\d+);font-style:(\w+)/g)];
+    expect(faces.map((m) => `${m[2]} ${m[3]}`)).toEqual(['400 normal', '400 italic', '700 normal']);
+    for (const m of faces) {
+      const bytes = Buffer.from(m[1], 'base64');
+      expect(bytes.subarray(0, 4).toString('latin1')).toBe('wOF2');
+      expect(bytes.length).toBeGreaterThan(20_000);
+      expect(bytes.length).toBeLessThan(90_000);
+    }
+  });
+});

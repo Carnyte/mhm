@@ -17,7 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { settingsStore } from '../state/settings';
-import { useTheme } from '../theme';
+import { SERIF, useTheme } from '../theme';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -38,8 +38,11 @@ export function T({
   selectable,
   center,
   onPress,
+  serif,
 }: {
   onPress?: () => void;
+  /** Literata, for what the book says (titles, descriptions); the weight picks the face. */
+  serif?: boolean;
   children?: ReactNode;
   style?: StyleProp<TextStyle>;
   muted?: boolean;
@@ -59,6 +62,8 @@ export function T({
       suppressHighlighting
       style={[
         { color: faint ? c.textFaint : muted ? c.textMuted : c.text, fontSize: size, fontWeight: weight },
+        // A font file per weight: iOS can't pick a weight inside a custom family.
+        serif && { fontFamily: serifFace(weight), fontWeight: undefined },
         center && { textAlign: 'center' },
         style,
       ]}
@@ -68,9 +73,15 @@ export function T({
   );
 }
 
+/** The Literata face for a weight (600 and up is SemiBold or Bold). */
+export function serifFace(weight?: TextStyle['fontWeight']): string {
+  const w = Number(weight === 'bold' ? 700 : weight === 'normal' || weight == null ? 400 : weight);
+  return w >= 700 ? SERIF.bold : w >= 600 ? SERIF.semibold : SERIF.regular;
+}
+
 export function Card({ children, style, onPress, onLongPress }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; onLongPress?: () => void }) {
   const c = useTheme();
-  const base: StyleProp<ViewStyle> = [styles.card, { backgroundColor: c.card, borderColor: c.border }, style];
+  const base: StyleProp<ViewStyle> = [styles.card, { backgroundColor: c.card, borderColor: c.border }, c.look === 'kindle' && styles.kCard, style];
   if (!onPress && !onLongPress) return <View style={base}>{children}</View>;
   return (
     <Pressable
@@ -104,8 +115,10 @@ export function Button({
   small?: boolean;
 }) {
   const c = useTheme();
-  const bg = kind === 'primary' ? c.primary : kind === 'danger' ? c.danger : kind === 'secondary' ? c.surfaceAlt : 'transparent';
-  const fg = kind === 'primary' ? c.primaryText : kind === 'danger' ? '#fff' : kind === 'secondary' ? c.text : c.accent;
+  const kindle = c.look === 'kindle';
+  // Kindle-style: secondary buttons are "quiet" (paper with a hairline), as in the preview.
+  const bg = kind === 'primary' ? c.primary : kind === 'danger' ? c.danger : kind === 'secondary' ? (kindle ? c.bg : c.surfaceAlt) : 'transparent';
+  const fg = kind === 'primary' ? c.primaryText : kind === 'danger' ? (kindle ? c.bg : '#fff') : kind === 'secondary' ? c.text : c.accent;
   return (
     <Pressable
       accessibilityRole="button"
@@ -118,8 +131,9 @@ export function Button({
       style={({ pressed }) => [
         styles.button,
         small && styles.buttonSmall,
+        kindle && (small ? styles.kButtonSmall : styles.kButton),
         { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.8 : 1 },
-        kind === 'secondary' && { borderWidth: StyleSheet.hairlineWidth, borderColor: c.border },
+        kind === 'secondary' && { borderWidth: kindle ? 1 : StyleSheet.hairlineWidth, borderColor: c.border },
         style,
       ]}
     >
@@ -188,7 +202,10 @@ export function Chip({
   style?: StyleProp<ViewStyle>;
 }) {
   const c = useTheme();
-  const fg = active ? c.primaryText : c.chipText;
+  const kindle = c.look === 'kindle';
+  // Kindle-style: an outlined pill; the selected one is filled with ink.
+  const fg = kindle ? (active ? c.bg : c.text) : active ? c.primaryText : c.chipText;
+  const fill = kindle ? (active ? c.text : 'transparent') : active ? c.primary : c.chip;
   return (
     <Pressable
       accessibilityRole="button"
@@ -197,12 +214,13 @@ export function Chip({
       disabled={!onPress && !onRemove}
       style={({ pressed }) => [
         styles.chip,
-        { backgroundColor: active ? c.primary : c.chip, opacity: pressed ? 0.75 : 1 },
+        kindle && [styles.kChip, { borderColor: active ? c.text : c.border }],
+        { backgroundColor: fill, opacity: pressed ? 0.75 : 1 },
         style,
       ]}
     >
       {icon && <Ionicons name={icon} size={13} color={fg} />}
-      <Text style={{ color: fg, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>
+      <Text style={{ color: fg, fontSize: kindle ? 14 : 13, fontWeight: kindle ? (active ? '600' : '400') : '500' }} numberOfLines={1}>
         {label}
       </Text>
       {onRemove && (
@@ -245,6 +263,26 @@ export function Row({
   iconColor?: string;
 }) {
   const c = useTheme();
+  if (c.look === 'kindle') {
+    // Kindle-style: rows sit on the wash of their group, with a plain ink icon (no coloured tile).
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={!onPress}
+        accessibilityRole={onPress ? 'button' : undefined}
+        style={({ pressed }) => [styles.row, styles.kRow, { backgroundColor: pressed ? c.border : 'transparent', borderColor: c.border }]}
+      >
+        {icon && <Ionicons name={icon} size={22} color={destructive ? c.danger : c.text} />}
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: destructive ? c.danger : c.text, fontSize: 16 }}>{title}</Text>
+          {!!subtitle && <Text style={{ color: c.textMuted, fontSize: 13, marginTop: 2 }}>{subtitle}</Text>}
+        </View>
+        {!!value && <Text style={{ color: c.textMuted, fontSize: 14 }}>{value}</Text>}
+        {right}
+        {chevron && <Ionicons name="chevron-forward" size={16} color={c.textMuted} />}
+      </Pressable>
+    );
+  }
   return (
     <Pressable
       onPress={onPress}
@@ -270,6 +308,21 @@ export function Row({
 
 export function Section({ title, children, footer, style, action }: { title?: string; children: ReactNode; footer?: string; style?: StyleProp<ViewStyle>; action?: ReactNode }) {
   const c = useTheme();
+  if (c.look === 'kindle') {
+    // Kindle-style: a quiet title in sentence case over a rounded wash group, no borders.
+    return (
+      <View style={[{ marginTop: 18 }, style]}>
+        {(title || action) && (
+          <View style={[styles.sectionHeader, styles.kSectionHeader]}>
+            {title ? <Text style={[styles.kSectionTitle, { color: c.textMuted }]}>{title}</Text> : <View />}
+            {action}
+          </View>
+        )}
+        <View style={[styles.kSectionBody, { backgroundColor: c.surfaceAlt }]}>{children}</View>
+        {!!footer && <Text style={[styles.sectionFooter, { color: c.textMuted }]}>{footer}</Text>}
+      </View>
+    );
+  }
   return (
     <View style={[{ marginTop: 22 }, style]}>
       {(title || action) && (
@@ -288,10 +341,10 @@ export function Input(props: TextInputProps & { icon?: IconName; onClear?: () =>
   const c = useTheme();
   const { icon, onClear, style, ...rest } = props;
   return (
-    <View style={[styles.input, { backgroundColor: c.surfaceAlt, borderColor: c.border }]}>
-      {icon && <Ionicons name={icon} size={18} color={c.textFaint} />}
+    <View style={[styles.input, { backgroundColor: c.surfaceAlt, borderColor: c.border }, c.look === 'kindle' && styles.kInput]}>
+      {icon && <Ionicons name={icon} size={c.look === 'kindle' ? 19 : 18} color={c.look === 'kindle' ? c.textMuted : c.textFaint} />}
       <TextInput
-        placeholderTextColor={c.textFaint}
+        placeholderTextColor={c.look === 'kindle' ? c.textMuted : c.textFaint}
         style={[{ flex: 1, color: c.text, fontSize: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 6 }, style]}
         {...rest}
       />
@@ -346,11 +399,14 @@ export function Divider() {
   return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.border }} />;
 }
 
-export function ProgressBar({ value, color, height = 4 }: { value: number; color?: string; height?: number }) {
+export function ProgressBar({ value, color, height }: { value: number; color?: string; height?: number }) {
   const c = useTheme();
+  const kindle = c.look === 'kindle';
+  // Kindle-style: a 3px ink line on a hairline-coloured track.
+  const h = height ?? (kindle ? 3 : 4);
   return (
-    <View style={{ height, borderRadius: height, backgroundColor: c.surfaceAlt, overflow: 'hidden' }}>
-      <View style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%`, height, backgroundColor: color ?? c.accent }} />
+    <View style={{ height: h, borderRadius: h, backgroundColor: kindle ? c.border : c.surfaceAlt, overflow: 'hidden' }}>
+      <View style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%`, height: h, backgroundColor: color ?? (kindle ? c.text : c.accent) }} />
     </View>
   );
 }
@@ -371,6 +427,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   buttonSmall: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9 },
+  // Kindle-style shapes (design/kindle-preview/index.html).
+  kCard: { borderWidth: 0, borderRadius: 14 },
+  kButton: { minHeight: 44, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10 },
+  kButtonSmall: { minHeight: 34, borderRadius: 9 },
+  kChip: { borderWidth: 1, paddingHorizontal: 14, paddingVertical: 7 },
+  kRow: { paddingHorizontal: 16, paddingVertical: 13, gap: 14 },
+  kSectionHeader: { paddingHorizontal: 20, marginBottom: 8 },
+  kSectionTitle: { fontSize: 13, fontWeight: '600' },
+  kSectionBody: { marginHorizontal: 16, borderRadius: 14, overflow: 'hidden' },
+  kInput: { borderWidth: 0, paddingHorizontal: 14, minHeight: 46 },
   iconBtn: { padding: 6 },
   chip: {
     flexDirection: 'row',

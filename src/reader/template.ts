@@ -3,6 +3,7 @@
 
 import type { ReaderSettings } from '../state/settings';
 import { fontCss, type ReaderTheme } from '../theme';
+import { LITERATA_BOLD, LITERATA_ITALIC, LITERATA_REGULAR } from './literata';
 
 export interface ReaderPayload {
   html: string;
@@ -53,6 +54,14 @@ export function readerCssVars(s: ReaderSettings, t: ReaderTheme): Record<string,
   };
 }
 
+/** Literata for the page, embedded (only when it's the chosen font: it adds about 200 KB). */
+export function readerFontFaces(font: string): string {
+  if (font !== 'Literata') return '';
+  const face = (data: string, weight: number, style: string) =>
+    `@font-face{font-family:'Literata';src:url(data:font/woff2;base64,${data}) format('woff2');font-weight:${weight};font-style:${style};font-display:block;}`;
+  return face(LITERATA_REGULAR, 400, 'normal') + face(LITERATA_ITALIC, 400, 'italic') + face(LITERATA_BOLD, 700, 'normal') + '\n';
+}
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const escAttr = (s: string) => esc(s).replace(/"/g, '&quot;');
 
@@ -68,7 +77,7 @@ export function buildReaderHtml(p: ReaderPayload, s: ReaderSettings, t: ReaderTh
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 ${csp ? `<meta http-equiv="Content-Security-Policy" content="${escAttr(csp)}">\n` : ''}<style>
-:root{${vars}}
+${readerFontFaces(s.font)}:root{${vars}}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);-webkit-text-size-adjust:100%;}
 body{font-family:var(--font);font-size:var(--size);line-height:var(--lh);}
 #wrap{max-width:var(--maxw);margin:0 auto;padding:calc(env(safe-area-inset-top) + 64px) var(--margin) calc(env(safe-area-inset-bottom) + 96px);box-sizing:border-box;}

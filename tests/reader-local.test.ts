@@ -27,7 +27,7 @@ describe('the reader page’s policy', () => {
     const html = build({ csp: getSource('local').reader.csp, html: '<p>Text</p><script>alert(1)</script>' });
     const policy = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)![1];
     const nonce = policy.match(/script-src 'nonce-([0-9a-f]{32})'/)![1];
-    expect(policy).toBe(`default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'`);
+    expect(policy).toBe(`default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'`);
     expect(policy).not.toContain('{nonce}');
     const tags = html.match(/<script[^>]*>/g)!;
     // The chapter's own script (if one ever got past the sanitizer) has no nonce; the reader's two do.

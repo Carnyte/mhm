@@ -44,10 +44,10 @@ status:
   pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "64 suites, 1235 passed + 1 todo (1236 total)"
+    jest: "65 suites, 1247 passed + 1 todo (1248 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
-    expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
+    expo_export_ios: "bundles; one entry-*.hbc of about 5.2 MB (the reader's embedded Literata adds about 0.2 MB)"
     clip_check: "npx tsx scripts/clip-check.ts: 39/39 (headless Chromium, synthetic pages and sites, no network)"
     expo_doctor: "21/21 (after npx expo install --fix, 2026-10-27)"
   device_confirmed: >-
@@ -255,7 +255,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: in_progress (UI-1 done; building UI-2 onwards)
+status: in_progress (UI-1, UI-2 done; building UI-3 onwards)
 order: 0
 next_task: true
 depends_on: [nothing; every feature it restyles is built]
@@ -351,11 +351,19 @@ lessons_from_the_revert: >-
       390×844 and look at every screen; read src/theme/index.ts, src/components/ui.tsx,
       src/components/Cover.tsx, StoryCard.tsx, src/app/(tabs)/*, src/app/story/[id].tsx,
       src/app/read/[id].tsx, src/reader/template.ts, src/components/ReaderSettingsPanel.tsx.
-- [x] UI-1 The switch: `AppSettings.look?: 'kindle' | 'classic'` (default 'kindle' for everyone
+- [x] UI-1 (e7b3221) The switch: `AppSettings.look?: 'kindle' | 'classic'` (default 'kindle' for everyone
       once UI-2..UI-4 exist; until then default 'classic' so nothing half-built shows), Settings →
       Appearance row "Look: Kindle-style / Classic", `useLook()` hook. Classic must stay exactly
       today's app (existing screen tests run against it).
-- [ ] UI-2 Tokens and fonts: a `KINDLE_LIGHT` / `KINDLE_DARK` Palette in src/theme (same field
+- [x] UI-2 (UI2) Tokens and fonts. As built: `KINDLE_LIGHT` / `KINDLE_DARK` with a `look` field on
+      `Palette`; `primary` = `accent` = navy (the preview's primary buttons are navy), and the shared
+      controls in src/components/ui.tsx use ink where the preview does (selected chips, progress
+      bars, current tab, header tint) when `c.look === 'kindle'`; Card / Button / Chip / Row /
+      Section / Input / ProgressBar take the preview's shapes; `T serif` + `SERIF` names
+      (Literata-Regular / -Italic / -SemiBold / -Bold, static TTFs from Google Fonts in
+      assets/fonts with OFL.txt); the reader embeds WOFF2 subsets made by scripts/reader-font.py
+      (src/reader/literata.ts, about 200 KB, only when the font is Literata); 'Literata' added at
+      the end of READER_FONTS. Original text: a `KINDLE_LIGHT` / `KINDLE_DARK` Palette in src/theme (same field
       names as today so screens keep working; ink as `primary`/`text`, navy as `accent`), chosen by
       `useTheme()` when look = kindle. Literata: add the TTF files to assets/fonts (OFL licence
       file next to them) and load with expo-font's `useFonts` in the root layout (expo-font is
@@ -381,7 +389,7 @@ lessons_from_the_revert: >-
 - [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all tests green (1235 after UI-1). Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1247 after UI-2). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 

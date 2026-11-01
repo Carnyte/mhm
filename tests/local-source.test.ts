@@ -82,7 +82,7 @@ describe('the local source', () => {
     expect(src.enabled()).toBe(true);
     expect(Object.values(src.caps).filter((v) => v && v !== 'none')).toEqual([]);
     expect(src.reader.baseUrl).toBe('about:blank');
-    expect(src.reader.csp).toBe("default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'");
+    expect(src.reader.csp).toBe("default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'");
     expect(getSource('ffn').reader.csp).toBeUndefined();
     expect(getSource('ao3').reader.csp).toBeUndefined();
     expect(enabledSources().map((s) => s.id)).not.toContain('local');

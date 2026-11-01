@@ -1,3 +1,4 @@
+import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -20,7 +21,16 @@ import { ClipHost } from '../net/ClipHost';
 import { normalizeKey } from '../sources/keys';
 import { reloadLibrary } from '../state/library';
 import { settingsStore } from '../state/settings';
-import { useTheme } from '../theme';
+import { SERIF, useTheme } from '../theme';
+
+// Literata (assets/fonts, SIL OFL 1.1) under its PostScript names (SERIF). Bundled files: loading
+// takes a moment at launch and needs no network; until then titles show in the system serif.
+const FONTS = {
+  [SERIF.regular]: require('../../assets/fonts/Literata-Regular.ttf'),
+  [SERIF.italic]: require('../../assets/fonts/Literata-Italic.ttf'),
+  [SERIF.semibold]: require('../../assets/fonts/Literata-SemiBold.ttf'),
+  [SERIF.bold]: require('../../assets/fonts/Literata-Bold.ttf'),
+};
 
 // A screen opened from outside (a file sent with "Open in FicShelf", a ficshelf:// link) sits on top
 // of the tabs, so closing it lands somewhere.
@@ -88,6 +98,9 @@ export default function RootLayout() {
   const c = useTheme();
   const playerInset = useMiniPlayerInset();
   const [migration, setMigration] = useState(migrationStatus);
+  useFonts(FONTS);
+  // Kindle-style: back arrows and header buttons in ink; the navy is for primary buttons and links.
+  const tint = c.look === 'kindle' ? c.text : c.accent;
   useNotificationRouting(migration.ok);
   useImportSweep(migration.ok);
   useAutoChecks();
@@ -96,7 +109,7 @@ export default function RootLayout() {
     ...(c.dark ? DarkTheme : DefaultTheme),
     colors: {
       ...(c.dark ? DarkTheme : DefaultTheme).colors,
-      primary: c.accent,
+      primary: tint,
       background: c.bg,
       card: c.surface,
       text: c.text,
@@ -126,7 +139,7 @@ export default function RootLayout() {
           <StatusBar style={c.dark ? 'light' : 'dark'} />
           <Stack
             screenOptions={{
-              headerTintColor: c.accent,
+              headerTintColor: tint,
               headerTitleStyle: { color: c.text },
               headerStyle: { backgroundColor: c.surface },
               // Leave room for the floating mini player (tab screens handle it in the tab layout).

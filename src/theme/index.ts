@@ -2,10 +2,12 @@
 
 import { useColorScheme } from 'react-native';
 import type { SourceId } from '../sources/keys';
-import { useSettings, type ReaderThemeKey } from '../state/settings';
+import { lookOf, useSettings, type Look, type ReaderThemeKey } from '../state/settings';
 
 export interface Palette {
   dark: boolean;
+  /** Which look these colours belong to (shared controls change shape with it). */
+  look: Look;
   bg: string;
   surface: string;
   surfaceAlt: string;
@@ -29,6 +31,7 @@ export interface Palette {
 
 export const LIGHT: Palette = {
   dark: false,
+  look: 'classic',
   bg: '#F4F5F8',
   surface: '#FFFFFF',
   surfaceAlt: '#EEF1F6',
@@ -51,6 +54,7 @@ export const LIGHT: Palette = {
 
 export const DARK: Palette = {
   dark: true,
+  look: 'classic',
   bg: '#0E1116',
   surface: '#161B22',
   surfaceAlt: '#1D232C',
@@ -71,12 +75,82 @@ export const DARK: Palette = {
   source: { ffn: '#8FA8F0', ao3: '#F28B82', wp: '#FF9A5C', local: '#A9B4C2' },
 };
 
+/**
+ * The Kindle-style look (FEATURES.md 3a; design/kindle-preview/index.html): paper, wash (grouped
+ * lists, cards, fields), ink (text, progress, selected chips), ink-2 (secondary text), rule
+ * (hairlines) and one accent, FicShelf's navy, for primary buttons and text links only. Site
+ * colours stay for the tiny site labels.
+ */
+export const KINDLE_LIGHT: Palette = {
+  dark: false,
+  look: 'kindle',
+  bg: '#FFFFFF', // paper
+  surface: '#FFFFFF', // paper: headers, tab bar, sheets
+  surfaceAlt: '#F4F4F2', // wash
+  card: '#F4F4F2', // wash
+  text: '#15171A', // ink
+  textMuted: '#5D636B', // ink-2
+  textFaint: '#6A7078', // between ink-2 and rule, still 4.5:1 on paper and wash
+  border: '#E4E5E7', // rule
+  primary: '#1F3A5F', // navy
+  primaryText: '#FFFFFF',
+  accent: '#1F3A5F',
+  danger: '#B3261E',
+  success: '#2E6B3A',
+  warning: '#8A5300',
+  chip: '#FFFFFF',
+  chipText: '#15171A',
+  overlay: 'rgba(0,0,0,0.32)',
+  source: LIGHT.source,
+};
+
+export const KINDLE_DARK: Palette = {
+  dark: true,
+  look: 'kindle',
+  bg: '#0F1113',
+  surface: '#0F1113',
+  surfaceAlt: '#181B1E',
+  card: '#181B1E',
+  text: '#ECEDEF',
+  textMuted: '#9CA2AA',
+  textFaint: '#8A9098',
+  border: '#262A2E',
+  primary: '#9DB9E6',
+  primaryText: '#0F1113',
+  accent: '#9DB9E6',
+  danger: '#F2B8B5',
+  success: '#8FCB9B',
+  warning: '#F0C27B',
+  chip: '#0F1113',
+  chipText: '#ECEDEF',
+  overlay: 'rgba(0,0,0,0.55)',
+  source: DARK.source,
+};
+
+/** The colours for a look and light / dark. */
+export function paletteFor(look: Look, dark: boolean): Palette {
+  if (look === 'kindle') return dark ? KINDLE_DARK : KINDLE_LIGHT;
+  return dark ? DARK : LIGHT;
+}
+
 export function useTheme(): Palette {
   const scheme = useColorScheme();
   const appearance = useSettings((s) => s.appearance);
+  const look = useSettings(lookOf);
   const dark = appearance === 'system' ? scheme === 'dark' : appearance === 'dark';
-  return dark ? DARK : LIGHT;
+  return paletteFor(look, dark);
 }
+
+/**
+ * Literata (OFL; assets/fonts) for anything the book says: titles, descriptions, the wordmark.
+ * The keys are the fonts' PostScript names, loaded in the root layout with expo-font.
+ */
+export const SERIF = {
+  regular: 'Literata-Regular',
+  italic: 'Literata-Italic',
+  semibold: 'Literata-SemiBold',
+  bold: 'Literata-Bold',
+} as const;
 
 export interface ReaderTheme {
   key: ReaderThemeKey;
@@ -121,6 +195,8 @@ export const READER_FONTS = [
   { key: 'Helvetica', css: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
   { key: 'Avenir', css: "'Avenir Next', Avenir, 'Segoe UI', sans-serif" },
   { key: 'Courier', css: "'Courier New', Courier, monospace" },
+  // Embedded in the reader page (src/reader/literata.ts), so it works on every site and offline.
+  { key: 'Literata', css: "'Literata', Georgia, serif" },
 ];
 
 export function fontCss(key: string): string {
