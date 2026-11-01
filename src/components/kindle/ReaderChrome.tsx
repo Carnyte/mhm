@@ -81,7 +81,6 @@ export function KindleTopBar({
       <RIcon icon="chevron-back" label="Back" onPress={onBack} color={theme.text} />
       <Pressable style={{ flex: 1, minWidth: 0 }} onPress={onTitle} accessibilityRole="button" accessibilityLabel={`${title}: story details`}>
         <T size={14} weight="600" center numberOfLines={1} style={{ color: theme.text }}>
-          {offline ? '⬇︎ ' : ''}
           {title}
         </T>
       </Pressable>

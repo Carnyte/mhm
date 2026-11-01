@@ -47,8 +47,8 @@ status:
   pending_in_order: [P-UI1 device check (UI-A1..A6), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "73 suites, 1290 passed + 1 todo (1291 total)"
-    import_corpus: "299 passed + 1 todo"
+    jest: "74 suites, 1304 passed + 1 todo (1305 total)"
+    import_corpus: "303 passed + 1 todo (ui/titles A-D added 2026-11-01)"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 5.3 MB (the reader's embedded Literata adds about 0.2 MB)"
     clip_check: "npx tsx scripts/clip-check.ts: 39/39 (headless Chromium, synthetic pages and sites, no network)"
@@ -431,6 +431,29 @@ lessons_from_the_revert: >-
       Keep all tests green (1290 after UI-10). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
+
+### follow-up: EPUB reading (user, 2026-11-01)
+User: "the title looks weird for chapter names, and when using page mode instead of scroll, why is
+the swiping not immediate, instead its kind of like scrolling but horizontal, that's useless … I
+want this to be seamless and user friendly kind of like the books app on apple and kindle".
+- [x] EP-1 (EP1) Page mode as page turns: `#wrap > #cols` columns moved by a transform (no native
+      horizontal scrolling / scroll-snap); the page follows the finger, a flick (> 0.35 px/ms) or
+      a drag past 20% turns one page with a 0.2 s slide, a short drag snaps back, edge taps turn at
+      once; past the last page posts `next`, before the first posts `prev` (the app opens the
+      previous chapter at its end: `openAtEnd`); resistance at the story's ends; restore waits for
+      `document.fonts.ready`. tests/reader-paging.test.ts (jsdom, pretend 5-page layout; fails on
+      the old template) + a Chromium touch run (CDP `Input.dispatchTouchEvent` on the web build;
+      Chromium needs `--overscroll-history-navigation=0` or a right swipe navigates back).
+- [x] EP-2 (EP1) Imported chapters' headings: `numbered: false` for the local source (no invented
+      "Chapter n" / "n."), `splitChapterTitle()` takes the title's own number ("Chapter One: The
+      Deed" → CHAPTER ONE / The Deed), `ownHeading` (chapter HTML opens with h1–h4) prints no
+      heading of the app's; "End of “Prologue”"; no "Loading chapter…" flash under 400 ms;
+      the Kindle top bar drops the ⬇︎ marker.
+- [x] EP-3 (EP1) Import: contents entries / <title>s that are file names, or the book's own name in
+      a book of several chapters, take the chapter's first heading, else "Chapter n"
+      (`FILE_NAME_TITLE`, `total > 1`; corpus group `ui/titles` A–D, written failing first).
+- [ ] EP-A On the phone: the user's EPUB in page mode (swipe, edge taps, chapter to chapter) and its
+      chapter titles. Ask for a screenshot if a title still looks wrong.
 
 ### acceptance (on the phone)
 - [ ] UI-A1 Settings → Look switches between Kindle-style and Classic instantly; nothing is lost.

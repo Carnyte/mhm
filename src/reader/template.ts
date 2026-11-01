@@ -31,17 +31,58 @@ export interface ReaderPayload {
    * a tap) and the left / right 30% of the page turn it.
    */
   kindle?: boolean;
+  /**
+   * The chapter's text opens with its own heading (an imported book's "Chapter One / The Deed"):
+   * the page then prints no heading of its own, as a book reader would.
+   */
+  ownHeading?: boolean;
+  /**
+   * The chapter's place in the story is the site's own chapter number (FanFiction.net, AO3). Off
+   * for imported books, where a prologue or a part page makes it differ: their headings use only
+   * the numbers the book's titles carry.
+   */
+  numbered?: boolean;
 }
 
-/** "Chapter 4", "chapter 12", "Ch. 3": a title that is only the chapter's number. */
-const NUMBER_ONLY = /^\s*(chapter|ch\.?|part)\s*\d+\s*[.:]?\s*$/i;
+const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred';
+/** "Chapter 3: The Deed", "CHAPTER ONE - The Deed", "Part II", "ch. 4". */
+const LABELLED = new RegExp(
+  `^\\s*(chapter|ch\\.?|part|book|episode)\\s*(\\d{1,4}|(?=[mdclxvi])m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})\\b|(?:${NUMBER_WORDS})(?:[\\s-](?:${NUMBER_WORDS}))?\\b)\\s*(?:[:.)\\]–—-]+\\s*|\\s+|$)(.*)$`,
+  'i',
+);
+/** "3. The Deed", "12 - The Deed". */
+const NUMBERED_TITLE = /^\s*(\d{1,3})\s*[.:)–—-]\s+(\S.*)$/;
+const LABEL_WORDS: Record<string, string> = { chapter: 'Chapter', ch: 'Chapter', 'ch.': 'Chapter', part: 'Part', book: 'Book', episode: 'Episode' };
 
-/** The Kindle-style heading: a small chapter number over the chapter's own title, said once. */
-export function kindleHeading(p: Pick<ReaderPayload, 'chapter' | 'chapters' | 'chapterTitle' | 'storyTitle'>): string {
+/** A chapter title's own number, as a label ("Chapter 3", "Part II"), and the rest of it. */
+export function splitChapterTitle(title: string): { label: string; rest: string } | null {
+  const m = LABELLED.exec(title);
+  if (m) {
+    const num = /^[ivxlcdm]+$/i.test(m[2]) ? m[2].toUpperCase() : /^\d/.test(m[2]) ? m[2] : m[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
+    return { label: `${LABEL_WORDS[m[1].toLowerCase()] ?? 'Chapter'} ${num}`, rest: m[3].trim() };
+  }
+  const n = NUMBERED_TITLE.exec(title);
+  return n ? { label: `Chapter ${n[1]}`, rest: n[2].trim() } : null;
+}
+
+/** Whether chapter HTML opens with a heading of its own (past wrappers and comments). */
+export function startsWithHeading(html: string): boolean {
+  return /^\s*(?:(?:<(?:div|section|article|header|hgroup|span|a|figure|center)\b[^>]*>|<!--[\s\S]*?-->)\s*)*<h[1-4]\b/i.test(html);
+}
+
+/**
+ * The Kindle-style heading: a small chapter number over the chapter's own title, said once. The
+ * number is the one the title carries ("Chapter One: The Deed" → CHAPTER ONE / The Deed); for a
+ * site's chapters without one, the chapter's place; for an imported book's, none (its "Prologue"
+ * stays "Prologue").
+ */
+export function kindleHeading(p: Pick<ReaderPayload, 'chapter' | 'chapters' | 'chapterTitle' | 'storyTitle' | 'numbered'>): string {
   if (p.chapters <= 1) return `<h1>${esc(p.chapterTitle || p.storyTitle)}</h1>`;
   const title = p.chapterTitle.trim();
-  if (!title || NUMBER_ONLY.test(title)) return `<h1>Chapter ${p.chapter}</h1>`;
-  return `<div class="ch-no">Chapter ${p.chapter}</div><h1>${esc(title)}</h1>`;
+  const own = splitChapterTitle(title);
+  if (own) return own.rest ? `<div class="ch-no">${esc(own.label)}</div><h1>${esc(own.rest)}</h1>` : `<h1>${esc(own.label)}</h1>`;
+  if (!title) return `<h1>Chapter ${p.chapter}</h1>`;
+  return p.numbered === false ? `<h1>${esc(title)}</h1>` : `<div class="ch-no">Chapter ${p.chapter}</div><h1>${esc(title)}</h1>`;
 }
 
 /** A per-page script nonce (unguessable by the page's text, which can't run script anyway). */
@@ -122,65 +163,85 @@ a{color:var(--link);}
 .tts{background:var(--hl);border-radius:4px;transition:background .2s;-webkit-box-decoration-break:clone;box-decoration-break:clone;}
 mark.find{background:var(--hl);color:inherit;border-radius:2px;}
 mark.find.cur{outline:2px solid var(--link);}
-body.paged{height:100vh;overflow:hidden;}
-body.paged #wrap{height:100vh;max-width:none;padding:calc(env(safe-area-inset-top) + 56px) 0 calc(env(safe-area-inset-bottom) + 64px);
-  column-width:100vw;column-gap:0;column-fill:auto;overflow-x:scroll;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;}
-body.paged #wrap::-webkit-scrollbar{display:none;}
+body.paged{position:fixed;top:0;left:0;right:0;bottom:0;height:100vh;overflow:hidden;}
+body.paged #wrap{height:100vh;max-width:none;padding:0;overflow:hidden;}
+body.paged #cols{box-sizing:border-box;height:100vh;padding:calc(env(safe-area-inset-top) + 56px) 0 calc(env(safe-area-inset-bottom) + 64px);
+  column-width:100vw;column-gap:0;column-fill:auto;will-change:transform;}
+body.paged.turning #cols{transition:transform .2s cubic-bezier(.2,.7,.3,1);}
+@media (prefers-reduced-motion:reduce){body.paged.turning #cols{transition:none;}}
+body.paged #text img{max-height:calc(100vh - 160px);object-fit:contain;break-inside:avoid;}
+body.paged #text h1,body.paged #text h2,body.paged #text h3,body.paged .hd{break-after:avoid;}
 body.paged .hd,body.paged #text,body.paged .end{padding:0 var(--margin);max-width:calc(100vw - 2*var(--margin));}
 ${p.kindle ? KINDLE_CSS : ''}</style></head>
-<body class="${[s.paged && 'paged', p.kindle && 'kindle'].filter(Boolean).join(' ')}"><div id="wrap">
-${p.kindle ? `<div class="hd">${kindleHeading(p)}</div>` : `<div class="hd"><div class="story">${esc(p.storyTitle)}</div><h1>${esc(p.chapterTitle)}</h1></div>`}
+<body class="${[s.paged && 'paged', p.kindle && 'kindle'].filter(Boolean).join(' ')}"><div id="wrap"><div id="cols">
+${p.kindle ? (p.ownHeading ? '' : `<div class="hd">${kindleHeading(p)}</div>`) : `<div class="hd"><div class="story">${esc(p.storyTitle)}</div>${p.ownHeading ? '' : `<h1>${esc(p.chapterTitle)}</h1>`}</div>`}
 <div id="text">${p.html}</div>
-<div class="end" id="end"><div>End of chapter ${p.chapter} of ${p.chapters}</div>
+<div class="end" id="end"><div>${p.numbered === false && p.chapterTitle.trim() ? `End of “${esc(p.chapterTitle.trim())}”` : `End of chapter ${p.chapter} of ${p.chapters}`}</div>
 ${p.hasNext ? '<button id="next">Next chapter →</button>' : '<div style="margin:8px 0 4px">You reached the end of the story.</div>'}
 <div>${endButtons}<button class="alt" id="mark">Bookmark</button></div></div>
-</div>
+</div></div>
 ${script}${READER_JS}</script>
-${script}window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn, collapseNotes: !!s.collapseNotes, ...(p.kindle ? { edge: 0.3 } : {}) })});</script>
+${script}window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn, collapseNotes: !!s.collapseNotes, hasNext: p.hasNext, hasPrev: p.chapter > 1, ...(p.kindle ? { edge: 0.3 } : {}) })});</script>
 </body></html>`;
 }
 
 // Kindle-style page: the controls are hidden until a tap, so the text starts near the top; a faint
 // footer line (drawn by the app) sits under it; the heading is centred.
-const KINDLE_CSS = `body.kindle #wrap{padding-top:calc(env(safe-area-inset-top) + 28px);padding-bottom:calc(env(safe-area-inset-bottom) + 72px);}
-body.kindle.paged #wrap{padding-top:calc(env(safe-area-inset-top) + 28px);padding-bottom:calc(env(safe-area-inset-bottom) + 44px);}
+const KINDLE_CSS = `body.kindle:not(.paged) #wrap{padding-top:calc(env(safe-area-inset-top) + 28px);padding-bottom:calc(env(safe-area-inset-bottom) + 72px);}
+body.kindle.paged #cols{padding-top:calc(env(safe-area-inset-top) + 28px);padding-bottom:calc(env(safe-area-inset-bottom) + 44px);}
 body.kindle .hd{text-align:center;margin:.6em 0 1.6em;}
 body.kindle .hd .ch-no{font-family:-apple-system,system-ui,sans-serif;font-size:.62em;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
 body.kindle .hd h1{font-weight:600;font-size:1.45em;line-height:1.2;margin:.7em 0 0;}
+body.kindle #text>:is(h1,h2,h3,h4):first-child,body.kindle #text>:is(h1,h2,h3,h4):first-child+:is(h1,h2,h3,h4){text-align:center;font-weight:600;line-height:1.2;margin:.6em 0 .5em;}
+body.kindle #text>:is(h1,h2,h3,h4):first-child{margin-top:.8em;}
+body.kindle #text>:is(h1,h2,h3,h4):first-child+:is(h1,h2,h3,h4){font-size:1.15em;margin-bottom:1.4em;}
+body.kindle #text>:is(h1,h2,h3,h4):first-child:not(:has(+:is(h1,h2,h3,h4))){margin-bottom:1.4em;}
 `;
 
 /** In-page reader logic. Messages: progress, tap, next, action, bookmark, startBlock, ttsJump, find. */
 const READER_JS = String.raw`
 (function(){
   var post=function(o){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(o));};
-  var wrap=document.getElementById('wrap');
-  var paged=false, tapToTurn=true, edge=0.25, raf=0, speed=0, lastSent=-1, restoring=true;
-  function scroller(){return paged?wrap:(document.scrollingElement||document.documentElement);}
+  var wrap=document.getElementById('wrap'),cols=document.getElementById('cols');
+  var paged=false, tapToTurn=true, edge=0.25, hasNext=false, hasPrev=false, raf=0, speed=0, lastSent=-1, restoring=true;
+  // Paged mode is a row of columns, one page wide each, moved with a transform: a page turn is one
+  // short slide (or none), never the browser's own sideways scrolling with momentum.
+  var page=0;
+  function scroller(){return document.scrollingElement||document.documentElement;}
+  function pw(){return cols.clientWidth||window.innerWidth||1;}
+  function pageCount(){return Math.max(1,Math.round(cols.scrollWidth/pw()));}
+  function setX(px,anim){document.body.classList.toggle('turning',!!anim);cols.style.transform='translate3d('+px+'px,0,0)';}
+  function goPage(n,anim){page=Math.max(0,Math.min(pageCount()-1,n));setX(-page*pw(),anim);if(!restoring)report();}
+  /** The page an element starts on. */
+  function pageOf(el){return Math.max(0,Math.floor((el.getBoundingClientRect().left+page*pw()+1)/pw()));}
   function progress(){
-    var s=scroller();
-    if(paged){var max=wrap.scrollWidth-wrap.clientWidth;return max>0?wrap.scrollLeft/max:1;}
-    var max=s.scrollHeight-window.innerHeight;return max>0?Math.min(1,Math.max(0,s.scrollTop/max)):1;
+    if(paged){var n=pageCount();return n>1?page/(n-1):1;}
+    var s=scroller(),max=s.scrollHeight-window.innerHeight;return max>0?Math.min(1,Math.max(0,s.scrollTop/max)):1;
   }
   function report(){var p=Math.round(progress()*1000)/1000;if(Math.abs(p-lastSent)>=0.002||p===1){lastSent=p;post({type:'progress',p:p,page:pageInfo()});}}
-  function pageInfo(){if(!paged)return null;var w=wrap.clientWidth||1;return {page:Math.round(wrap.scrollLeft/w)+1,pages:Math.max(1,Math.round(wrap.scrollWidth/w))};}
+  function pageInfo(){if(!paged)return null;return {page:page+1,pages:pageCount()};}
   var timer=0;
-  function onScroll(){if(restoring)return;clearTimeout(timer);timer=setTimeout(report,120);}
+  function onScroll(){if(restoring||paged)return;clearTimeout(timer);timer=setTimeout(report,120);}
   window.addEventListener('scroll',onScroll,{passive:true});
-  wrap.addEventListener('scroll',onScroll,{passive:true});
+  window.addEventListener('resize',function(){if(paged)goPage(page,false);});
   window.__scrollTo=function(p){
-    var s=scroller();
-    if(paged){var max=wrap.scrollWidth-wrap.clientWidth;var w=wrap.clientWidth||1;wrap.scrollLeft=Math.round(p*max/w)*w;}
-    else{s.scrollTop=p*(s.scrollHeight-window.innerHeight);}
+    if(paged){goPage(Math.round(p*(pageCount()-1)),false);}
+    else{var s=scroller();s.scrollTop=p*(s.scrollHeight-window.innerHeight);}
     report();
   };
   window.__page=function(dir){
-    if(paged){var w=wrap.clientWidth;wrap.scrollBy({left:dir*w,behavior:'smooth'});}
+    if(paged){
+      // Past the last page is the next chapter; before the first, the previous one (at its end).
+      if(page+dir>pageCount()-1){if(hasNext)post({type:'next'});else goPage(page,true);return;}
+      if(page+dir<0){if(hasPrev)post({type:'prev'});else goPage(0,true);return;}
+      goPage(page+dir,true);
+    }
     else{window.scrollBy({top:dir*(window.innerHeight-110),behavior:'smooth'});}
   };
   window.__apply=function(vars,opts){
     for(var k in vars)document.documentElement.style.setProperty(k,vars[k]);
     var p=progress();
-    if(opts){tapToTurn=opts.tapToTurn;if(opts.paged!==paged){paged=opts.paged;document.body.classList.toggle('paged',paged);}}
+    if(opts){tapToTurn=opts.tapToTurn;if(opts.paged!==paged){paged=opts.paged;document.body.classList.toggle('paged',paged);if(!paged){page=0;cols.style.transform='';}}}
     requestAnimationFrame(function(){window.__scrollTo(p);});
   };
   window.__autoScroll=function(pxPerSec){
@@ -194,7 +255,7 @@ const READER_JS = String.raw`
   function ttsEls(){return document.querySelectorAll('[data-tts]');}
   window.__firstBlock=function(){
     var els=ttsEls();
-    for(var i=0;i<els.length;i++){var r=els[i].getBoundingClientRect();if(paged?r.right>0:r.bottom>80){post({type:'startBlock',block:Number(els[i].getAttribute('data-tts'))});return;}}
+    for(var i=0;i<els.length;i++){var r=els[i].getBoundingClientRect();if(paged?(r.right>0&&r.left<pw()):r.bottom>80){post({type:'startBlock',block:Number(els[i].getAttribute('data-tts'))});return;}}
     post({type:'startBlock',block:0});
   };
   window.__ttsMark=function(i,scroll){
@@ -203,8 +264,7 @@ const READER_JS = String.raw`
     if(scroll===false)return;
     if(paged){
       // Turn to the page where the paragraph starts.
-      var w=wrap.clientWidth||1,page=Math.floor((el.getBoundingClientRect().left+wrap.scrollLeft+1)/w);
-      if(Math.round(wrap.scrollLeft/w)!==page)wrap.scrollTo({left:page*w,behavior:'smooth'});
+      var to=pageOf(el);if(to!==page)goPage(to,true);
     }else{
       var r=el.getBoundingClientRect();
       // Tall paragraphs: show their start rather than centring them (which hides the first lines).
@@ -229,14 +289,27 @@ const READER_JS = String.raw`
     if(!marks.length){post({type:'find',count:0,index:0});return;}
     if(cur>=0)marks[cur].classList.remove('cur');
     cur=(cur+(dir||1)+marks.length)%marks.length;marks[cur].classList.add('cur');
-    marks[cur].scrollIntoView({block:'center',inline:'start'});
+    if(paged)goPage(pageOf(marks[cur]),false);else marks[cur].scrollIntoView({block:'center',inline:'start'});
     post({type:'find',count:marks.length,index:cur+1});
   };
   // Taps: centre toggles controls, edges turn pages.
-  var down=null;
-  document.addEventListener('touchstart',function(e){var t=e.touches[0];down={x:t.clientX,y:t.clientY,t:Date.now()};},{passive:true});
+  // Paged: the page follows the finger; a flick or a drag past a fifth of the page turns it.
+  var down=null,drag=false;
+  document.addEventListener('touchstart',function(e){var t=e.touches[0];drag=false;down={x:t.clientX,y:t.clientY,t:Date.now()};},{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(!paged||!down||e.touches.length>1)return;var t=e.touches[0],dx=t.clientX-down.x,dy=t.clientY-down.y;
+    if(!drag){if(Math.abs(dx)<8||Math.abs(dx)<Math.abs(dy))return;if(window.getSelection&&String(window.getSelection())){down=null;return;}drag=true;}
+    var last=page>=pageCount()-1,off=dx;
+    if((page===0&&dx>0&&!hasPrev)||(last&&dx<0&&!hasNext))off=dx/3;
+    setX(-page*pw()+off,false);
+  },{passive:true});
+  document.addEventListener('touchcancel',function(){if(drag)goPage(page,true);down=null;drag=false;},{passive:true});
   document.addEventListener('touchend',function(e){
-    if(!down)return;var t=e.changedTouches[0];var dx=Math.abs(t.clientX-down.x),dy=Math.abs(t.clientY-down.y),dt=Date.now()-down.t;down=null;
+    if(!down)return;var t=e.changedTouches[0];
+    if(drag){var sx=t.clientX-down.x,st=Math.max(1,Date.now()-down.t),v=sx/st,far=pw()*0.2;down=null;drag=false;
+      if(sx<-far||(sx<-24&&v<-0.35))window.__page(1);else if(sx>far||(sx>24&&v>0.35))window.__page(-1);else goPage(page,true);
+      return;}
+    var dx=Math.abs(t.clientX-down.x),dy=Math.abs(t.clientY-down.y),dt=Date.now()-down.t;down=null;
     if(dx>10||dy>10||dt>350)return;
     var sel=window.getSelection&&String(window.getSelection());if(sel)return;
     if(e.target.closest&&e.target.closest('button,a'))return;
@@ -269,13 +342,15 @@ const READER_JS = String.raw`
     // A link to a place on this page (footnotes and their way back) jumps there; others go to the app.
     var href=a.getAttribute('href')||'';
     if(href.charAt(0)==='#'){var id=href.slice(1);try{id=decodeURIComponent(id);}catch(_){}
-      var to=id&&(document.getElementById(id)||document.getElementsByName(id)[0]);if(to)to.scrollIntoView({block:'start',inline:'start'});return;}
+      var to=id&&(document.getElementById(id)||document.getElementsByName(id)[0]);if(to){if(paged)goPage(pageOf(to),false);else to.scrollIntoView({block:'start',inline:'start'});}return;}
     post({type:'link',href:href});
   });
   window.__init=function(o){
-    paged=!!o.paged;tapToTurn=o.tapToTurn!==false;if(o.edge)edge=o.edge;noteToggles(!!o.collapseNotes);
+    paged=!!o.paged;tapToTurn=o.tapToTurn!==false;if(o.edge)edge=o.edge;hasNext=!!o.hasNext;hasPrev=!!o.hasPrev;noteToggles(!!o.collapseNotes);
     var go=function(){window.__scrollTo(o.progress||0);setTimeout(function(){restoring=false;report();post({type:'ready'});},60);};
-    if(document.readyState==='complete')go();else window.addEventListener('load',go);
+    // After the fonts too: the embedded Literata changes where pages break.
+    var whenFonts=function(){var f=document.fonts&&document.fonts.ready;if(f&&f.then)f.then(go,go);else go();};
+    if(document.readyState==='complete')whenFonts();else window.addEventListener('load',whenFonts);
   };
 })();
 true;

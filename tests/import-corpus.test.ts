@@ -2541,6 +2541,58 @@ asleep in his chair with the last lantern still burning there.
       ];
     })(),
   ],
+  [
+    'ui/titles (2026-11-01: "the title looks weird for chapter names")',
+    [
+      {
+        name: 'ui/titles A: contents entries named after files take the chapter’s own heading',
+        file: 'x.epub',
+        input: () => epub([['index_split_000.html', 'c1.xhtml'], ['index_split_001.html', 'c2.xhtml']], { 'c1.xhtml': `<h2>The Deed</h2>${para('ONE', 200)}`, 'c2.xhtml': `<h2>Nell Arrives</h2>${para('TWO', 200)}` }),
+        why: 'Converters name entries after their files; a reader shows the chapter’s heading instead (and the heading is then not repeated in the text).',
+        chapters: ['The Deed', 'Nell Arrives'],
+        words: [200, 200],
+        lacks: ['index_split'],
+      },
+      {
+        name: 'ui/titles B: file-name entries without a heading become "Chapter n"',
+        file: 'x.epub',
+        input: () => epub([['part0001.xhtml', 'c1.xhtml'], ['Section0002', 'c2.xhtml']], { 'c1.xhtml': para('ONE', 200), 'c2.xhtml': para('TWO', 200) }),
+        chapters: ['Chapter 1', 'Chapter 2'],
+        words: [200, 200],
+      },
+      {
+        name: 'ui/titles C: every file titled with the book’s name (no contents) takes its heading, or "Chapter n"',
+        file: 'x.epub',
+        input: () =>
+          buildEpub({
+            metadata: '<dc:title>Small Hours</dc:title><dc:creator>A</dc:creator>',
+            manifest: { f0: ['c1.xhtml', 'application/xhtml+xml'], f1: ['c2.xhtml', 'application/xhtml+xml'], f2: ['c3.xhtml', 'application/xhtml+xml'] },
+            spine: ['f0', 'f1', 'f2'],
+            files: {
+              'OEBPS/c1.xhtml': xhtml(para('ONE', 200), 'Small Hours'),
+              'OEBPS/c2.xhtml': xhtml(`<h2>Midnight</h2>${para('TWO', 200)}`, 'Small Hours'),
+              'OEBPS/c3.xhtml': xhtml(para('THREE', 200), 'Small Hours'),
+            },
+          }),
+        why: 'A file’s <title> is often just the book’s name; the same name on every chapter reads as a mistake.',
+        title: 'Small Hours',
+        chapters: ['Chapter 1', 'Midnight', 'Chapter 3'],
+        words: [200, 200, 200],
+      },
+      {
+        name: 'ui/titles D: real titles, a prologue and numbered chapters stay as the book has them',
+        file: 'x.epub',
+        input: () =>
+          epub([['Prologue', 'c0.xhtml'], ['Chapter One: The Deed', 'c1.xhtml'], ['Chapter Two', 'c2.xhtml']], {
+            'c0.xhtml': `<h1>Prologue</h1>${para('ZERO', 200)}`,
+            'c1.xhtml': `<h2>Chapter One</h2><h3>The Deed</h3>${para('ONE', 200)}`,
+            'c2.xhtml': `<h2>Chapter Two</h2>${para('TWO', 200)}`,
+          }),
+        chapters: ['Prologue', 'Chapter One: The Deed', 'Chapter Two'],
+        words: [200, 202, 200],
+      },
+    ],
+  ],
 ];
 
 for (const [group, cases] of corpus) {

@@ -111,6 +111,9 @@ const LEGAL = /\b(?:reproduced|transmitted|permission|publisher|published by|tra
 /** A fic's own disclaimer ("I don't own Naruto", "Harry Potter is copyright J. K. Rowling; no money is made"), which opens its text. */
 const DISCLAIMER =
   /\bdisclaimer\b|\b(?:don['’]t|do not|doesn['’]t|does not|didn['’]t) own\b|\bbelongs? to\b|\b(?:are|is) copyright(?:ed)?\b|\bno (?:money|profit)\b|\bnot (?:making|for) (?:any )?(?:money|profit)\b|\binfringement (?:is )?intended\b|\bfan ?fic(?:tion)?\b/i;
+/** A contents entry or <title> that's only a file's name: "part0003.xhtml", "index_split_001.html", "Section0002". */
+const FILE_NAME_TITLE = /^(?:\S+\.x?html?|(?:index_split|split|part|section|text|file|page|content)[_-]?\d+(?:[_-]\d+)*)$/i;
+
 /** File names of front and back matter: FanFicFare's title / toc / log pages, covers, nav documents. */
 const FRONT_FILE = /(?:^|\/)(?:title_?page|titlepage|toc_?page|log_?page|cover(?:page)?|nav|toc|copyright)\.x?html?$/i;
 /** A single text file larger than this isn't read (the phone holds it, parsed, in memory). */
@@ -913,6 +916,12 @@ export async function parseEpub(bytes: Uint8Array, stepper: Stepper): Promise<Bo
       if (meta && !findOne((e) => hasClass(e, 'userstuff') && e.name !== 'blockquote', meta.children, true) && textOf(meta).length < 400) removeElement(meta);
       else for (const e of findAll((x) => /^Chapter (Notes|Summary)$/i.test(textOf(x)) || hasClass(x, 'byline'), head)) removeElement(e);
       for (const e of findAll((x) => x.attribs.id === 'afterword', box.children)) removeElement(e);
+    }
+    // A title that's a file's name ("index_split_003.html") or, in a book of several chapters, the
+    // book's own name (a file's <title>) isn't the chapter's: its heading is, else "Chapter n".
+    if (!isAo3 && (FILE_NAME_TITLE.test(title.trim()) || (total > 1 && !!bookTitle && normTitle(title) === bookTitle))) {
+      const heading = textOf(findOne((e) => /^h[1-3]$/.test(e.name), box.children, true)).trim();
+      title = heading.length <= 120 ? heading : '';
     }
     title ||= `Chapter ${n}`;
     dropRepeatedTitle(box, [title, tocTitle]);

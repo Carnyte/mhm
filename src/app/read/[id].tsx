@@ -30,7 +30,7 @@ import { addBookmark, libraryStore, patchStory, recordReading, useLibraryStory }
 import { lookOf, useLook, useSettings } from '../../state/settings';
 import { KindleBottomPanel, KindleFooter, KindleTextSheet, KindleTopBar, placeAt } from '../../components/kindle/ReaderChrome';
 import { useReaderTheme } from '../../theme';
-import { buildReaderHtml, readerCssVars } from '../../reader/template';
+import { buildReaderHtml, readerCssVars, startsWithHeading } from '../../reader/template';
 import { withBookImages } from '../../reader/images';
 import { chapterImages } from '../../features/importFiles';
 import { ReaderSettingsPanel as SettingsPanel } from '../../components/ReaderSettingsPanel';
@@ -118,6 +118,8 @@ export default function ReaderScreen() {
   const { data, error } = current;
   // Kindle-style: the page fills the screen; a tap in the middle shows the controls.
   const [chrome, setChrome] = useState(() => lookOf() !== 'kindle');
+  // Turning back from a chapter's first page opens the previous chapter at its end.
+  const [openAtEnd, setOpenAtEnd] = useState(false);
   const [progress, setProgress] = useState(0);
   const [pageInfo, setPageInfo] = useState<{ page: number; pages: number } | null>(null);
   const [panel, setPanel] = useState<null | 'settings' | 'chapters' | 'find' | 'text'>(null);
@@ -260,6 +262,7 @@ export default function ReaderScreen() {
     playerChapterRef.current = listen.chapter;
     if (listen.here && listen.status === 'playing' && listen.chapter !== chapter && prev === chapter) {
       setAutoScroll(false);
+      setOpenAtEnd(false);
       setChapter(listen.chapter);
     }
   }, [listen.here, listen.chapter, listen.status, chapter]);
@@ -281,21 +284,32 @@ export default function ReaderScreen() {
   const html = useMemo(() => {
     if (!data) return '';
     const ch = data.story.chapterList.find((c) => c.number === chapter);
+    // Imported books: their own headings and numbers, never an invented "4." or a second heading.
+    const imported = source?.transport === 'local';
+    const ownHeading = imported && data.story.chapters > 1 && startsWithHeading(data.html);
     return buildReaderHtml(
       {
         html: withBookImages(segmentedHtml, data.images, { webImages: !source?.reader.csp }),
         title: data.story.title,
         // Kindle-style: the page shows "CHAPTER 4" over the chapter's own title (said once).
-        chapterTitle: kindle ? (ch?.title ?? '') : data.story.chapters > 1 ? `${chapter}. ${ch?.title ?? `Chapter ${chapter}`}` : data.story.title,
+        chapterTitle: kindle
+          ? (ch?.title ?? '')
+          : data.story.chapters > 1
+            ? imported
+              ? (ch?.title ?? `Chapter ${chapter}`)
+              : `${chapter}. ${ch?.title ?? `Chapter ${chapter}`}`
+            : data.story.title,
         chapter,
         chapters: data.story.chapters,
         storyTitle: data.story.title,
         author: data.story.author?.name,
         hasNext: chapter < data.story.chapters,
-        progress: rebuilt?.data === data ? rebuilt.p : startProgress,
+        progress: rebuilt?.data === data ? rebuilt.p : openAtEnd ? 1 : startProgress,
         endActions: slots?.end.map(({ id, label }) => ({ id, label })),
         csp: source?.reader.csp,
         kindle,
+        ownHeading,
+        numbered: !imported,
       },
       settings,
       theme,
@@ -303,12 +317,13 @@ export default function ReaderScreen() {
     // Settings changes are applied live via __apply; only rebuild for new content (or a page
     // that has to be rebuilt, see rebuildPage).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, chapter, segmentedHtml, rebuilt, kindle]);
+  }, [data, chapter, segmentedHtml, rebuilt, kindle, openAtEnd]);
 
-  const goChapter = (n: number) => {
+  const goChapter = (n: number, atEnd = false) => {
     if (!data || n < 1 || n > data.story.chapters) return;
     setAutoScroll(false);
     setPanel(null);
+    setOpenAtEnd(atEnd);
     setChapter(n);
   };
 
@@ -350,6 +365,9 @@ export default function ReaderScreen() {
         break;
       case 'next':
         goChapter(chapter + 1);
+        break;
+      case 'prev':
+        goChapter(chapter - 1, true);
         break;
       case 'action':
         slots?.end.find((a) => a.id === m.id)?.onPress();
@@ -425,7 +443,7 @@ export default function ReaderScreen() {
         </View>
       ) : !data ? (
         <View style={{ flex: 1, paddingTop: insets.top }}>
-          <Loading label={`Loading chapter ${chapter}…`} />
+          <QuietLoading label={`Loading chapter ${chapter}…`} />
         </View>
       ) : gate.blocked ? (
         <View style={{ flex: 1, paddingTop: insets.top + 56 }}>
@@ -620,6 +638,19 @@ export default function ReaderScreen() {
       {kindle && <KindleTextSheet visible={panel === 'text'} current={theme} onClose={() => setPanel(null)} onMore={openMoreSettings} />}
     </View>
   );
+}
+
+/**
+ * "Loading chapter…" only when loading takes a moment: a chapter on the phone opens in a blink, and
+ * a spinner flashing between pages is what makes turning into the next chapter feel slow.
+ */
+function QuietLoading({ label }: { label: string }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShow(true), 400);
+    return () => clearTimeout(t);
+  }, []);
+  return show ? <Loading label={label} /> : null;
 }
 
 function ChapterPanel({

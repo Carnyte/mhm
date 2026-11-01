@@ -32,8 +32,8 @@ platform_target: iPhone, sideloaded with a free Apple ID from Xcode on the user'
 size_at_base: "188 TS/TSX files in src/; 63 test files"
 checks_at_base:
   tsc: clean
-  jest: "73 suites, 1290 passed + 1 todo (P-UI1)"
-  import_corpus: "299 passed + 1 todo"
+  jest: "74 suites, 1304 passed + 1 todo (P-UI1 + EPUB reading follow-up)"
+  import_corpus: "303 passed + 1 todo"
   lint: "clean, check-keys: ok"
   expo_export_ios: "bundles; entry-*.hbc about 5.3 MB (P-UI1 adds the reader's embedded Literata)"
   expo_doctor: "21/21"
@@ -1427,6 +1427,8 @@ snapshots of every tree (`44a9f71`, `16eaf18`, round 1, `99f38f9`, `3212230`; fa
 | `sanitize.test.ts:163` (< 1500 ms) failed once in a full run; `import-screen.test.tsx` hit the 5 s timeout on a cold cache (7 cascade failures) | Rerun alone before chasing; give timing headroom; longer timeouts for cold-cache suites (FEATURES.md PRE-1) |
 | `jest.mock` factories can't reference outer variables | Prefix captured variables with `mock` |
 | P-UI1: the container has no iPhone, and the user rejected a restyle seen only when finished (Material You, reverted) | Build behind a switch in small steps; after each, `npx expo export --platform web` + `scripts/web-shots.cjs` (light and dark, next to the preview's own shots) and SendUserFile. The reader page listens for touches, so drive it with `TAP=` (a touch-enabled context), not clicks; RN-web scroll views need the mouse over them before a wheel event |
+| 2026-11-01: page mode used the browser's own horizontal scrolling with scroll-snap; the user: "kind of like scrolling but horizontal, that's useless" | Pages are columns moved by a transform with JS swipe handling (FEATURES §3a EP-1); keep the page script's paging under tests/reader-paging.test.ts (jsdom with defined clientWidth / scrollWidth) and check real touches in Chromium via CDP |
+| 2026-11-01: an EPUB with a prologue read "CHAPTER 2 / Chapter 1 …", and a chapter opening with its own heading showed two | For imported books use only the numbers their titles carry and let a chapter's own heading stand (`numbered`, `ownHeading`); file-name titles fall back to the chapter's heading (corpus `ui/titles`) |
 | P-UI1: changing the default look made a classic screen test fail (chapter titles moved into the Kindle-style Contents sheet) | Run look-dependent screen tests in both looks (`it.each(['classic','kindle'])` + `updateSettings({ look })`) |
 | P-UI1: eslint's react-hooks rules rejected `useRef(...).current` during render and setState inside an effect | `useState(() => new Animated.Value(1))[0]`; adjust state during render from a "seen request" (`?filter=…&at=<ms>`) instead of an effect |
 | `player.test.ts` stubbed `src/features/chapters`, so the real offline-first loader went untested | Keep a test that runs the real code a stub replaces (`tests/chapters.test.ts`) |

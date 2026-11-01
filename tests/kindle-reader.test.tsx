@@ -52,7 +52,7 @@ import ReaderScreen from '../src/app/read/[id]';
 import { placeAt, storyPosition } from '../src/components/kindle/ReaderChrome';
 import { commitClip } from '../src/features/clips';
 import type { ImportedBook } from '../src/import/types';
-import { kindleHeading } from '../src/reader/template';
+import { kindleHeading, splitChapterTitle, startsWithHeading } from '../src/reader/template';
 import { libraryStore } from '../src/state/library';
 import { DEFAULT_READER, settingsStore, updateSettings } from '../src/state/settings';
 
@@ -121,12 +121,28 @@ describe('Kindle-style reader', () => {
     expect(has('Text and theme')).toBe(false);
   });
 
-  it('says the chapter heading once: a small number over the chapter’s own title', async () => {
+  it('heads an imported chapter with its own title, never an invented number', async () => {
     await open('kindle', '3');
     const html = mockWeb.props!.source.html as string;
-    expect(html).toContain('<div class="ch-no">Chapter 3</div><h1>What the Trees Remember</h1>');
-    expect(html).not.toContain('3. What the Trees Remember');
+    expect(html).toContain('<div class="hd"><h1>What the Trees Remember</h1></div>');
+    expect(html).not.toContain('Chapter 3');
+    expect(html).toContain('End of “What the Trees Remember”');
     expect(html).toContain('<body class="kindle">');
+  });
+
+  it('opens the previous chapter at its end when turning back from the first page', async () => {
+    const key = await open('kindle', '2');
+    expect(mockWeb.props!.source.html).toContain('"hasNext":true,"hasPrev":true');
+    post({ type: 'prev' });
+    await settle();
+    const html = mockWeb.props!.source.html as string;
+    expect(html).toContain('<h1>The Deed</h1>');
+    expect(html).toContain('"progress":1');
+    // Leaving a chapter forwards opens the next one at its start.
+    post({ type: 'next' });
+    await settle();
+    expect(mockWeb.props!.source.html).toContain('"progress":0');
+    expect(libraryStore.get().stories[key]!.lastChapter).toBe(2);
   });
 
   it('changes page colour, size, font and paging from Aa', async () => {
@@ -155,7 +171,7 @@ describe('Kindle-style reader', () => {
     await settle();
     // 5/6 of three chapters = halfway through chapter 3.
     expect(libraryStore.get().stories[key]!.chapterProgress?.[3]).toBeCloseTo(0.5);
-    expect(mockWeb.props!.source.html).toContain('<div class="ch-no">Chapter 3</div>');
+    expect(mockWeb.props!.source.html).toContain('<h1>What the Trees Remember</h1>');
   });
 });
 
@@ -163,7 +179,9 @@ describe('classic reader', () => {
   it('keeps its controls showing, its heading and its 25% tap zones', async () => {
     await open('classic');
     const html = mockWeb.props!.source.html as string;
-    expect(html).toContain('<h1>1. The Deed</h1>');
+    // An imported book's chapter keeps its own title, without an invented "1.".
+    expect(html).toContain('<h1>The Deed</h1>');
+    expect(html).not.toContain('1. The Deed');
     expect(html).not.toContain('"edge"');
     expect(html).not.toContain('class="kindle"');
     expect(has('Reading settings')).toBe(true);
@@ -179,12 +197,39 @@ describe('reader places', () => {
     expect(placeAt(-1, 12)).toEqual({ chapter: 1, progress: 0 });
   });
 
-  it('heads a chapter once', () => {
+  it('heads a chapter once, with the number its title carries', () => {
     const base = { chapter: 4, chapters: 12, storyTitle: 'Story' };
     expect(kindleHeading({ ...base, chapterTitle: 'Frost' })).toBe('<div class="ch-no">Chapter 4</div><h1>Frost</h1>');
     expect(kindleHeading({ ...base, chapterTitle: 'Chapter 4' })).toBe('<h1>Chapter 4</h1>');
     expect(kindleHeading({ ...base, chapterTitle: 'ch. 4:' })).toBe('<h1>Chapter 4</h1>');
     expect(kindleHeading({ ...base, chapterTitle: '' })).toBe('<h1>Chapter 4</h1>');
     expect(kindleHeading({ ...base, chapters: 1, chapterTitle: '', storyTitle: 'A <One> Shot' })).toBe('<h1>A &lt;One&gt; Shot</h1>');
+    // An imported book: its own numbers only (a prologue makes the place differ).
+    expect(kindleHeading({ ...base, numbered: false, chapterTitle: 'Chapter Three: The Buyer' })).toBe('<div class="ch-no">Chapter Three</div><h1>The Buyer</h1>');
+    expect(kindleHeading({ ...base, numbered: false, chapterTitle: 'Prologue' })).toBe('<h1>Prologue</h1>');
+    expect(kindleHeading({ ...base, numbered: false, chapterTitle: '3. The Buyer' })).toBe('<div class="ch-no">Chapter 3</div><h1>The Buyer</h1>');
+  });
+
+  it('reads a chapter title’s own number', () => {
+    expect(splitChapterTitle('Chapter 12: Frost')).toEqual({ label: 'Chapter 12', rest: 'Frost' });
+    expect(splitChapterTitle('CHAPTER ONE - The Deed')).toEqual({ label: 'Chapter One', rest: 'The Deed' });
+    expect(splitChapterTitle('Chapter Twenty-One')).toEqual({ label: 'Chapter Twenty-One', rest: '' });
+    expect(splitChapterTitle('Part II')).toEqual({ label: 'Part II', rest: '' });
+    expect(splitChapterTitle('Book iv. The Return')).toEqual({ label: 'Book IV', rest: 'The Return' });
+    expect(splitChapterTitle('Chapter 3 The Lake')).toEqual({ label: 'Chapter 3', rest: 'The Lake' });
+    // Not numbers: words that happen to start the same, and long numbers.
+    expect(splitChapterTitle('Chapters of a Life')).toBeNull();
+    expect(splitChapterTitle('Chapter Dim Lights')).toBeNull();
+    expect(splitChapterTitle('Partners')).toBeNull();
+    expect(splitChapterTitle('2001 - A Year')).toBeNull();
+    expect(splitChapterTitle('The Deed')).toBeNull();
+  });
+
+  it('spots chapter text that opens with its own heading', () => {
+    expect(startsWithHeading('<h2>Chapter One</h2><p>Text</p>')).toBe(true);
+    expect(startsWithHeading('\n <div class="chapter"><section><!-- c --><h1 id="c1">One</h1>')).toBe(true);
+    expect(startsWithHeading('<p><b>Chapter One</b></p>')).toBe(false);
+    expect(startsWithHeading('<p>It began.</p><h2>Later</h2>')).toBe(false);
+    expect(startsWithHeading('<h5>tiny</h5>')).toBe(false);
   });
 });
