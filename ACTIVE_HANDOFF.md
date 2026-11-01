@@ -4,11 +4,15 @@
 > Rewrite this file at every wrap-up (`AGENT_ROOT.md`, Session Wrap-Up Protocol).
 
 **Updated**: 2026-11-01 · **Branch**: `claude/ficshelf-fanfiction-app` (repo root = the app)
-**Last code commit**: `663e36d` (EPUB page turns + imported chapter titles), recorded in `1e507c6`;
-then the documentation restructure (this file, `AGENT_ROOT.md`, `docs/`).
+**Last code commit**: `663e36d` (EPUB page turns + imported chapter titles), recorded in `1e507c6`.
+**Since then, docs only**: `3bfb85f` split FEATURES.md / MASTER_FEATURES.md into `AGENT_ROOT.md`,
+this file and `docs/` (old files deleted; old § numbers → `docs/SECTION_INDEX.md`); `c98816b` added
+`CLAUDE.md` (auto-loaded; points here) and the "continue" rule below.
 
 ## State
 - Pushed, ready to install (T1, JavaScript only, no prebuild). Nothing half-done; tree clean.
+- The user was told what to say to a fresh session per phase ("I tested the build: …", "Clipping is
+  perfect now. Start P4 …", "Build the polish items: …", "I have an AO3 account. Start P6.").
 - Built and pushed on 2026-11-01, **tests and headless Chromium only, not yet tried on the phone**:
   - P-UI1 Kindle-style look (UI-1..UI-10), now the default; Classic in Settings → Appearance → Look
     and in What's new 5.
