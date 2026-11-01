@@ -53,8 +53,8 @@ const STORIES = {
 };
 const look = process.env.LOOK === 'kindle' || process.env.LOOK === 'classic' ? process.env.LOOK : undefined;
 const extra = process.env.SETTINGS_JSON ? JSON.parse(process.env.SETTINGS_JSON) : {};
-const SETTINGS = { appearance: 'system', ...(look ? { look } : {}), ...extra, whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
-  sources: { ffn: { enabled: true }, ao3: { enabled: true, askAdult: true }, wp: { enabled: false }, local: { enabled: true, clipNoticeSeen: true } } };
+const SETTINGS = { appearance: 'system', ...(look ? { look } : {}), whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
+  sources: { ffn: { enabled: true }, ao3: { enabled: true, askAdult: true }, wp: { enabled: false }, local: { enabled: true, clipNoticeSeen: true } }, ...extra };
 const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], ['updates', '/updates'], ['account', '/account'],
   ['story', '/story/local:s1'], ['reader', '/read/local:s1?ch=4'], ['settings', '/settings'], ['discover', '/discover'], ['more', '/more']];
 
