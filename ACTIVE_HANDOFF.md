@@ -32,6 +32,20 @@ report (match `design/kindle-preview/index.html`; ask before deviating):
 2. Then P-CLIP3 BG-A1..A5 and P-CLIP2 AC-A1..A6 reports → AC-11 polish (scroll-loaded text first).
 3. Wattpad (P4 / P7) stays on hold until the user says clipping is perfect.
 
+## If the user just says "continue" or "build the next phase"
+Every remaining phase needs a decision only the user can make, so don't start one on your own:
+- They report phone results → fix those first (the next immediate task above).
+- No reports → ask once whether they've tried the latest build; if they want to keep building
+  anyway, offer the phases whose gate they can open now (AskUserQuestion, recommended first):
+  - **P8 polish** (`docs/polish_extras.md`): pick items, e.g. POL-1 "All" search (needs P4 for
+    Wattpad results; FFN + AO3 work without it), POL-3 AO3 work skins, POL-4 offline images.
+  - **P4 Wattpad reading** (`docs/wattpad.md` §5): only once they say clipping is perfect, and
+    answer OQ-1 (Wattpad's terms risk; default yes).
+  - **P6 AO3 account** (`docs/ao3.md` §6): only if they have an AO3 account (invite-only).
+  - **P-IMPORT-X** (`docs/import.md` §9) or **P-NOVELPIA** (`docs/novelpia.md` §10): only on request.
+- Once they choose: mark the phase `in_progress` in `docs/ROADMAP.md`, work its spec's checklist in
+  order (one commit per green step, ticks with hashes), and wrap up per `AGENT_ROOT.md`.
+
 ## Files to read for it
 - `docs/ui_rules.md` (Kindle look spec, build log, acceptance), `docs/reader.md` (page mode,
   headings, EP items), `docs/user_and_install.md` (how to report and give install steps).
