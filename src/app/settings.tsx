@@ -23,13 +23,14 @@ import { bridge } from '../net/bridge';
 import { clearImageCache } from '../net/images';
 import { clearHistory, exportBackup, importBackup, useLibrary } from '../state/library';
 import { useBridgeStatus, useSession } from '../state/session';
-import { clipSettings, setFandomHidden, updateReader, updateSettings, updateSource, useSettings } from '../state/settings';
+import { clipSettings, LOOK_LABELS, lookOf, setFandomHidden, updateReader, updateSettings, updateSource, useSettings, type Look } from '../state/settings';
 import { useTheme } from '../theme';
 import { formatBytes, relativeMs } from '../utils/format';
 
 export default function SettingsScreen() {
   const c = useTheme();
   const s = useSettings();
+  const look = lookOf(s);
   const clip = clipSettings(s);
   const status = useBridgeStatus();
   const session = useSession();
@@ -111,6 +112,22 @@ export default function SettingsScreen() {
               ],
               s.appearance,
               (v) => updateSettings({ appearance: v as typeof s.appearance }),
+            )
+          }
+        />
+        <Row
+          title="Look"
+          subtitle={look === 'kindle' ? 'Covers first, calm pages, four tabs' : 'The look FicShelf had before'}
+          value={LOOK_LABELS[look]}
+          onPress={() =>
+            pickOption(
+              'Look',
+              [
+                { value: 'kindle', label: LOOK_LABELS.kindle },
+                { value: 'classic', label: LOOK_LABELS.classic },
+              ],
+              look,
+              (v) => updateSettings({ look: v as Look }),
             )
           }
         />

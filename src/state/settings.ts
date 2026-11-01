@@ -85,8 +85,21 @@ export function clipSettings(st: AppSettings = settingsStore.get()): { pace: Cli
   return { pace, quick: l.clipQuick === true, batch };
 }
 
+/** The app's look: the Kindle-style one (P-UI1) or the classic one it had before. */
+export type Look = 'kindle' | 'classic';
+
+/**
+ * The look for anyone who never picked one. Stays 'classic' while the Kindle-style screens are
+ * being built (FEATURES.md §3a, UI-1..UI-9), so nothing half-built shows by default.
+ */
+export const DEFAULT_LOOK: Look = 'classic';
+
+export const LOOK_LABELS: Record<Look, string> = { kindle: 'Kindle-style', classic: 'Classic' };
+
 export interface AppSettings {
   appearance: 'system' | 'light' | 'dark';
+  /** Settings → Appearance → Look; missing = DEFAULT_LOOK. */
+  look?: Look;
   /** FanFiction.net browsing defaults (its own rating / language / sort codes). */
   defaultRating: number;
   defaultLanguage: number;
@@ -209,6 +222,16 @@ settingsStore.subscribe(() => {
 
 export function useSettings<S = AppSettings>(selector?: (s: AppSettings) => S): S {
   return useStore(settingsStore, selector);
+}
+
+/** The look in use (anything unknown in the stored settings counts as the default). */
+export function lookOf(st: Pick<AppSettings, 'look'> = settingsStore.get()): Look {
+  return st.look === 'kindle' || st.look === 'classic' ? st.look : DEFAULT_LOOK;
+}
+
+/** The look in use, re-rendering when it changes. */
+export function useLook(): Look {
+  return useSettings(lookOf);
 }
 
 export function updateSettings(patch: Partial<AppSettings>) {

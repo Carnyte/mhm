@@ -7,6 +7,8 @@
 //   npx expo export --platform web --output-dir <dir outside the repo>
 //   node scripts/web-shots.cjs <that dir> <screenshot dir> [light|dark]
 // CHROMIUM_PATH overrides the browser (default: the container's Playwright Chromium).
+// LOOK=kindle|classic picks Settings → Look (default: the app's default); ONLY=home,settings takes
+// only those screenshots. File names: <light|dark>[-<look>]-<route>.png.
 
 const http = require('http');
 const fs = require('fs');
@@ -47,7 +49,8 @@ const STORIES = {
   'local:s2': story('s2', 'Salt Road', 'M. Okafor', 9, 30, 120000, 2),
   'local:s3': story('s3', 'A Lantern for the Drowned', 'Ines Varga', 2, 18, 76000),
 };
-const SETTINGS = { appearance: 'system', whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
+const look = process.env.LOOK === 'kindle' || process.env.LOOK === 'classic' ? process.env.LOOK : undefined;
+const SETTINGS = { appearance: 'system', ...(look ? { look } : {}), whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
   sources: { ffn: { enabled: true }, ao3: { enabled: true, askAdult: true }, wp: { enabled: false }, local: { enabled: true, clipNoticeSeen: true } } };
 const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], ['updates', '/updates'], ['account', '/account'],
   ['story', '/story/local:s1'], ['reader', '/read/local:s1?ch=4'], ['settings', '/settings']];
@@ -68,14 +71,16 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   }, [SETTINGS, STORIES, PARA]);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('page error:', String(e).slice(0, 200)));
-  for (const [name, url] of ROUTES) {
+  const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
+  const routes = ROUTES.filter(([name]) => !only || only.includes(name));
+  for (const [name, url] of routes) {
     await page.goto(`http://localhost:${port}${url}`, { waitUntil: 'load' });
     await page.waitForTimeout(2500);
-    await page.screenshot({ path: path.join(out, `${scheme}-${name}.png`) });
+    await page.screenshot({ path: path.join(out, `${scheme}${look ? `-${look}` : ''}-${name}.png`) });
   }
   await browser.close();
   server.close();
-  console.log(`${ROUTES.length} screenshots in ${out}`);
+  console.log(`${routes.length} screenshots in ${out}`);
 })().catch((e) => {
   console.error(e);
   process.exit(1);

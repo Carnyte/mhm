@@ -13,7 +13,7 @@ branch: claude/ficshelf-fanfiction-app
 base_commit: 5371b6d
 base_commit_date: 2026-10-29
 commits_at_base: 178
-updated: 2026-10-29
+updated: 2026-11-01
 next_task: P-UI1 (Kindle-style look; FIRST, before anything else — §3a)
 companion: MASTER_FEATURES.md
 status:
@@ -44,7 +44,7 @@ status:
   pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "63 suites, 1230 passed + 1 todo (1231 total)"
+    jest: "64 suites, 1235 passed + 1 todo (1236 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 4.9 MB"
@@ -234,7 +234,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 
 | order | id | title | status | depends_on | prebuild for the user | gate |
 |---|---|---|---|---|---|---|
-| **-1 (first)** | **P-UI1** | **Kindle-style look behind a "New look" switch (§3a)** | **pending: next, before everything else (user, 2026-11-01)** | none | no | none: preview approved |
+| **-1 (first)** | **P-UI1** | **Kindle-style look behind a "New look" switch (§3a)** | **in_progress (started 2026-11-01; see §3a ticks)** | none | no | none: preview approved |
 | 0 | P-CLIP | "Clip this page" for any website | done (works on the phone 2026-10-27; CLIP-A items not reported one by one) | P5 (done) | no (https only) | none |
 | 1 | P-CLIP2 | "Clip & next", "Clip the next N chapters" (auto-clip), Clip polish | done (device check pending; AC-11 polish waits for the user's reports) | P-CLIP | no (but the next install is T2 because of ca4749f) | none: the user accepted the terms risk |
 | 1b | P-CLIP3 | "Clip a whole story" in the background; Clip for more sites | done (device check pending) | P-CLIP2 | no | none (approved 2026-10-29) |
@@ -255,7 +255,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: pending (approved preview; nothing built in the app yet)
+status: in_progress (UI-1 done; building UI-2 onwards)
 order: 0
 next_task: true
 depends_on: [nothing; every feature it restyles is built]
@@ -347,11 +347,11 @@ lessons_from_the_revert: >-
   Updates screen with Check now), Settings, Help and about. Connection details stay in Settings.
 
 ### build steps (one commit each; screenshots to the user after each, "hold off" not needed)
-- [ ] UI-0 Read this section, open design/kindle-preview/index.html in Chromium (playwright) at
+- [x] UI-0 Read this section, open design/kindle-preview/index.html in Chromium (playwright) at
       390×844 and look at every screen; read src/theme/index.ts, src/components/ui.tsx,
       src/components/Cover.tsx, StoryCard.tsx, src/app/(tabs)/*, src/app/story/[id].tsx,
       src/app/read/[id].tsx, src/reader/template.ts, src/components/ReaderSettingsPanel.tsx.
-- [ ] UI-1 The switch: `AppSettings.look?: 'kindle' | 'classic'` (default 'kindle' for everyone
+- [x] UI-1 The switch: `AppSettings.look?: 'kindle' | 'classic'` (default 'kindle' for everyone
       once UI-2..UI-4 exist; until then default 'classic' so nothing half-built shows), Settings →
       Appearance row "Look: Kindle-style / Classic", `useLook()` hook. Classic must stay exactly
       today's app (existing screen tests run against it).
@@ -381,7 +381,7 @@ lessons_from_the_revert: >-
 - [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all 1230 tests green. Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1235 after UI-1). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 
