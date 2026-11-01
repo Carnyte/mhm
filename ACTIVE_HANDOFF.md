@@ -4,8 +4,8 @@
 > Rewrite this file at every wrap-up (`AGENT_ROOT.md`, Session Wrap-Up Protocol).
 
 **Updated**: 2026-11-01 · **Branch**: `claude/ficshelf-fanfiction-app` (repo root = the app)
-**Last code commit**: P6 AO3 login ("Log in to AO3 on AO3's own page and open restricted works";
-its hash is ticked in `docs/ao3.md` §6 and recorded in the commit after it).
+**Last code commit**: `c40019d` P6 AO3 login ("Log in to AO3 on AO3's own page and open restricted works";
+ticked in `docs/ao3.md` §6, recorded in the commit after it).
 
 ## State
 - Pushed, ready to install (T1, JavaScript only, **no prebuild**: no app.json / plugin / native

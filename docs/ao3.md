@@ -89,7 +89,7 @@ Restricted works show "Log in to AO3 to read this" with only **Open on AO3**
 (`src/components/states.tsx`, `Ao3RestrictedError`); no kudos, comments, subscriptions or AO3 bookmarks.
 
 ### scope
-- [x] AO3L-1 (LOGIN_COMMIT) `src/app/signin/[source].tsx`: a visible WebView on `https://archiveofourown.org/users/login`,
+- [x] AO3L-1 (c40019d) `src/app/signin/[source].tsx`: a visible WebView on `https://archiveofourown.org/users/login`,
       `sharedCookiesEnabled` (AO3 is responsive; either UA). **No prefill, no reading of inputs.**
       The injected script only checks for `nav#greeting ul.user.navigation` and posts
       `{type:'ao3-login', username}` (accepted only from the AO3 host). Copy: "You're signing in on
@@ -98,7 +98,7 @@ Restricted works show "Log in to AO3 to read this" with only **Open on AO3**
       native fetch afterwards (any AO3 page contains `#greeting`). Built: the native check is
       `GET /` (`confirmAo3Login`), retried once after 2 s; desktop Safari UA without desktop content
       mode (same browser as native requests, phone layout); `src/net/ao3Signin.ts` holds the rules.
-- [x] AO3L-2 (LOGIN_COMMIT) `src/sources/ao3/session.ts` (`SourceSession`): `get()`, `subscribe()`, `signInRoute`,
+- [x] AO3L-2 (c40019d) `src/sources/ao3/session.ts` (`SourceSession`): `get()`, `subscribe()`, `signInRoute`,
       `logout()`, `syncLibrary()`; session parsed from **every** page `ao3Fetch` sees (cheap regex for
       `id="greeting"` and `href="/users/NAME"`); stored as kv `session:ao3` `{username, checkedAt}`; a
       redirect to `/users/login` or `/lost_cookie`, or no greeting, means logged out → prompt again.
@@ -113,25 +113,25 @@ Restricted works show "Log in to AO3 to read this" with only **Open on AO3**
 - [ ] AO3L-5 Library sync, scoped to source `ao3` only (never touches FFN flags): subscriptions →
       Follows; AO3 bookmarks → Favorites; Marked for Later → a list chip; history "(Update
       available.)" → an extra update signal.
-- [x] AO3L-6 (LOGIN_COMMIT) Logged-in update checks: the id search includes restricted works; **background work
+- [x] AO3L-6 (c40019d) Logged-in update checks: the id search includes restricted works; **background work
       never GETs `/works/ID` or `/works/ID/chapters/CID` while logged in** (including the work-page
       fetch `downloadAll` uses to copy the download href): use the stored `ao3.downloadHtmlHref`, or
       mark the copy stale for the next user-visible open. Built: the existing guards now see the
       real session (no background auto-download while logged in; restricted works probed only
       while logged in); works seen locked in listings are fetched once logged in.
-- [ ] AO3L-7 UI: ~~restricted Empty state gets **Log in to AO3**~~ (done LOGIN_COMMIT, retries by itself once logged in); story page heart = kudos (works as a
+- [ ] AO3L-7 UI: ~~restricted Empty state gets **Log in to AO3**~~ (done c40019d, retries by itself once logged in); story page heart = kudos (works as a
       guest), bell = Subscribe; ⋯ **Bookmark on AO3…** (form sheet), **Mark for later**; reader end
       actions ♥ Kudos + Comment; `src/app/comments/[key].tsx` (generic) + `src/components/CommentCompose.tsx`;
       `src/app/account/[source].tsx` (FFN account sections move there, inline while FFN is the only
       account); `(tabs)/account.tsx` gets an "Accounts" list (monogram tiles FF / A3 / W).
-      Partly built (LOGIN_COMMIT): `src/app/account/[source].tsx` for AO3 (username, Log in / out,
+      Partly built (c40019d): `src/app/account/[source].tsx` for AO3 (username, Log in / out,
       the user's AO3 pages logged in via `signin` browse mode), an "AO3 account" row in More and
       in the classic Account tab; the FFN sections haven't moved.
-- [x] AO3L-8 (LOGIN_COMMIT) Logout: POST `/users/logout` with `_method=delete` + fresh token via native fetch; confirm
+- [x] AO3L-8 (c40019d) Logout: POST `/users/logout` with `_method=delete` + fresh token via native fetch; confirm
       logged out in native fetch **and** in a WebView load of `/`; if the WebView still shows
       `#greeting`, submit AO3's logout form inside the WebView (cookie deletions don't sync).
-- [x] AO3L-9 (LOGIN_COMMIT) No hit counting (OQ-12 default): still never called.
-- [x] AO3L-10 (LOGIN_COMMIT) README: remove the "AO3 has no login" limitation; docs. (Update again when the social items land.)
+- [x] AO3L-9 (c40019d) No hit counting (OQ-12 default): still never called.
+- [x] AO3L-10 (c40019d) README: remove the "AO3 has no login" limitation; docs. (Update again when the social items land.)
 
 ### files
 New: `src/sources/ao3/session.ts`, `src/sources/ao3/account.ts`, `src/sources/ao3/parsers/account.ts`,
@@ -186,11 +186,11 @@ retried; sync scoped to `ao3`; no background work-page fetches while logged in; 
 `isChallengeDoc` / `isChallengeResponse` for AO3 (every AO3 page loads Cloudflare's passive script).
 
 ### tests
-- [ ] AO3L-T1 Parsers for subscriptions, readings (flags), bookmarks, comments; ~~greeting gives the username~~ (done LOGIN_COMMIT, `tests/ao3-session.test.ts`).
-- [ ] AO3L-T2 ~~Token fetched before every POST (spy order)~~ (logout: done LOGIN_COMMIT); a 422 kudos message shown verbatim; a POST never retried.
+- [ ] AO3L-T1 Parsers for subscriptions, readings (flags), bookmarks, comments; ~~greeting gives the username~~ (done c40019d, `tests/ao3-session.test.ts`).
+- [ ] AO3L-T2 ~~Token fetched before every POST (spy order)~~ (logout: done c40019d); a 422 kudos message shown verbatim; a POST never retried.
 - [ ] AO3L-T3 Syncing AO3 doesn't change FFN `followed` / `favorited`, and the reverse.
-- [x] AO3L-T4 (LOGIN_COMMIT) Logged in, a background update run requests no `/works/\d+(/chapters/\d+)?` URL.
-- [x] AO3L-T5 (LOGIN_COMMIT) Logout checks both stores (`tests/ao3-signin-screen.test.tsx`, mocked WebView).
+- [x] AO3L-T4 (c40019d) Logged in, a background update run requests no `/works/\d+(/chapters/\d+)?` URL.
+- [x] AO3L-T5 (c40019d) Logout checks both stores (`tests/ao3-signin-screen.test.tsx`, mocked WebView).
 
 ### acceptance (on the phone)
 - [ ] AO3L-A1 Log in → username shows.
