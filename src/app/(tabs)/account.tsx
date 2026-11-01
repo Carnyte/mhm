@@ -8,6 +8,7 @@ import { Button, Row, Section, T } from '../../components/ui';
 import { logout } from '../../ffn/api';
 import { ACCOUNT_PATHS } from '../../ffn/urls';
 import { invalidate } from '../../hooks/useQuery';
+import { useAo3Session } from '../../hooks/useAo3Session';
 import { useLibrary } from '../../state/library';
 import { useBridgeStatus, useSession } from '../../state/session';
 import { useTheme } from '../../theme';
@@ -19,6 +20,7 @@ export default function AccountScreen() {
   const c = useTheme();
   const session = useSession();
   const status = useBridgeStatus();
+  const ao3 = useAo3Session();
   const drafts = useLibrary((s) => s.drafts.length);
   const bookmarks = useLibrary((s) => s.bookmarks.length);
   const collections = useLibrary((s) => s.collections.length);
@@ -94,6 +96,16 @@ export default function AccountScreen() {
           </Section>
         </>
       )}
+
+      <Section title="Other accounts">
+        <Row
+          icon="person-circle-outline"
+          title="AO3 account"
+          subtitle={ao3.loggedIn ? `Signed in as ${ao3.username ?? 'you'}` : 'Not signed in'}
+          value={ao3.loggedIn ? undefined : 'Sign in'}
+          onPress={() => router.push({ pathname: '/account/[source]', params: { source: 'ao3' } })}
+        />
+      </Section>
 
       <Section title="On this device">
         <Row icon="bookmarks-outline" title="Bookmarks" value={bookmarks ? String(bookmarks) : undefined} onPress={() => router.push('/bookmarks')} />

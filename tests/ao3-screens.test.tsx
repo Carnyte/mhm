@@ -5,14 +5,17 @@
 jest.mock('../src/db/kv', () => require('./helpers/memoryKv').kvModule());
 // Icons load a font asynchronously; nothing here looks at them.
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() } }));
 
+import { router } from 'expo-router';
 import { Linking } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ErrorView } from '../src/components/states';
 import { usePaged, type PagedState } from '../src/hooks/useQuery';
 import { SourceBlockedError } from '../src/net/blocks';
 import { RateLimitedError, ServerBusyError } from '../src/net/httpCore';
-import { Ao3AdultNoticeError, Ao3ChapterGoneError, Ao3NotFoundError, Ao3UnavailableError } from '../src/sources/ao3/api';
+import { Ao3AdultNoticeError, Ao3ChapterGoneError, Ao3LoggedOutError, Ao3NotFoundError, Ao3RestrictedError, Ao3UnavailableError } from '../src/sources/ao3/api';
+import { resetAo3SessionState, setAo3LoggedIn } from '../src/sources/ao3/session';
 
 const flush = () => act(async () => {});
 
@@ -90,3 +93,34 @@ describe('AO3 errors (policy.8)', () => {
     expect(labels(new Ao3UnavailableError(503)).titles).toEqual(['Try again']);
   });
 });
+
+describe('a work only logged-in AO3 users can see (P6)', () => {
+  beforeEach(() => resetAo3SessionState());
+
+  function view(error: unknown, onRetry = jest.fn()) {
+    let r!: ReactTestRenderer;
+    act(() => {
+      r = create(<ErrorView error={error} onRetry={onRetry} webUrl="https://archiveofourown.org/works/5" />);
+    });
+    const buttons = () => r.root.findAll((n) => typeof n.props.title === 'string' && typeof n.props.onPress === 'function' && typeof n.type !== 'string');
+    const titles = () => [...new Set(buttons().map((b) => b.props.title as string))];
+    return { r, titles, press: (t: string) => buttons().find((b) => b.props.title === t)!.props.onPress(), onRetry };
+  }
+
+  it('offers "Log in to AO3" (AO3’s own page) and "Open on AO3"', () => {
+    const v = view(new Ao3RestrictedError('5'));
+    expect(v.titles()).toEqual(['Log in to AO3', 'Open on AO3']);
+    v.press('Log in to AO3');
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/signin/[source]', params: { source: 'ao3' } });
+    expect(view(new Ao3LoggedOutError('5')).titles()).toEqual(['Log in to AO3', 'Open on AO3']);
+  });
+
+  it('tries the work again by itself once the login lands', () => {
+    const v = view(new Ao3RestrictedError('5'));
+    expect(v.onRetry).not.toHaveBeenCalled();
+    act(() => setAo3LoggedIn('lorem_reader'));
+    expect(v.onRetry).toHaveBeenCalledTimes(1);
+    act(() => v.r.unmount());
+  });
+});
+

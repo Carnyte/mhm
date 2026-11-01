@@ -56,6 +56,7 @@ import * as Notifications from 'expo-notifications';
 import { checkForUpdates, checkStore, dueSources, MAX_QUIET_REDOWNLOADS, runBackgroundCheck, storiesToCheck } from '../src/features/updates';
 import { downloadStory } from '../src/features/downloads';
 import { resetAo3Session } from '../src/sources/ao3/adapter';
+import { setAo3LoggedIn, setAo3LoggedOut } from '../src/sources/ao3/session';
 import { toKey } from '../src/sources/keys';
 import { libraryStore, linkedFileVersion, type LibraryStory } from '../src/state/library';
 import { settingsStore, updateSettings } from '../src/state/settings';
@@ -440,10 +441,7 @@ describe('follow-ups from the fix review', () => {
   it('never re-downloads from the background while logged in to the site', async () => {
     mockSite = { '5': [4, 300] };
     seed([work('5', { chapters: 3, downloaded: true, downloadedVersion: 100, version: 100 })]);
-    const { ao3Source } = jest.requireActual('../src/sources/ao3/adapter') as typeof import('../src/sources/ao3/adapter');
-    const src = ao3Source as { session?: unknown };
-    const had = src.session;
-    src.session = { get: () => ({ loggedIn: true, username: 'me' }) }; // AO3 login arrives in a later phase
+    setAo3LoggedIn('me');
     try {
       await checkForUpdates({ quiet: true, background: true });
       expect(downloadStory).not.toHaveBeenCalled();
@@ -451,7 +449,7 @@ describe('follow-ups from the fix review', () => {
       await checkForUpdates({ quiet: true, keys: ['ao3:5'] });
       expect(downloadStory).toHaveBeenCalled();
     } finally {
-      src.session = had;
+      setAo3LoggedOut();
     }
   });
 

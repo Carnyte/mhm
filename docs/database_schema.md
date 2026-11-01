@@ -65,7 +65,7 @@
   and passes records through `portable()` (drops `local`, `downloaded:false`, strips `ficshelf-doc:` covers);
   `importBackup` accepts v1 files and refuses newer versions.
 - kv keys: `story:<StoryKey>`, `author:<authorKey>`, `bookmarks`, `collections`, `drafts`, `searches`,
-  `lastSync`, `settings`, `listenPositions`, `myUser`, `schemaVersion`, `migration:v2`, `unreadable:<oldKey>`.
+  `lastSync`, `settings`, `listenPositions`, `myUser`, `session:ao3` (`{username, checkedAt}` only: no cookie, token or password; not in backups), `schemaVersion`, `migration:v2`, `unreadable:<oldKey>`.
 
 ---
 

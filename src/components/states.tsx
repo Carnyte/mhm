@@ -3,6 +3,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Linking, StyleSheet, View } from 'react-native';
 import { LoginRequiredError, NeedsWebError } from '../ffn/api';
 import { FfnPageError } from '../ffn/parsers/story';
@@ -13,6 +14,7 @@ import { SOURCE_NAMES } from '../sources/keys';
 import { Ao3AdultNoticeError, Ao3ChapterGoneError, Ao3NotFoundError, Ao3RestrictedError, Ao3UnavailableError } from '../sources/ao3/api';
 import { LocalMissingError } from '../sources/local/adapter';
 import { ComingSoonError } from '../sources/registry';
+import { useAo3Session } from '../hooks/useAo3Session';
 import { useTheme } from '../theme';
 import { errorMessage } from '../utils/format';
 import { Button, T, type IconName } from './ui';
@@ -122,17 +124,7 @@ export function ErrorView({ error, onRetry, webUrl }: { error: unknown; onRetry?
       />
     );
   }
-  if (error instanceof Ao3RestrictedError) {
-    // Logging in to AO3 comes in a later version; until then the work opens on AO3's site.
-    return (
-      <Empty
-        icon="lock-closed-outline"
-        title="Log in to AO3 to read this"
-        message="This work's creator made it visible only to people logged in to AO3. FicShelf can't log in to AO3 yet, so open it on AO3's site."
-        action={{ label: 'Open on AO3', onPress: () => Linking.openURL(error.url).catch(() => {}) }}
-      />
-    );
-  }
+  if (error instanceof Ao3RestrictedError) return <Ao3Restricted error={error} onRetry={onRetry} />;
   if (error instanceof Ao3NotFoundError) {
     return <Empty icon="help-circle-outline" title={error instanceof Ao3ChapterGoneError ? 'Chapter not on AO3' : 'Not on AO3'} message={error.message} action={retry} secondary={openOnAo3} />;
   }
@@ -177,6 +169,46 @@ export function ErrorView({ error, onRetry, webUrl }: { error: unknown; onRetry?
       message={errorMessage(error)}
       action={retry}
       secondary={openOnAo3}
+    />
+  );
+}
+
+/**
+ * A work only logged-in AO3 users can see: Log in to AO3 (AO3's own page), or open it on AO3.
+ * Logging in from here tries the work again by itself.
+ */
+function Ao3Restricted({ error, onRetry }: { error: Ao3RestrictedError; onRetry?: () => void }) {
+  const session = useAo3Session();
+  const was = useRef(session.loggedIn);
+  useEffect(() => {
+    if (session.loggedIn && !was.current) onRetry?.();
+    was.current = session.loggedIn;
+  }, [session.loggedIn, onRetry]);
+  const login = { label: 'Log in to AO3', onPress: () => router.push({ pathname: '/signin/[source]', params: { source: 'ao3' } }) };
+  const open = { label: 'Open on AO3', onPress: () => Linking.openURL(error.url).catch(() => {}) };
+  if (session.loggedIn) {
+    // Logged in, and AO3 still sent the login page: the login has run out.
+    return (
+      <Empty
+        icon="lock-closed-outline"
+        title="AO3 asked you to log in again"
+        message="Your AO3 login may have run out. Log in again, then try once more."
+        action={onRetry ? { label: 'Try again', onPress: onRetry } : login}
+        secondary={onRetry ? login : open}
+      />
+    );
+  }
+  return (
+    <Empty
+      icon="lock-closed-outline"
+      title="Log in to AO3 to read this"
+      message={
+        error.name === 'Ao3LoggedOutError'
+          ? error.message
+          : "This work's creator made it visible only to people logged in to AO3. Log in on AO3's own page and FicShelf opens it here."
+      }
+      action={login}
+      secondary={open}
     />
   );
 }

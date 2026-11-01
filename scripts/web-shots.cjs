@@ -10,7 +10,8 @@
 // LOOK=kindle|classic picks Settings → Look (default: the app's default); ONLY=home,settings takes
 // only those screenshots; EMPTY=1 starts with an empty library; SETTINGS_JSON='{...}' adds settings
 // (e.g. '{"libraryView":"list"}'); SUFFIX=x adds "-x" to the file names; CLICK='Label|Label'
-// taps elements by accessibility label first; TAP='x,y|x,y' taps the screen; SCROLL=600 scrolls. File names: <light|dark>[-<look>]-<route>.png.
+// taps elements by accessibility label first; TAP='x,y|x,y' taps the screen; SCROLL=600 scrolls;
+// AO3_USER=name seeds an AO3 login (kv session:ao3, the username only). File names: <light|dark>[-<look>]-<route>.png.
 
 const http = require('http');
 const fs = require('fs');
@@ -56,7 +57,7 @@ const extra = process.env.SETTINGS_JSON ? JSON.parse(process.env.SETTINGS_JSON) 
 const SETTINGS = { appearance: 'system', ...(look ? { look } : {}), whatsNewSeen: 99, onboarded: true, settingsVersion: 2,
   sources: { ffn: { enabled: true }, ao3: { enabled: true, askAdult: true }, wp: { enabled: false }, local: { enabled: true, clipNoticeSeen: true } }, ...extra };
 const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], ['updates', '/updates'], ['account', '/account'],
-  ['story', '/story/local:s1'], ['reader', '/read/local:s1?ch=4'], ['settings', '/settings'], ['discover', '/discover'], ['more', '/more']];
+  ['story', '/story/local:s1'], ['reader', '/read/local:s1?ch=4'], ['settings', '/settings'], ['discover', '/discover'], ['more', '/more'], ['ao3account', '/account/ao3']];
 
 (async () => {
   await new Promise((r) => server.listen(0, r));
@@ -64,15 +65,16 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   const executablePath = process.env.CHROMIUM_PATH || ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium'].find((p) => fs.existsSync(p));
   const browser = await chromium.launch({ executablePath });
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: scheme, hasTouch: !!process.env.TAP });
-  await ctx.addInitScript(([settings, stories, para]) => {
+  await ctx.addInitScript(([settings, stories, para, ao3User]) => {
     localStorage.setItem('ficshelf:settings', JSON.stringify(settings));
     localStorage.setItem('ficshelf:schemaVersion', '2');
+    if (ao3User) localStorage.setItem('ficshelf:session:ao3', JSON.stringify({ username: ao3User, checkedAt: Date.now() }));
     if (stories === null) return;
     for (const [k, v] of Object.entries(stories)) {
       localStorage.setItem(`ficshelf:story:${k}`, JSON.stringify(v));
       for (let n = 1; n <= v.chapters; n++) localStorage.setItem(`ficshelf:ch:${k}:${n}`, Array.from({ length: 14 }, () => `<p>${para.repeat(3)}</p>`).join(''));
     }
-  }, [SETTINGS, process.env.EMPTY ? null : STORIES, PARA]);
+  }, [SETTINGS, process.env.EMPTY ? null : STORIES, PARA, process.env.AO3_USER || '']);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('page error:', String(e).slice(0, 200)));
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;

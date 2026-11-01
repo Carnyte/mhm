@@ -1,6 +1,7 @@
 // More (Kindle-style look, docs/ui_rules.md): the account, background clipping, bookmarks,
 // collections, drafts, import, new chapter alerts, settings and help, as calm grouped rows.
-// Everything the classic Account tab had stays one tap further in (FanFiction.net account).
+// Everything the classic Account tab had stays one tap further in (FanFiction.net account); the
+// AO3 account has its own screen (src/app/account/[source].tsx).
 
 import { router } from 'expo-router';
 import { ScrollView, View } from 'react-native';
@@ -8,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Row, Section, T } from '../../components/ui';
 import { useClipJobs } from '../../features/clipJobs';
 import { pickStoryFiles } from '../../features/importPicker';
+import { useAo3Session } from '../../hooks/useAo3Session';
 import { useLibrary } from '../../state/library';
 import { useSession } from '../../state/session';
 import { useSettings } from '../../state/settings';
@@ -17,6 +19,7 @@ export default function MoreScreen() {
   const c = useTheme();
   const insets = useSafeAreaInsets();
   const session = useSession();
+  const ao3 = useAo3Session();
   const bookmarks = useLibrary((s) => s.bookmarks.length);
   const collections = useLibrary((s) => s.collections.length);
   const drafts = useLibrary((s) => s.drafts.length);
@@ -39,6 +42,13 @@ export default function MoreScreen() {
           subtitle={session.loggedIn ? `Signed in as ${session.username ?? 'you'}` : 'Not signed in'}
           value={session.loggedIn ? undefined : 'Sign in'}
           onPress={() => router.push('/fanfiction-account')}
+        />
+        <Row
+          icon="person-circle-outline"
+          title="AO3 account"
+          subtitle={ao3.loggedIn ? `Signed in as ${ao3.username ?? 'you'}` : 'Not signed in'}
+          value={ao3.loggedIn ? undefined : 'Sign in'}
+          onPress={() => router.push({ pathname: '/account/[source]', params: { source: 'ao3' } })}
         />
       </Section>
 

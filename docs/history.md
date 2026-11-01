@@ -79,7 +79,7 @@ every open question with its default. The user's next install is T2 (prebuild) b
 | id | question | recommended default | status |
 |---|---|---|---|
 | OQ-1 | Accept Wattpad's terms risk (personal use only, "don't scrape") for your own account? | Yes, as designed (P4 policies). Alternative: online only | **Unanswered.** Notice in What's new and Wattpad settings; Wattpad off until turned on |
-| OQ-2 | AO3 account (invite-only) and Wattpad account? | Build read-only phases regardless; P6 only with an AO3 account; P7 only with a Wattpad account + the ≤10-request check | **Unanswered.** Ask before P6 / P7 |
+| OQ-2 | AO3 account (invite-only) and Wattpad account? | Build read-only phases regardless; P6 only with an AO3 account; P7 only with a Wattpad account + the ≤10-request check | **AO3: answered 2026-11-01** by the request "Build ao3 login" (P6 started). Wattpad: unanswered, ask before P7 |
 | OQ-3 | Order of work | — | **Answered 2026-10-08**: AO3 first, reading before login, import before Wattpad. **Updated 2026-10-21**: P-CLIP next, before Wattpad. **Updated 2026-10-27**: P-CLIP2 (automatic clipping) is the top priority; nothing Wattpad until the user says clipping is perfect |
 | OQ-4 | Tab bar order | Keep Browse / Search / Library / Updates / Account; cross-source Continue reading on Browse | Default in effect |
 | OQ-5 | AO3 adult content | Ask before Mature / Explicit / Not Rated, "Always show" in Settings | Built (`src/features/adultGate.ts`) |
@@ -103,6 +103,7 @@ every open question with its default. The user's next install is T2 (prebuild) b
 
 | date | commit | change |
 |---|---|---|
+| 2026-11-01 | (this commit) | P6 started at the user's request ("Build ao3 login", 2026-11-01): login on AO3's page, session, restricted works, logout, AO3 account screen; social items next |
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
 | 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |

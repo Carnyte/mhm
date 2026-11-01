@@ -7,8 +7,9 @@
 //  - work and chapter pages always ask with view_adult=true (the app asks before adult works);
 //  - only AO3's own hosts are fetched, and never a /cdn-cgi/ link (Cloudflare's hidden bot trap);
 //  - the official download's address is only ever the one a work page links, never built;
-//  - a restricted work's login redirect is reported as such (logging in comes later), and the
-//    download host is never asked for a restricted work;
+//  - a restricted work's login redirect is reported as such (Ao3RestrictedError: the screen offers
+//    "Log in to AO3"), and the download host is never asked for a restricted work;
+//  - every page fetched tells the AO3 session whether the login still holds (src/sources/ao3/session.ts);
 //  - fandom lists and the media page are cached for a week.
 
 import { httpCache } from '../../db/kv';
@@ -21,6 +22,7 @@ import { parseAutocomplete, parseMedia, parseMediumFandoms, type Ao3Fandom, type
 import { parseNavigate, type Ao3Navigate } from './parsers/navigate';
 import { parseSeries, type Ao3Series } from './parsers/series';
 import { parseWorkPage, type Ao3WorkPage } from './parsers/work';
+import { noteAo3Page } from './session';
 import {
   AO3_ORIGIN,
   autocompleteUrl,
@@ -40,12 +42,23 @@ import {
 
 /** Only visible to logged-in AO3 users (AO3 redirected to its login page). */
 export class Ao3RestrictedError extends Error {
-  constructor(public workId?: string) {
-    super('This work is only available to people logged in to AO3. Open it on AO3 to read it there.');
+  constructor(
+    public workId?: string,
+    message = 'This work is only available to people logged in to AO3. Log in to AO3 in FicShelf, or open it on AO3’s site.',
+  ) {
+    super(message);
     this.name = 'Ao3RestrictedError';
   }
   get url(): string {
     return this.workId ? workUrl(this.workId) : AO3_ORIGIN;
+  }
+}
+
+/** AO3 ended the login (it sent the app to /lost_cookie): logging in again fixes it. */
+export class Ao3LoggedOutError extends Ao3RestrictedError {
+  constructor(workId?: string) {
+    super(workId, 'AO3 logged FicShelf out (its login cookie went missing). Log in to AO3 again.');
+    this.name = 'Ao3LoggedOutError';
   }
 }
 
@@ -115,6 +128,7 @@ export function ao3Url(pathOrUrl: string): string {
 }
 
 const isLoginRedirect = (url: string) => /^https:\/\/archiveofourown\.org\/users\/login\b/i.test(url);
+const isLostCookie = (url: string) => /^https:\/\/archiveofourown\.org\/lost_cookie\b/i.test(url);
 
 export interface Ao3RequestOpts extends FetchOpts {
   timeoutMs?: number;
@@ -133,7 +147,11 @@ export async function ao3Fetch(pathOrUrl: string, o: Ao3RequestOpts = {}): Promi
       headers: { Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8' },
     }),
   );
-  if (isLoginRedirect(r.url)) throw new Ao3RestrictedError(url.match(/\/works\/(\d+)/)?.[1]);
+  // Every page says whether the AO3 login still holds (a redirect to the login page means it doesn't).
+  if (r.status < 500 && /^https:\/\/archiveofourown\.org(?:[/?#]|$)/i.test(r.url)) noteAo3Page(r.url, r.text);
+  const workId = url.match(/\/works\/(\d+)/)?.[1];
+  if (isLostCookie(r.url)) throw new Ao3LoggedOutError(workId);
+  if (isLoginRedirect(r.url)) throw new Ao3RestrictedError(workId);
   if (r.status === 404 || r.status === 410) throw new Ao3NotFoundError(url);
   if (r.status >= 500) throw new Ao3UnavailableError(r.status);
   if (r.status >= 400) throw new Error(`AO3 answered with error ${r.status}.`);

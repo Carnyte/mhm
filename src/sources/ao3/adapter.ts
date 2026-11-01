@@ -1,4 +1,6 @@
-// AO3 as a Source (see src/sources/types.ts), without logging in:
+// AO3 as a Source (see src/sources/types.ts). Logging in is optional (src/sources/ao3/session.ts):
+// the session cookie from AO3's own login page rides along with every request, so restricted
+// works open like any other once logged in.
 //
 //  - getStory: the work page (metadata, chapter ids, the download link, chapter 1) and, for
 //    multi-chapter works, /navigate for the chapter dates;
@@ -35,6 +37,7 @@ import {
   fetchWorksList,
   isAo3Trouble,
 } from './api';
+import { logoutNative } from './account';
 import { UPDATE_BATCH } from './constants';
 import { ao3Chapter, ao3Info, ao3Meta } from './map';
 import { parseDownload } from './parsers/download';
@@ -42,6 +45,7 @@ import type { Ao3Listing } from './parsers/listing';
 import type { Ao3Navigate } from './parsers/navigate';
 import type { Ao3Series } from './parsers/series';
 import type { Ao3Chapter, Ao3WorkPage } from './parsers/work';
+import { getAo3Session, subscribeAo3Session } from './session';
 import { AO3_ORIGIN, parseAo3Link, workUrl, type Ao3Filters, type Ao3Search } from './urls';
 
 export const AO3_BASE_URL = AO3_ORIGIN + '/';
@@ -135,8 +139,13 @@ function idsOf(info: StoryInfo): string[] | undefined {
   return ids.length && ids.every(Boolean) ? (ids as string[]) : undefined;
 }
 
+const loggedIn = () => getAo3Session().loggedIn;
+
+/** A work seen locked in a listing only bounces off AO3's login page while logged out. */
+const knownLocked = (remoteId: string) => restrictedIds.has(remoteId) && !loggedIn();
+
 async function getStory(remoteId: string, o: FetchOpts = {}): Promise<StoryInfo> {
-  if (restrictedIds.has(remoteId)) throw new Ao3RestrictedError(remoteId);
+  if (knownLocked(remoteId)) throw new Ao3RestrictedError(remoteId);
   const page = await fetchWorkPage(remoteId, o);
   // The chapter dates are only on /navigate (small, and not counted as a visit).
   const nav =
@@ -152,7 +161,7 @@ async function navigateIds(remoteId: string, o: FetchOpts): Promise<string[]> {
 }
 
 async function getChapter(remoteId: string, ch: { number: number; remoteId?: string }, o: FetchOpts = {}): Promise<ChapterContent> {
-  if (restrictedIds.has(remoteId)) throw new Ao3RestrictedError(remoteId);
+  if (knownLocked(remoteId)) throw new Ao3RestrictedError(remoteId);
   let cid = ch.remoteId ?? chapterIds.get(remoteId)?.[ch.number - 1];
   // Whether `cid` came from AO3 during this call (no point asking for it again).
   let fresh = false;
@@ -285,8 +294,6 @@ function compare(s: LibraryStory, m: StoryMeta): UpdateResult {
     redownload: !!s.downloaded && !!version && !fromFile && version !== s.downloadedVersion,
   };
 }
-
-const loggedIn = () => !!ao3Source.session?.get().loggedIn;
 
 async function checkUpdates(stories: LibraryStory[], o: UpdateCheckOpts = {}): Promise<UpdateResult[]> {
   const opts: FetchOpts = { quiet: o.quiet, signal: o.signal, priority: o.priority ?? 'background' };
@@ -421,7 +428,7 @@ export const ao3Source: Source = {
     search: true,
     download: true,
     updates: true,
-    login: false,
+    login: true,
     follow: false,
     endorse: false,
     discuss: 'none',
@@ -440,5 +447,17 @@ export const ao3Source: Source = {
   search: async (q, page, o) => {
     const r = await searchWorks({ ...(q as Ao3Search), query: q.text || (q as Ao3Search).query }, page, o);
     return { items: r.items, lastPage: r.lastPage, total: r.total };
+  },
+  session: {
+    get: () => {
+      const s = getAo3Session();
+      return { loggedIn: s.loggedIn, username: s.username };
+    },
+    subscribe: subscribeAo3Session,
+    signInRoute: { pathname: '/signin/[source]', params: { source: 'ao3' } },
+    // Native requests only; the sign-in screen's logout mode also logs the WebView out.
+    logout: async () => {
+      await logoutNative();
+    },
   },
 };

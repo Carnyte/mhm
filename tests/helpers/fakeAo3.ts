@@ -9,6 +9,8 @@ export interface FakeRequest {
   url: string;
   priority?: string;
   method?: string;
+  body?: string;
+  headers?: Record<string, string>;
 }
 
 export interface FakeAnswer {
@@ -46,8 +48,8 @@ export function httpModule() {
   const core = jest.requireActual('../../src/net/httpCore');
   return {
     ...core,
-    httpText: async (url: string, opts: { priority?: string; method?: string } = {}) => {
-      state.requests.push({ url, priority: opts.priority, method: opts.method });
+    httpText: async (url: string, opts: { priority?: string; method?: string; body?: string; headers?: Record<string, string> } = {}) => {
+      state.requests.push({ url, priority: opts.priority, method: opts.method, body: opts.body, headers: opts.headers });
       for (const r of state.routes) {
         const a = r(url);
         if (a === undefined) continue;

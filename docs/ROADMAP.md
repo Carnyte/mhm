@@ -24,7 +24,7 @@ its spec in the same commit, and refresh `ACTIVE_HANDOFF.md`.
 | 1 | P-CLIP2 | "Clip & next", "Clip the next N chapters" (auto-clip), Clip polish | done (device check pending; AC-11 polish waits for the user's reports) | P-CLIP | no (but the next install is T2 because of ca4749f) | none: the user accepted the terms risk |
 | 1b | P-CLIP3 | "Clip a whole story" in the background; Clip for more sites | done (device check pending) | P-CLIP2 | no | none (approved 2026-10-29) |
 | 2 | P4 | Wattpad reading, no login | on hold (user, 2026-10-27: "we're not doign anything wattpad until we perfect clipping feature") | P1–P3 (done) | no | the user says clipping is perfect; then OQ-1 (default yes) |
-| 3 | P6 | AO3 login and social | pending | P3 (done) | no | user has an AO3 account (invite-only) |
+| 3 | P6 | AO3 login and social | in_progress (login built 2026-11-01, device check pending; social AO3L-3/4/5/7 next) | P3 (done) | no | user has an AO3 account (asked for the login 2026-11-01) |
 | 4 | P7 | Wattpad login and social | on hold (as P4) | P4 | no | Wattpad account + the ≤10-request endpoint check |
 | 5 | P8 | Polish and optional extras | pending (per item, user interest first) | P4 for "All" search | no (share extension: yes) | per item |
 | 6 | P-IMPORT-X | Import extras: EPUB export, `.ficshelf` backup, FicHub, share extension | only-if-asked | P5 | `.ficshelf` Open-in and share extension: yes | user request |
@@ -70,9 +70,10 @@ Gate: the user says clipping is perfect, then OQ-1 (terms risk, default yes). St
 download, updates through Wattpad's public endpoints; paid parts fail closed.
 Spec: `docs/wattpad.md` §5.
 
-### P6: AO3 account and social (pending)
-Gate: the user has an AO3 account (invite-only). Login on AO3's page, restricted works, kudos,
-comments, subscriptions, bookmarks, history. Spec: `docs/ao3.md` §6.
+### P6: AO3 account and social (in progress)
+Gate: the user has an AO3 account (invite-only); they asked for the login on 2026-11-01. Built:
+login on AO3's page, the session, restricted works, logout, the AO3 account screen. Next: kudos,
+comments, subscriptions, bookmarks, Marked for Later, library sync. Spec: `docs/ao3.md` §6.
 
 ### P7: Wattpad account and social (on hold, after P4)
 Purchased parts (never bought by the app), library and reading lists, votes, comments. Gate: a
