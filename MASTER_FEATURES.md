@@ -14,7 +14,7 @@ base_commit: 5371b6d
 commits_at_base: 178 (137 unrelated legacy commits + 41 FicShelf commits from 695e10d)
 updated: 2026-10-29
 next_work: FEATURES.md
-next_task: P-CLIP3 + P-CLIP2 device checks (BG-A1..A5, AC-A1..A6), then AC-11 polish (scroll-loaded text first) from the user's reports; no Wattpad until clipping is perfect
+next_task: P-UI1 Kindle-style look (FEATURES.md §3a), FIRST; then the clipping device checks and polish; no Wattpad until clipping is perfect
 stack:
   expo: 57.0.31
   expo_modules_core: 57.0.24
@@ -86,6 +86,9 @@ single user sideloads it from source.
   **Background clipping** (P-CLIP3, built 2026-10-29, tests only so far): paste a first chapter →
   "Clip the whole story"; a hidden in-app browser clips it while the app is open, asking only for
   logins, locks and checks (banner → the page slides up → Continue).
+- **Next: P-UI1, a Kindle-style look** (preview approved 2026-11-01: "I like this a lot better"):
+  cover-first Home and Library, generated covers, calm story page, hidden reader controls, four tabs,
+  behind a Settings switch. Spec and steps: FEATURES.md §3a; the preview: design/kindle-preview/index.html.
 - **Wattpad**: link parsing only; reading (P4) is **on hold** until the user says clipping is perfect.
 
 Goals and principles (from the user's requests and the design):
@@ -302,6 +305,7 @@ All paths relative to the repo root. Checked at `5cc19e8`.
 | `eslint.config.js` | `eslint-config-expo/flat`; ignores `dist/*`, `node_modules/*`, `.expo/*` |
 | `plugins/withoutPushEntitlement.js` | deletes `aps-environment` so a free Personal Team can sign. Must stay **first** in `plugins` (mods run in reverse order, so first runs after expo-notifications) |
 | `assets/` | icons, splash, `assets/audio/silence.wav` (60 s silent loop holding the playback session) |
+| `design/kindle-preview/index.html` | the approved Kindle-style preview (a self-contained page; the spec for P-UI1) |
 | `README.md`, `PLAN.md`, `INSTALL.md` | features + verification table + known limitations; the original FFN feature plan; the step-by-step install guide |
 | `FEATURES.md`, `MASTER_FEATURES.md` | handoff: next work; this file |
 | `.gitignore` | `/ios`, `/android` (made by prebuild; configure through `app.json`), `.expo/`, `dist/`, credentials, build outputs |
@@ -429,6 +433,7 @@ the user's next install is a prebuild.
 - `live-check.ts`: FFN via the real `BRIDGE_SCRIPT` in Chromium (playwright-core; `CHROMIUM_PATH`, `xvfb-run -a` headless, `WAIT` 12000 ms, uses `HTTPS_PROXY`; 17 checks, ~20+ requests, no explicit budget; desktop Linux UA, so it can't catch iPhone-only behaviour). `--source ao3`: plain fetch, desktop Safari UA (`Version/26.0 Safari/605.1.15`), `AO3_MAX_REQUESTS = 5`, `AO3_GAP_MS = 3000`; checks work page (view_adult), `/navigate`, id search (ids 3171550 and 19893115), HEAD of the official download (must land on `download.archiveofourown.org`), `/media`; `AO3_WORK=<id>` overrides; prints structure only. **Any other `--source` value silently runs FFN.**
 - `dev-proxy.ts` (web harness, port 8787: `/status`, `/reload`, `/fetch` → live FFN via Chromium; `/http` forwards only archiveofourown.org, wattpad.com, fichub.net). `browser.ts` (shared Playwright helper).
 - `synthesize-fixture.ts`: `npx tsx scripts/synthesize-fixture.ts in.html tests/fixtures/ao3/out.html [--blurbs N] [--chapters N] [--paragraphs N]` (§8.4).
+- `web-shots.cjs`: phone-sized screenshots of a web export (`node scripts/web-shots.cjs <export dir> <shots dir> [light|dark]`), seeding 3 invented clipped stories into the web build's localStorage; for checking UI changes by eye (P-UI1).
 - `clip-check.ts`: Clip's capture script in headless Chromium (playwright-core, `/opt/pw-browsers/chromium-1194`) on synthetic pages, then `parseClip`; then the real `AutoClip` runner with the capture and Next scripts on three synthetic sites served by `context.route` (an in-place SPA reader ending in a locked episode, a rel=next site, a bot-check page), virtual clock; no network; `CLIP_DUMP=<file>` writes the captured page; 34/34 at `e1b08ba`. Live-check rejects unknown `--source` values since `1cca7be`.
 
 ---
@@ -1492,6 +1497,7 @@ User decisions in time order:
 - 2026-10-21: import declared ready to install (T2); asked about a Novelpia page; approved Clip ("I want you to do this, and hopefully any future website"); asked for these handoff files (FEATURES.md for next phases, MASTER_FEATURES.md for full context and lessons; "put these two files in my downloads folder").
 - 2026-10-27 (after P-CLIP2 was installed): "after clipping passes, the chapters don't show up until i leave the book and reclick on it, please add a swipe up refresh" → `2d33d0f` (auto-reload + pull to refresh).
 - 2026-10-29: "prioritize in production and afterwards work on making any website available for clipping … just you paste the link of the first chapter … everything is done in the background … if there is a problem where it requires the user to login to do a security check it will prompt that for the user, and when that is resolved, it will return back to its processes" → P-CLIP3.
+- 2026-10-31: "I wish for something similar to amazoin's kindle. That's the best reference I want you to have for overall GUI design" → review of the current screens; Claude recommended a preview first, then building behind a switch; "Go ahead with the preview" → design/kindle-preview/index.html (claude.ai artifact); 2026-11-01: "I like this a lot better, can you create a handoff … Let this current task be the first phase to be dealt with before anything else" → P-UI1, first phase.
 - 2026-10-29 / 30: asked for "something google like"; Material You with the reader theme's colours was built (`72a9e95`), then reverted the next day ("Only undoing the change of the gui"). Keep the original look; ask before any restyle.
 - 2026-10-27: Clip built; the 7-day profile had expired (reinstall over it); Xcode 27 / Swift 6.4 build errors fixed in two rounds; "perfect it works perfectly now"; asked for non-manual clipping; picked "Clip & next" to start and "Clip the next N chapters" as the main feature, "regardless of TOS"; "we're not doign anything wattpad until we perfect clipping feature"; asked for these files to be updated before clearing context.
 
@@ -1561,6 +1567,16 @@ User decisions in time order:
 ---
 
 ## 13. Next work
+
+**First: P-UI1 (FEATURES.md §3a)**, the Kindle-style look the user approved as a preview
+(design/kindle-preview/index.html; open it in a browser, its `<style>` holds every value). Build
+it behind Settings → Look (Kindle-style / Classic), in the small steps listed there, one commit
+each, sending phone-sized screenshots after each step (`npx expo export --platform web` +
+`node scripts/web-shots.cjs`). JS only (T1). The user reverted a restyle once (Material You,
+2026-10-30) because they saw it only when finished: match the preview, keep classic one tap away,
+show progress step by step.
+
+Then:
 
 P-CLIP3 (background clipping) is built and pushed (not yet on the phone; T1, no prebuild, if the
 user already installed the P-CLIP2 build with its prebuild). Ask them to try BG-A1..A5 (FEATURES

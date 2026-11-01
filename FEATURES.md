@@ -14,10 +14,12 @@ base_commit: 5371b6d
 base_commit_date: 2026-10-29
 commits_at_base: 178
 updated: 2026-10-29
-next_task: P-CLIP3 device check (BG-A1..A5), then P-CLIP2 AC-A / AC-11 from the user's reports
+next_task: P-UI1 (Kindle-style look; FIRST, before anything else — §3a)
 companion: MASTER_FEATURES.md
 status:
   summary: >-
+    NEXT: P-UI1 (§3a), a Kindle-style look built from the approved preview
+    (design/kindle-preview/index.html) behind a Settings switch; do it before anything else.
     The FanFiction.net client, AO3 reading without login and file import (EPUB / HTML / TXT /
     Markdown, stored as the 'local' source) are built, reviewed, verified and pushed. No pending
     phase has been started. "Clip this page" for any website (approved 2026-10-21) was built on
@@ -39,7 +41,7 @@ status:
     - P-CLIP2 Clip & next, Clip the next chapters, What Clip sees (device check pending)
     - P-CLIP3 background clipping ("Clip a whole story"), shadow-root / frame text (device check pending)
     - Xcode 27 / Swift 6.4 build fix (570b9ad usePrecompiledModules false; ca4749f Expo patches)
-  pending_in_order: [P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
+  pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
     jest: "63 suites, 1230 passed + 1 todo (1231 total)"
@@ -130,8 +132,9 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
    - If Bash calls fail with "auto mode classifier gave no verdict", that's transient: retry once,
      use Read / Grep / Glob meanwhile, and don't burn ten failures in a row (the turn stops).
 6. **Do the preflight items** (§1.1). They are small; commit them with the first phase commit or on their own.
-7. **Pick the task**: the first phase in §3 whose status is `pending` (P-CLIP2 at this writing; the
-   user's priority until they say clipping is perfect; P4 / P7 Wattpad are on hold). A new
+7. **Pick the task**: **P-UI1 (§3a) comes first** (user, 2026-11-01: "Let this current task be the
+   first phase to be dealt with before anything else"). After it: the first phase in §3 whose
+   status is `pending` (clipping device checks and polish; P4 / P7 Wattpad are on hold). A new
    message from the user overrides this order. Tell the user in one or two plain lines what you are
    picking up.
 8. **Work the phase**:
@@ -231,6 +234,7 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 
 | order | id | title | status | depends_on | prebuild for the user | gate |
 |---|---|---|---|---|---|---|
+| **-1 (first)** | **P-UI1** | **Kindle-style look behind a "New look" switch (§3a)** | **pending: next, before everything else (user, 2026-11-01)** | none | no | none: preview approved |
 | 0 | P-CLIP | "Clip this page" for any website | done (works on the phone 2026-10-27; CLIP-A items not reported one by one) | P5 (done) | no (https only) | none |
 | 1 | P-CLIP2 | "Clip & next", "Clip the next N chapters" (auto-clip), Clip polish | done (device check pending; AC-11 polish waits for the user's reports) | P-CLIP | no (but the next install is T2 because of ca4749f) | none: the user accepted the terms risk |
 | 1b | P-CLIP3 | "Clip a whole story" in the background; Clip for more sites | done (device check pending) | P-CLIP2 | no | none (approved 2026-10-29) |
@@ -243,6 +247,156 @@ Status values: `pending`, `in_progress`, `done`, `blocked (<reason>)`, `optional
 
 The design notes numbered phases differently (Phase 4 = Wattpad, Phase 5 = import, though import
 was built first; old workflow scripts are named `phase5-*`). Use the ids above, not numbers.
+
+---
+
+## 3a. P-UI1: Kindle-style look (FIRST PHASE: do this before anything else)
+
+```yaml
+id: P-UI1
+title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
+status: pending (approved preview; nothing built in the app yet)
+order: 0
+next_task: true
+depends_on: [nothing; every feature it restyles is built]
+native_rebuild: no (JavaScript and font assets only; T1). Keep it that way: no new native modules.
+reference:
+  preview_file: design/kindle-preview/index.html   # open it in any browser; it IS the spec
+  preview_link: https://claude.ai/artifact/SjAqJUtkKqewgbCM31Q3oH   # the same page, owned by the user
+approved_by_user:
+  - date: 2026-10-29
+    quote: "I think the gui can be more user friendly, if not more refined. I want something google like"
+    outcome: Material You was built (72a9e95) and REVERTED on 2026-10-30 ("Only undoing the change of the gui"). Do not bring Material You back.
+  - date: 2026-10-31
+    quote: "what are things that needs to be improved for user experience and professionalism as current app design. I wish for something similar to amazoin's kindle. That's the best reference I want you to have for overall GUI design"
+  - date: 2026-11-01
+    quote: "Go ahead with the preview"  # after Claude recommended: preview first, then build behind a switch
+  - date: 2026-11-01
+    quote: "I like this a lot better, can you create a handoff to seamlessly allow the next agent with no context continue building this. Let this current task be the first phase to be dealt with before anything else"
+lessons_from_the_revert: >-
+  The user rejected a restyle they first saw only once it was finished and all-at-once. So: build
+  behind a Settings switch (classic look stays one tap away), ship in the small steps below, and
+  after each step send screenshots (scripts/web-shots.cjs) and say what to look at on the phone.
+  Match the preview; do not invent a different style. Ask before deviating from it.
+```
+
+### why
+- Today's app reads like a settings screen: small grey labels, a border on every card, five or
+  more accent colours, a book-icon placeholder instead of covers, a reader with nine always-visible
+  controls. The user wants Kindle: cover-first, calm, white space, one accent, big type.
+
+### the design (read off design/kindle-preview/index.html; its `<style>` holds every value)
+- **Tokens** (light / dark): paper `#FFFFFF` / `#0F1113` (background); wash `#F4F4F2` / `#181B1E`
+  (grouped lists, hero card, search field); ink `#15171A` / `#ECEDEF` (text, progress fill,
+  selected chips); ink-2 `#5D636B` / `#9CA2AA` (secondary text); rule `#E4E5E7` / `#262A2E`
+  (hairlines); accent = FicShelf navy `#1F3A5F` / `#9DB9E6` (primary buttons and text links only).
+  No other accent. Site colours (FFN blue, AO3 red) only as tiny labels on covers, never fills.
+- **Type**: Literata (Google Fonts, OFL) for anything the book says: book titles on Home, the
+  story page and the list view, the reader's default page font, the wordmark "FicShelf". The
+  phone's own font (SF) for every control. Sizes used: 28 bold (screen titles), 26 / 21 serif
+  semibold (book titles), 19 bold (row heads), 15–16 (body), 13 (secondary), 11 (tab labels,
+  progress %). No ALL-CAPS section labels except the tiny "CONTINUE READING" eyebrow.
+- **Generated covers** (`cover()` in the preview): every story without a real cover image gets
+  one. Colour = `CLOTH[fnv1a(title) % 9]` from `#6B2E2E #2F4A3A #22344F #7A5B2A #4A3358 #3D4A55
+  #7B3F2B #2E5257 #5A4636`; aspect 2:3; corners 4/6px (spine side 4); a spine shade (dark→clear
+  gradient over the left 7–14%); a 1px frame inset 7% in cream at 38%; an optional cream band at
+  62% height when fnv1a(author) is odd; top: site label (FFN / AO3 / CLIPPED / EPUB) in small caps;
+  middle: title in Literata 600, cream `#F3EBDD`, size by length (w×0.16 up to 16 chars, ×0.135 up
+  to 26, else ×0.115); bottom: author in small caps. A "NEW" flag hangs from the top right when the
+  story has new chapters. A story WITH a real cover keeps it (FFN / AO3 / EPUB covers).
+- **Tabs (4)**: Home, Library, Discover, More. Updates stops being a tab (it becomes Home's "New
+  chapters" row, the Library's "New" filter and a More row); Search merges into Discover.
+- **Home**: wordmark "FicShelf" + search icon (→ Discover). Hero card (wash, radius 18): cover 116
+  wide, "CONTINUE READING", title (serif 21), author, progress bar (3px, ink fill), "Chapter 4 of 12
+  · 34%", "12 min left in chapter", buttons Continue (navy) and Listen (outlined icon). Then rows,
+  each with a "See all"-style link: **New chapters** (covers with NEW flags, "2 new · Ch. 30"),
+  **Clipping now** (background jobs, pulsing dot + "Chapter 37 · clipping", Details → the jobs
+  screen), **Recently added**. Rows with nothing in them are left out. An empty library shows a
+  short welcome with "Clip a whole story", "Import a file" and "Browse FanFiction.net / AO3".
+- **Library**: title + search + "+" (one sheet: Clip a whole story, Import a file, Open a link).
+  Filter chips (one row, scrolls): All, New · n, Downloaded, Unread, In progress, Finished,
+  Collections; selected chip = ink fill. Sort button ("Recent") + grid/list toggle. Grid: 3 across,
+  covers ~104 wide, under each a progress bar with % (or "Unread" / "Finished"), a cloud icon when
+  not downloaded. List: cover 52, serif title, author, "34% · Chapter 4 of 12 · 2 new".
+  Today's other shelves (Follows, Favorites, Authors, Imported, Saved) must stay reachable: put them
+  in the sort/filter menu or as extra chips after Collections; FFN account sync stays in "+"/menu.
+- **Story page**: back + ⋯. Centred cover 168 wide, title serif 26, author (tappable when the site
+  has author pages), small grey tags (fandom, site, rating), one line "12 chapters · 48K words ·
+  In progress · Updated 2 days ago". Full-width navy button "Continue · Chapter 4" / "Start
+  reading" / "Read again", progress line under it. Four labelled icons: Listen, Download(ed),
+  Collection, Share. Description in serif, clamped to 4 lines with "Read more". "Contents ›" opens
+  a sheet with every chapter (read ✓, current "Reading"). "Details" as a two-column list. Keep
+  everything the site slots give today (src/sources/*/ui.ts storyActions: FFN follow / favourite,
+  reviews, AO3 tag groups, warnings, series row, kudos/stats where they matter) below Details or
+  in ⋯, the adult gate, download progress, the background-clipping line.
+- **Reader**: page fills the screen; controls hidden. A faint footer: "12 min left in chapter" left,
+  story % right. Tap left / right 30% = previous / next page (paged mode); tap the middle = show /
+  hide controls. Top bar: back, story title (centred), Aa, search, bookmark. Bottom panel: a
+  scrubber with a tick per chapter, "Chapter 4 of 12 · 12 min left" and "Page 1 of 4 · 25%", then
+  Contents, Previous, Listen, Next. Aa sheet: four page colours White / Sepia / Green / Black (map to
+  READER_THEMES light / sepia / mint / black), text size − / +, font Literata / Georgia / System,
+  Turn pages: Pages / Scroll, and "More settings" opening today's ReaderSettingsPanel (spacing,
+  margins, width, brightness, read aloud). Chapter heading once: small "CHAPTER 4" over the
+  chapter's own title (today it prints "4. Chapter 4"; src/app/read/[id].tsx ~l.285 builds
+  `${chapter}. ${title}`).
+- **Discover**: search field ("Search stories, authors or paste a link"; today's search screen
+  behind it), FanFiction.net / AO3 segmented switch, a 2-column grid of categories (FFN's 9, AO3's
+  media), today's browse screens behind them, and a callout "Clip a whole story" (→ /open?clip=1).
+- **More**: grouped rows on wash: FanFiction.net account (sign in / status); Clipping in the
+  background (count), Bookmarks, Collections, Drafts, Import a file; New chapter alerts (the old
+  Updates screen with Check now), Settings, Help and about. Connection details stay in Settings.
+
+### build steps (one commit each; screenshots to the user after each, "hold off" not needed)
+- [ ] UI-0 Read this section, open design/kindle-preview/index.html in Chromium (playwright) at
+      390×844 and look at every screen; read src/theme/index.ts, src/components/ui.tsx,
+      src/components/Cover.tsx, StoryCard.tsx, src/app/(tabs)/*, src/app/story/[id].tsx,
+      src/app/read/[id].tsx, src/reader/template.ts, src/components/ReaderSettingsPanel.tsx.
+- [ ] UI-1 The switch: `AppSettings.look?: 'kindle' | 'classic'` (default 'kindle' for everyone
+      once UI-2..UI-4 exist; until then default 'classic' so nothing half-built shows), Settings →
+      Appearance row "Look: Kindle-style / Classic", `useLook()` hook. Classic must stay exactly
+      today's app (existing screen tests run against it).
+- [ ] UI-2 Tokens and fonts: a `KINDLE_LIGHT` / `KINDLE_DARK` Palette in src/theme (same field
+      names as today so screens keep working; ink as `primary`/`text`, navy as `accent`), chosen by
+      `useTheme()` when look = kindle. Literata: add the TTF files to assets/fonts (OFL licence
+      file next to them) and load with expo-font's `useFonts` in the root layout (expo-font is
+      already installed: JS only, no prebuild). Reader page font: embed Literata as an `@font-face`
+      data: URI in the reader HTML (src/reader/template.ts) and add `font-src data:` to LOCAL_CSP
+      (src/sources/local/adapter.ts) or the local reader will block it.
+- [ ] UI-3 Generated covers: a `GeneratedCover` component (pure layout from title / author / site;
+      the spine shade can be two or three Views with opacity, no gradient library needed) used by
+      Cover.tsx whenever there's no image (and for local stories without a cover). A pure
+      `coverColour(title)` with a test (stable, spread across all 9 colours).
+- [ ] UI-4 Tabs: Home, Library, Discover, More when look = kindle (Tabs.Screen `href: null` hides
+      a tab; keep the `updates`, `search`, `account` routes alive: notifications push `/updates`,
+      src/components/miniPlayerLayout.ts lists tab routes). Classic keeps today's five.
+- [ ] UI-5 Home (new screen file, e.g. src/app/(tabs)/home.tsx or a branch in index.tsx).
+- [ ] UI-6 Library: grid / list, filter chips, sort, "+" sheet; every current shelf still reachable.
+- [ ] UI-7 Story page (keep every slot action; Contents sheet; Details).
+- [ ] UI-8 Reader controls (hidden chrome, tap zones, footer line, top / bottom bars, scrubber
+      with chapter ticks, Aa sheet, chapter heading fix). Keep blank-page recovery, bookmarks,
+      find, auto-scroll, audiobook start, review end actions, clip-next end action.
+- [ ] UI-9 Discover and More.
+- [ ] UI-10 Make 'kindle' the default (classic stays in Settings), What's new card (bump
+      WHATS_NEW_VERSION), README / FEATURES / MASTER_FEATURES, install message (T1).
+- [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
+      themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
+      filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
+      Keep all 1230 tests green. Visual check after each step: `npx expo export --platform web
+      --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
+      (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
+
+### acceptance (on the phone)
+- [ ] UI-A1 Settings → Look switches between Kindle-style and Classic instantly; nothing is lost.
+- [ ] UI-A2 Home opens on the story being read; Continue opens the reader at the right place.
+- [ ] UI-A3 Every story shows a cover (real or generated); the Library grid / list / filters work.
+- [ ] UI-A4 The story page shows everything it did before (FFN follow / review, AO3 tags, download).
+- [ ] UI-A5 Reader: controls hidden until a middle tap; edge taps turn pages; Aa changes colour /
+      size / font; the footer shows time left and %.
+- [ ] UI-A6 Light and dark both look right; text is readable everywhere.
+
+### out of scope for P-UI1 (P-UI2 later, ask first)
+Loading skeletons, empty-state illustrations, a new app icon and splash, first-run onboarding,
+rewriting long Settings texts, page-curl animation.
 
 ---
 
@@ -663,7 +817,7 @@ id: P-CLIP2
 title: Clip & next, auto-clip the next N chapters, and Clip polish
 status: done (device check pending); AC-11 polish and AC-12 wait for the user
 order: 1
-next_task: true
+next_task: false   # P-UI1 comes first (2026-11-01)
 depends_on: [P-CLIP (done; works on the phone)]
 native_rebuild: no for the feature itself (expo-keep-awake is already installed); the user's NEXT install is T2 anyway because of ca4749f (Expo patch updates)
 priority: >-
@@ -941,7 +1095,7 @@ id: P-CLIP3
 title: Background clipping from a pasted first chapter; Clip for more sites (shadow roots, frames)
 status: done (device check pending)
 order: 1
-next_task: true
+next_task: false   # P-UI1 comes first (2026-11-01)
 depends_on: [P-CLIP2 (done, device check pending)]
 native_rebuild: no (JavaScript only; T1)
 approved_by_user:
@@ -1761,6 +1915,7 @@ the book says it's a one-shot (its TOC entry equals the book title, or its field
 | 2026-10-21 | 6320411 | Created from the session state at `5cc19e8`: P-CLIP next (approved 2026-10-21), then P4, P6, P7, P8, P-IMPORT-X, P-NOVELPIA |
 | 2026-10-27 | 570b9ad, ca4749f | Xcode 27 / Swift 6.4 build fix (precompiled Expo modules off; Expo patches incl. expo-modules-jsi 57.1.3); PRE-4 done; the build works on the phone |
 | 2026-10-27 | 324ae66 | P-CLIP2 added as the top priority (Clip & next, Clip the next N chapters, Clip polish; user approval and terms decision recorded); P4 / P7 on hold |
+| 2026-11-01 | (this commit) | P-UI1 Kindle-style look added as the FIRST phase: preview approved ("I like this a lot better"), spec + build steps in §3a, preview committed at design/kindle-preview/index.html, scripts/web-shots.cjs for visual checks |
 | 2026-10-30 | 72a9e95 → reverted | UI-1 Material You look built, then reverted at the user's request ("Actually revert changes … Only undoing the change of the gui"): the app keeps its original look; don't redo a restyle without asking |
 | 2026-10-29 | 488b9c5, 5371b6d | P-CLIP3 added and built (background clipping, shadow-root / frame text; approval quote recorded; device check pending) |
 | 2026-10-27 | 8271660, e1b08ba | P-CLIP2 built (AC-1..AC-10, AC-13; review fixes; device check pending); AC-11 / AC-12 wait for the user |

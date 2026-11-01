@@ -248,7 +248,8 @@ src/components/     UI kit, story card, filter sheets, site chips, tag groups, W
                     adult-content gate (components/ao3), profile view, reader settings
 tests/              Jest tests, synthetic HTML fixtures (fixtures/ao3: AO3 page markup with lorem ipsum text)
                     and a synthetic v1 library (fixtures/v1-library.ts)
-scripts/            live-check.ts (parsers vs the live sites; `-- --source ao3` for AO3), clip-check.ts (the
+design/             kindle-preview/index.html (the approved Kindle-style preview: the spec for the next phase)
+scripts/            web-shots.cjs (phone-sized screenshots of the web build), live-check.ts (parsers vs the live sites; `-- --source ao3` for AO3), clip-check.ts (the
                     Clip capture script in headless Chromium on synthetic pages), synthesize-fixture.ts
                     (a saved AO3 page → a fixture with the authors' words replaced), dev-proxy.ts (web dev
                     harness: FFN bridge + /http), check-keys.ts (part of `npm run lint`: no bare numeric story
