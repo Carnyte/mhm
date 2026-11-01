@@ -7,6 +7,7 @@ import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from '
 import * as player from '../../audio/player';
 import { AdultGateSheet, useAdultGate } from '../../components/ao3/AdultGateSheet';
 import { Cover } from '../../components/Cover';
+import { KindleStoryPage } from '../../components/kindle/StoryPage';
 import { showActions, toast } from '../../components/Sheet';
 import { Empty, ErrorView, Loading } from '../../components/states';
 import { SourceBadge } from '../../components/SourceBadge';
@@ -139,8 +140,7 @@ export default function StoryScreen() {
   const src = sourceOf(key);
   const owned = src.transport === 'local';
 
-  return (
-    <View style={{ flex: 1, backgroundColor: c.bg }}>
+  const header = (
       <Stack.Screen
         options={{
           title: '',
@@ -157,11 +157,34 @@ export default function StoryScreen() {
                   }}
                 />
               )}
-              <IconButton icon="ellipsis-horizontal-circle-outline" label="More" onPress={moreMenu} />
+              <IconButton icon={c.look === 'kindle' ? 'ellipsis-horizontal' : 'ellipsis-horizontal-circle-outline'} label="More" onPress={moreMenu} />
             </View>
           ),
         }}
       />
+  );
+
+  if (c.look === 'kindle') {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        {header}
+        <KindleStoryPage
+          storyKey={key}
+          story={story}
+          lib={lib}
+          refreshing={q.refreshing}
+          onRefresh={q.refresh}
+          clipping={clipping}
+          job={job ?? undefined}
+          gone={!!lib?.gone && !q.data}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      {header}
       <ScrollView
         contentContainerStyle={{ paddingBottom: 40 }}
         // Pull down to load the story again (new chapters from the site, or ones just clipped).

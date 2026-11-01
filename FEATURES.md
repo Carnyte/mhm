@@ -44,7 +44,7 @@ status:
   pending_in_order: [P-UI1 (first), P-CLIP3 + P-CLIP2 device checks, AC-11 polish (scroll-loaded text first), P4 (on hold), P6, P7 (on hold), P8, P-IMPORT-X, P-NOVELPIA]
   checks_at_base:
     tsc: clean
-    jest: "68 suites, 1273 passed + 1 todo (1274 total)"
+    jest: "69 suites, 1275 passed + 1 todo (1276 total)"
     import_corpus: "299 passed + 1 todo"
     lint: "clean, prints check-keys: ok"
     expo_export_ios: "bundles; one entry-*.hbc of about 5.2 MB (the reader's embedded Literata adds about 0.2 MB)"
@@ -255,7 +255,7 @@ was built first; old workflow scripts are named `phase5-*`). Use the ids above, 
 ```yaml
 id: P-UI1
 title: Kindle-style look and navigation, built from the approved preview, behind a "New look" switch
-status: in_progress (UI-1..UI-6 done; building UI-7 onwards)
+status: in_progress (UI-1..UI-7 done; building UI-8 onwards)
 order: 0
 next_task: true
 depends_on: [nothing; every feature it restyles is built]
@@ -395,7 +395,11 @@ lessons_from_the_revert: >-
       Favorites, Imported, Authors (sync bar on Follows / Favorites / Authors; Sync also in +).
       Grid / list choice stored as `AppSettings.libraryView`. Home's "See all" passes
       `?filter=new&at=<ms>`. Original text: Library: grid / list, filter chips, sort, "+" sheet; every current shelf still reachable.
-- [ ] UI-7 Story page (keep every slot action; Contents sheet; Details).
+- [x] UI-7 (UI7) Story page. As built: src/components/kindle/StoryPage.tsx, rendered by
+      story/[id].tsx under the same header (save + ⋯) when look = kindle. The site slots
+      (endorse / follow / discuss) are labelled icons after Listen / Download / Collection / Share;
+      Details = `statCells` + Status, Rating, Language, Genres, Characters; Contents is a
+      pageSheet Modal (reverse order, long-press menu kept). Original text: Story page (keep every slot action; Contents sheet; Details).
 - [ ] UI-8 Reader controls (hidden chrome, tap zones, footer line, top / bottom bars, scrubber
       with chapter ticks, Aa sheet, chapter heading fix). Keep blank-page recovery, bookmarks,
       find, auto-scroll, audiobook start, review end actions, clip-next end action.
@@ -405,7 +409,7 @@ lessons_from_the_revert: >-
 - [ ] UI-T Tests per step: palette contrast (text 7:1, secondary 4.5:1, navy button text 4.5:1, both
       themes), coverColour, the look switch, tab set per look, Home rows (only non-empty), Library
       filters, reader tap zones / chrome toggle (react-test-renderer like tests/clip-screen.test.tsx).
-      Keep all tests green (1273 after UI-6). Visual check after each step: `npx expo export --platform web
+      Keep all tests green (1275 after UI-7). Visual check after each step: `npx expo export --platform web
       --output-dir <dir outside repo>` then `node scripts/web-shots.cjs <dir> <shots dir> light`
       (and `dark`), compare with the preview, send the shots to the user (SendUserFile).
 

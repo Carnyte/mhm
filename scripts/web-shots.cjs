@@ -9,7 +9,8 @@
 // CHROMIUM_PATH overrides the browser (default: the container's Playwright Chromium).
 // LOOK=kindle|classic picks Settings → Look (default: the app's default); ONLY=home,settings takes
 // only those screenshots; EMPTY=1 starts with an empty library; SETTINGS_JSON='{...}' adds settings
-// (e.g. '{"libraryView":"list"}'); SUFFIX=x adds "-x" to the file names. File names: <light|dark>[-<look>]-<route>.png.
+// (e.g. '{"libraryView":"list"}'); SUFFIX=x adds "-x" to the file names; CLICK='Label|Label'
+// taps elements by accessibility label first; SCROLL=600 scrolls down by that much. File names: <light|dark>[-<look>]-<route>.png.
 
 const http = require('http');
 const fs = require('fs');
@@ -79,6 +80,12 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   for (const [name, url] of routes) {
     await page.goto(`http://localhost:${port}${url}`, { waitUntil: 'load' });
     await page.waitForTimeout(2500);
+    // CLICK='Label|Other label' taps those elements (by accessibility label) before the shot.
+    for (const label of process.env.CLICK ? process.env.CLICK.split('|') : []) {
+      await page.locator(`[aria-label="${label}"]`).first().click({ timeout: 5000 }).catch((e) => console.log('click failed:', label, String(e).slice(0, 120)));
+      await page.waitForTimeout(900);
+    }
+    if (process.env.SCROLL) await page.mouse.move(195, 500).then(() => page.mouse.wheel(0, Number(process.env.SCROLL))).then(() => page.waitForTimeout(700));
     await page.screenshot({ path: path.join(out, `${scheme}${look ? `-${look}` : ''}${process.env.EMPTY ? '-empty' : ''}${process.env.SUFFIX ? `-${process.env.SUFFIX}` : ''}-${name}.png`) });
   }
   await browser.close();
