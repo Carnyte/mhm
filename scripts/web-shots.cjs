@@ -10,7 +10,7 @@
 // LOOK=kindle|classic picks Settings → Look (default: the app's default); ONLY=home,settings takes
 // only those screenshots; EMPTY=1 starts with an empty library; SETTINGS_JSON='{...}' adds settings
 // (e.g. '{"libraryView":"list"}'); SUFFIX=x adds "-x" to the file names; CLICK='Label|Label'
-// taps elements by accessibility label first; SCROLL=600 scrolls down by that much. File names: <light|dark>[-<look>]-<route>.png.
+// taps elements by accessibility label first; TAP='x,y|x,y' taps the screen; SCROLL=600 scrolls. File names: <light|dark>[-<look>]-<route>.png.
 
 const http = require('http');
 const fs = require('fs');
@@ -63,7 +63,7 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   const port = server.address().port;
   const executablePath = process.env.CHROMIUM_PATH || ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium'].find((p) => fs.existsSync(p));
   const browser = await chromium.launch({ executablePath });
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: scheme });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: scheme, hasTouch: !!process.env.TAP });
   await ctx.addInitScript(([settings, stories, para]) => {
     localStorage.setItem('ficshelf:settings', JSON.stringify(settings));
     localStorage.setItem('ficshelf:schemaVersion', '2');
@@ -80,6 +80,12 @@ const ROUTES = [['home', '/'], ['search', '/search'], ['library', '/library'], [
   for (const [name, url] of routes) {
     await page.goto(`http://localhost:${port}${url}`, { waitUntil: 'load' });
     await page.waitForTimeout(2500);
+    // TAP='195,420' taps the screen there like a finger (the reader page listens for touches).
+    for (const xy of process.env.TAP ? process.env.TAP.split('|') : []) {
+      const [x, y] = xy.split(',').map(Number);
+      await page.touchscreen.tap(x, y);
+      await page.waitForTimeout(900);
+    }
     // CLICK='Label|Other label' taps those elements (by accessibility label) before the shot.
     for (const label of process.env.CLICK ? process.env.CLICK.split('|') : []) {
       await page.locator(`[aria-label="${label}"]`).first().click({ timeout: 5000 }).catch((e) => console.log('click failed:', label, String(e).slice(0, 120)));

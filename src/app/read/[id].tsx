@@ -26,8 +26,9 @@ import { infoFromLibrary } from '../../sources/meta';
 import { sourceOf } from '../../sources/registry';
 import type { ChapterContent, StoryInfo } from '../../sources/types';
 import { uiOf } from '../../sources/ui';
-import { addBookmark, libraryStore, recordReading, useLibraryStory } from '../../state/library';
-import { useSettings } from '../../state/settings';
+import { addBookmark, libraryStore, patchStory, recordReading, useLibraryStory } from '../../state/library';
+import { lookOf, useLook, useSettings } from '../../state/settings';
+import { KindleBottomPanel, KindleFooter, KindleTextSheet, KindleTopBar, placeAt } from '../../components/kindle/ReaderChrome';
 import { useReaderTheme } from '../../theme';
 import { buildReaderHtml, readerCssVars } from '../../reader/template';
 import { withBookImages } from '../../reader/images';
@@ -102,6 +103,7 @@ export default function ReaderScreen() {
   const theme = useReaderTheme();
   const lib = useLibraryStory(key);
   const web = useRef<ReaderWebViewRef>(null);
+  const kindle = useLook() === 'kindle';
 
   const [chapter, setChapter] = useState(() => Number(params.ch) || lib?.lastChapter || 1);
   const [nonce, setNonce] = useState(0);
@@ -114,10 +116,11 @@ export default function ReaderScreen() {
     setRes(current);
   }
   const { data, error } = current;
-  const [chrome, setChrome] = useState(true);
+  // Kindle-style: the page fills the screen; a tap in the middle shows the controls.
+  const [chrome, setChrome] = useState(() => lookOf() !== 'kindle');
   const [progress, setProgress] = useState(0);
   const [pageInfo, setPageInfo] = useState<{ page: number; pages: number } | null>(null);
-  const [panel, setPanel] = useState<null | 'settings' | 'chapters' | 'find'>(null);
+  const [panel, setPanel] = useState<null | 'settings' | 'chapters' | 'find' | 'text'>(null);
   const [autoScroll, setAutoScroll] = useState(false);
   const [findQuery, setFindQuery] = useState('');
   const [findInfo, setFindInfo] = useState({ count: 0, index: 0 });
@@ -282,7 +285,8 @@ export default function ReaderScreen() {
       {
         html: withBookImages(segmentedHtml, data.images, { webImages: !source?.reader.csp }),
         title: data.story.title,
-        chapterTitle: data.story.chapters > 1 ? `${chapter}. ${ch?.title ?? `Chapter ${chapter}`}` : data.story.title,
+        // Kindle-style: the page shows "CHAPTER 4" over the chapter's own title (said once).
+        chapterTitle: kindle ? (ch?.title ?? '') : data.story.chapters > 1 ? `${chapter}. ${ch?.title ?? `Chapter ${chapter}`}` : data.story.title,
         chapter,
         chapters: data.story.chapters,
         storyTitle: data.story.title,
@@ -291,6 +295,7 @@ export default function ReaderScreen() {
         progress: rebuilt?.data === data ? rebuilt.p : startProgress,
         endActions: slots?.end.map(({ id, label }) => ({ id, label })),
         csp: source?.reader.csp,
+        kindle,
       },
       settings,
       theme,
@@ -298,7 +303,7 @@ export default function ReaderScreen() {
     // Settings changes are applied live via __apply; only rebuild for new content (or a page
     // that has to be rebuilt, see rebuildPage).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, chapter, segmentedHtml, rebuilt]);
+  }, [data, chapter, segmentedHtml, rebuilt, kindle]);
 
   const goChapter = (n: number) => {
     if (!data || n < 1 || n > data.story.chapters) return;
@@ -330,7 +335,7 @@ export default function ReaderScreen() {
         break;
       case 'tap':
         if (m.zone === 'center') setChrome((v) => !v);
-        else if (chrome && settings.immersive) setChrome(false);
+        else if (chrome && (settings.immersive || kindle)) setChrome(false);
         break;
       case 'alive':
         clearTimeout(aliveTimer.current);
@@ -380,6 +385,24 @@ export default function ReaderScreen() {
   const left = Math.max(0, Math.round(chapterWords * (1 - progress)));
   const storyPct = story ? ((chapter - 1 + progress) / story.chapters) * 100 : 0;
   const chromeColor = theme.chrome;
+  // Kindle-style scrubber: a place in the whole story; another chapter opens at that place.
+  const scrubTo = (v: number) => {
+    if (!story || !key) return;
+    const to = placeAt(v, story.chapters);
+    if (to.chapter === chapter) {
+      web.current?.injectJavaScript(`window.__scrollTo(${to.progress}); true;`);
+      return;
+    }
+    patchStory(key, (st) => ({ chapterProgress: { ...(st.chapterProgress ?? {}), [to.chapter]: to.progress } }));
+    goChapter(to.chapter);
+  };
+  const place = { chapter, chapters: story?.chapters ?? 1, progress, page: pageInfo, wordsLeft: left };
+  // iOS presents one modal at a time: close the Aa sheet, then open the full panel (MASTER_FEATURES 10.5).
+  const openMoreSettings = () => {
+    setPanel(null);
+    setTimeout(() => setPanel('settings'), 450);
+  };
+  const openMore = () => story && showActions(readerMenu(story, chapter, { content: data?.content, bookmark: () => bookmark() }), story.title);
   const fg = theme.text;
 
   if (!key) {
@@ -430,8 +453,24 @@ export default function ReaderScreen() {
         />
       )}
 
+      {/* Kindle-style controls */}
+      {kindle && story && !gate.blocked && !error && <KindleFooter place={place} theme={theme} visible={!chrome && settings.showProgress} />}
+      {kindle && chrome && story && (
+        <KindleTopBar
+          title={story.title}
+          theme={theme}
+          offline={data?.offline}
+          onBack={() => router.back()}
+          onTitle={() => openStory(key)}
+          onAa={() => setPanel('text')}
+          onFind={() => setPanel('find')}
+          onBookmark={() => bookmark()}
+          onMore={openMore}
+        />
+      )}
+
       {/* Top bar */}
-      {chrome && story && (
+      {!kindle && chrome && story && (
         <View style={[styles.top, { paddingTop: insets.top + 4, backgroundColor: chromeColor + 'F2', borderColor: theme.muted + '33' }]}>
           <IconButton icon="chevron-back" label="Back" onPress={() => router.back()} color={fg} />
           <Pressable style={{ flex: 1 }} onPress={() => openStory(key)} accessibilityRole="button" accessibilityLabel="Story details">
@@ -456,7 +495,7 @@ export default function ReaderScreen() {
 
       {/* Read-aloud controls (the audiobook player, for this chapter) */}
       {listeningHere && (
-        <View style={[styles.tts, { bottom: (chrome ? 112 : 16) + insets.bottom, backgroundColor: chromeColor, borderColor: theme.muted + '44' }]}>
+        <View style={[styles.tts, { bottom: (chrome ? (kindle ? 150 : 112) : kindle ? 36 : 16) + insets.bottom, backgroundColor: chromeColor, borderColor: theme.muted + '44' }]}>
           <IconButton icon="play-back" label="Previous paragraph" onPress={() => player.skip(-1)} color={fg} size={20} />
           <IconButton
             icon={listen.status === 'playing' || listen.status === 'loading' ? 'pause' : 'play'}
@@ -476,8 +515,24 @@ export default function ReaderScreen() {
         </View>
       )}
 
+      {kindle && chrome && story && !gate.blocked && (
+        <KindleBottomPanel
+          place={place}
+          theme={theme}
+          listening={listeningHere && listen.status === 'playing'}
+          autoScroll={autoScroll}
+          canAutoScroll={!settings.paged}
+          onScrub={scrubTo}
+          onContents={() => setPanel('chapters')}
+          onPrev={() => goChapter(chapter - 1)}
+          onNext={() => goChapter(chapter + 1)}
+          onListen={toggleListen}
+          onAutoScroll={() => setAutoScroll((v) => !v)}
+        />
+      )}
+
       {/* Bottom bar */}
-      {chrome && story && !gate.blocked && (
+      {!kindle && chrome && story && !gate.blocked && (
         <View style={[styles.bottom, { paddingBottom: insets.bottom + 6, backgroundColor: chromeColor + 'F2', borderColor: theme.muted + '33' }]}>
           {settings.showProgress && (
             <View style={styles.progressRow}>
@@ -562,6 +617,7 @@ export default function ReaderScreen() {
         />
       )}
       <SettingsPanel visible={panel === 'settings'} onClose={() => setPanel(null)} />
+      {kindle && <KindleTextSheet visible={panel === 'text'} current={theme} onClose={() => setPanel(null)} onMore={openMoreSettings} />}
     </View>
   );
 }

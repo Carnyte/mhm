@@ -25,6 +25,23 @@ export interface ReaderPayload {
    * it is replaced with a fresh nonce that only the page's own scripts carry.
    */
   csp?: string;
+  /**
+   * Kindle-style look: the chapter heading is a small "CHAPTER 4" over the chapter's own title
+   * (`chapterTitle` is then the bare title), the page starts higher (the controls are hidden until
+   * a tap) and the left / right 30% of the page turn it.
+   */
+  kindle?: boolean;
+}
+
+/** "Chapter 4", "chapter 12", "Ch. 3": a title that is only the chapter's number. */
+const NUMBER_ONLY = /^\s*(chapter|ch\.?|part)\s*\d+\s*[.:]?\s*$/i;
+
+/** The Kindle-style heading: a small chapter number over the chapter's own title, said once. */
+export function kindleHeading(p: Pick<ReaderPayload, 'chapter' | 'chapters' | 'chapterTitle' | 'storyTitle'>): string {
+  if (p.chapters <= 1) return `<h1>${esc(p.chapterTitle || p.storyTitle)}</h1>`;
+  const title = p.chapterTitle.trim();
+  if (!title || NUMBER_ONLY.test(title)) return `<h1>Chapter ${p.chapter}</h1>`;
+  return `<div class="ch-no">Chapter ${p.chapter}</div><h1>${esc(title)}</h1>`;
 }
 
 /** A per-page script nonce (unguessable by the page's text, which can't run script anyway). */
@@ -110,25 +127,34 @@ body.paged #wrap{height:100vh;max-width:none;padding:calc(env(safe-area-inset-to
   column-width:100vw;column-gap:0;column-fill:auto;overflow-x:scroll;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;}
 body.paged #wrap::-webkit-scrollbar{display:none;}
 body.paged .hd,body.paged #text,body.paged .end{padding:0 var(--margin);max-width:calc(100vw - 2*var(--margin));}
-</style></head>
-<body class="${s.paged ? 'paged' : ''}"><div id="wrap">
-<div class="hd"><div class="story">${esc(p.storyTitle)}</div><h1>${esc(p.chapterTitle)}</h1></div>
+${p.kindle ? KINDLE_CSS : ''}</style></head>
+<body class="${[s.paged && 'paged', p.kindle && 'kindle'].filter(Boolean).join(' ')}"><div id="wrap">
+${p.kindle ? `<div class="hd">${kindleHeading(p)}</div>` : `<div class="hd"><div class="story">${esc(p.storyTitle)}</div><h1>${esc(p.chapterTitle)}</h1></div>`}
 <div id="text">${p.html}</div>
 <div class="end" id="end"><div>End of chapter ${p.chapter} of ${p.chapters}</div>
 ${p.hasNext ? '<button id="next">Next chapter →</button>' : '<div style="margin:8px 0 4px">You reached the end of the story.</div>'}
 <div>${endButtons}<button class="alt" id="mark">Bookmark</button></div></div>
 </div>
 ${script}${READER_JS}</script>
-${script}window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn, collapseNotes: !!s.collapseNotes })});</script>
+${script}window.__init(${JSON.stringify({ progress: p.progress, paged: s.paged, tapToTurn: s.tapToTurn, collapseNotes: !!s.collapseNotes, ...(p.kindle ? { edge: 0.3 } : {}) })});</script>
 </body></html>`;
 }
+
+// Kindle-style page: the controls are hidden until a tap, so the text starts near the top; a faint
+// footer line (drawn by the app) sits under it; the heading is centred.
+const KINDLE_CSS = `body.kindle #wrap{padding-top:calc(env(safe-area-inset-top) + 28px);padding-bottom:calc(env(safe-area-inset-bottom) + 72px);}
+body.kindle.paged #wrap{padding-top:calc(env(safe-area-inset-top) + 28px);padding-bottom:calc(env(safe-area-inset-bottom) + 44px);}
+body.kindle .hd{text-align:center;margin:.6em 0 1.6em;}
+body.kindle .hd .ch-no{font-family:-apple-system,system-ui,sans-serif;font-size:.62em;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+body.kindle .hd h1{font-weight:600;font-size:1.45em;line-height:1.2;margin:.7em 0 0;}
+`;
 
 /** In-page reader logic. Messages: progress, tap, next, action, bookmark, startBlock, ttsJump, find. */
 const READER_JS = String.raw`
 (function(){
   var post=function(o){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(o));};
   var wrap=document.getElementById('wrap');
-  var paged=false, tapToTurn=true, raf=0, speed=0, lastSent=-1, restoring=true;
+  var paged=false, tapToTurn=true, edge=0.25, raf=0, speed=0, lastSent=-1, restoring=true;
   function scroller(){return paged?wrap:(document.scrollingElement||document.documentElement);}
   function progress(){
     var s=scroller();
@@ -215,8 +241,8 @@ const READER_JS = String.raw`
     var sel=window.getSelection&&String(window.getSelection());if(sel)return;
     if(e.target.closest&&e.target.closest('button,a'))return;
     var x=t.clientX/window.innerWidth;
-    if(tapToTurn&&x<0.25){window.__page(-1);post({type:'tap',zone:'left'});}
-    else if(tapToTurn&&x>0.75){window.__page(1);post({type:'tap',zone:'right'});}
+    if(tapToTurn&&x<edge){window.__page(-1);post({type:'tap',zone:'left'});}
+    else if(tapToTurn&&x>1-edge){window.__page(1);post({type:'tap',zone:'right'});}
     else{
       // While listening, tapping a paragraph reads from there.
       // (Tapping the paragraph being read still shows / hides the controls.)
@@ -247,7 +273,7 @@ const READER_JS = String.raw`
     post({type:'link',href:href});
   });
   window.__init=function(o){
-    paged=!!o.paged;tapToTurn=o.tapToTurn!==false;noteToggles(!!o.collapseNotes);
+    paged=!!o.paged;tapToTurn=o.tapToTurn!==false;if(o.edge)edge=o.edge;noteToggles(!!o.collapseNotes);
     var go=function(){window.__scrollTo(o.progress||0);setTimeout(function(){restoring=false;report();post({type:'ready'});},60);};
     if(document.readyState==='complete')go();else window.addEventListener('load',go);
   };
