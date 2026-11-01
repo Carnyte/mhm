@@ -1,4 +1,4 @@
-// Library (Kindle-style look, FEATURES.md 3a, UI-6): a cover grid (or a compact list), one row of
+// Library (Kindle-style look, docs/ui_rules.md, UI-6): a cover grid (or a compact list), one row of
 // filter chips, one sort, and one + for adding stories. The classic shelves stay reachable:
 // Follows, Favorites, Imported and Authors are chips after Collections; FanFiction.net account
 // sync is in + and on the Follows / Favorites / Authors chips.

@@ -1,4 +1,4 @@
-// The Kindle-style Library (FEATURES.md 3a, UI-6): filter chips, sort, grid / list, search, the
+// The Kindle-style Library (docs/ui_rules.md, UI-6): filter chips, sort, grid / list, search, the
 // + sheet, Home's "See all", and every classic shelf (Follows, Favorites, Imported, Authors,
 // Collections, account sync) still reachable.
 

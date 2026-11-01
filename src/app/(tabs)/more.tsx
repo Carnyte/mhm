@@ -1,4 +1,4 @@
-// More (Kindle-style look, FEATURES.md 3a): the account, background clipping, bookmarks,
+// More (Kindle-style look, docs/ui_rules.md): the account, background clipping, bookmarks,
 // collections, drafts, import, new chapter alerts, settings and help, as calm grouped rows.
 // Everything the classic Account tab had stays one tap further in (FanFiction.net account).
 

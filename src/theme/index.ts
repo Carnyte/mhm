@@ -76,7 +76,7 @@ export const DARK: Palette = {
 };
 
 /**
- * The Kindle-style look (FEATURES.md 3a; design/kindle-preview/index.html): paper, wash (grouped
+ * The Kindle-style look (docs/ui_rules.md; design/kindle-preview/index.html): paper, wash (grouped
  * lists, cards, fields), ink (text, progress, selected chips), ink-2 (secondary text), rule
  * (hairlines) and one accent, FicShelf's navy, for primary buttons and text links only. Site
  * colours stay for the tiny site labels.

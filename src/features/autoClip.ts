@@ -3,7 +3,7 @@
 // Pure TypeScript: the page (src/app/web.tsx: the injected capture and Next scripts), saving,
 // timers and randomness come in from outside, so tests drive it with fakes.
 //
-// What it never does (FEATURES §4a policies): click anything that buys, unlocks or subscribes (the
+// What it never does (docs/clipping/p-clip2.md, policies): click anything that buys, unlocks or subscribes (the
 // Next script won't), get past a login, paywall or age gate, or touch a bot check. It runs only in
 // the visible browser while the app is in front, at a human pace (never under 4 s between
 // chapters), at most 200 chapters a run, and stops on anything unexpected: the page then waits for

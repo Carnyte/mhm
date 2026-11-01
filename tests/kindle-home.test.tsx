@@ -1,4 +1,4 @@
-// The Kindle-style tabs and Home (FEATURES.md 3a, UI-4 / UI-5): four tabs in that look and the
+// The Kindle-style tabs and Home (docs/ui_rules.md, UI-4 / UI-5): four tabs in that look and the
 // classic five otherwise (hidden tabs keep their routes); Home opens on the story read last with
 // its place in it, shows only the rows that have something in them, and welcomes an empty library.
 

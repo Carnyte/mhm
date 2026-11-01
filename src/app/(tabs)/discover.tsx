@@ -1,4 +1,4 @@
-// Discover (Kindle-style look, FEATURES.md 3a): search across the sites (today's search screen
+// Discover (Kindle-style look, docs/ui_rules.md): search across the sites (today's search screen
 // behind the field), each site's catalogue, and "Clip a whole story" for any other website.
 
 import { Ionicons } from '@expo/vector-icons';

@@ -1,4 +1,4 @@
-// The story page in the Kindle-style look (FEATURES.md 3a, UI-7): a large centred cover, the title
+// The story page in the Kindle-style look (docs/ui_rules.md, UI-7): a large centred cover, the title
 // in Literata, one main button, labelled icons (Listen, Download, Collection, Share and the site's
 // own: FanFiction.net follow / favourite and reviews, AO3 kudos, subscribe and comments), the
 // description folded to four lines, Contents in a sheet and Details as a two-column list. The

@@ -1,4 +1,4 @@
-// The reader's controls in the Kindle-style look (FEATURES.md 3a, UI-8). The page fills the screen;
+// The reader's controls in the Kindle-style look (docs/ui_rules.md, UI-8). The page fills the screen;
 // a tap in the middle shows the controls: back, the story title, Aa, search, bookmark and ⋯ on top;
 // a scrubber with a tick per chapter, the place in the story and Contents / Previous / Listen /
 // Next below. With the controls hidden a faint footer shows the time left in the chapter and the

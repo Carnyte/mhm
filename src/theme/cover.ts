@@ -1,4 +1,4 @@
-// Generated covers (Kindle-style look, FEATURES.md 3a; `cover()` in design/kindle-preview): a
+// Generated covers (Kindle-style look, docs/ui_rules.md; `cover()` in design/kindle-preview): a
 // bookbinding colour picked from the title, an optional band picked from the author, the title
 // sized by its length and a small site label. Pure, so it runs in Node tests.
 

@@ -415,7 +415,7 @@ export default function ReaderScreen() {
     goChapter(to.chapter);
   };
   const place = { chapter, chapters: story?.chapters ?? 1, progress, page: pageInfo, wordsLeft: left };
-  // iOS presents one modal at a time: close the Aa sheet, then open the full panel (MASTER_FEATURES 10.5).
+  // iOS presents one modal at a time: close the Aa sheet, then open the full panel (docs/ui_rules.md §10.5).
   const openMoreSettings = () => {
     setPanel(null);
     setTimeout(() => setPanel('settings'), 450);

@@ -1,4 +1,4 @@
-// The Kindle-style Library's filters and sorts (FEATURES.md 3a, UI-6). One row of chips replaces
+// The Kindle-style Library's filters and sorts (docs/ui_rules.md, UI-6). One row of chips replaces
 // the classic shelves; every classic shelf stays reachable (Follows, Favorites, Imported and
 // Authors are chips after Collections; Saved and Reading are inside All).
 

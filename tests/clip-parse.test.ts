@@ -124,7 +124,7 @@ describe('parseClip', () => {
     } finally {
       clearInterval(timer);
     }
-    // About 3x slower under jest than on tsx (MASTER_FEATURES §10.13).
+    // About 3x slower under jest than on tsx (docs/import.md §10.13).
     expect(stall).toBeLessThan(1500);
   }, 60_000);
 });

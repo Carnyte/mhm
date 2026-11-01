@@ -1,4 +1,4 @@
-// Discover and More in the Kindle-style look (FEATURES.md 3a, UI-9): the search field opens
+// Discover and More in the Kindle-style look (docs/ui_rules.md, UI-9): the search field opens
 // search, the site switch is one quiet control, FanFiction.net's categories are cards two across
 // (Misc last) for every browse mode, Just In and "Clip a whole story" stay; More reaches the
 // account, clipping, bookmarks, collections, drafts, import, new chapter alerts and settings.

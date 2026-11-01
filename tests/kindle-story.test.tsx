@@ -1,4 +1,4 @@
-// The story page in the Kindle-style look (FEATURES.md 3a, UI-7): one main button that continues,
+// The story page in the Kindle-style look (docs/ui_rules.md, UI-7): one main button that continues,
 // starts or reads again; Listen / Collection / Share and the site's own actions as labelled icons
 // (FanFiction.net follow / favourite and reviews stay); the description folds; Contents opens a
 // sheet with every chapter; Details keeps the site's numbers.

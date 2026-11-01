@@ -1,4 +1,4 @@
-// Generated covers (Kindle-style look, FEATURES.md 3a): the colour comes from the title the same
+// Generated covers (Kindle-style look, docs/ui_rules.md): the colour comes from the title the same
 // way as in the approved preview, is stable and uses all nine colours; a story without a cover
 // image gets one in the Kindle-style look only; a story with a real cover keeps it.
 

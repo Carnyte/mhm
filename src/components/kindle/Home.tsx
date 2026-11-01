@@ -1,4 +1,4 @@
-// Home (Kindle-style look, FEATURES.md 3a): opens on the story being read (a large Continue card),
+// Home (Kindle-style look, docs/ui_rules.md): opens on the story being read (a large Continue card),
 // then rows of covers: New chapters, Clipping now, Recently added. Rows with nothing in them are
 // left out; an empty library shows a short welcome instead.
 

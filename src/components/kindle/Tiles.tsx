@@ -1,4 +1,4 @@
-// Discover's pieces in the Kindle-style look (FEATURES.md 3a, UI-9): category cards two across on
+// Discover's pieces in the Kindle-style look (docs/ui_rules.md, UI-9): category cards two across on
 // the wash (a name and one quiet line, no icon tiles), quiet section heads, and grouped rows.
 
 import { Ionicons } from '@expo/vector-icons';

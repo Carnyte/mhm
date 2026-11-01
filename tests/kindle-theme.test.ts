@@ -1,4 +1,4 @@
-// The Kindle-style colours (FEATURES.md 3a): readable in light and dark (text 7:1, secondary text
+// The Kindle-style colours (docs/ui_rules.md): readable in light and dark (text 7:1, secondary text
 // 4.5:1, text on the navy button 4.5:1), one accent, and the classic colours untouched.
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports

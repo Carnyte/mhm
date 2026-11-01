@@ -1,4 +1,4 @@
-// The reader in the Kindle-style look (FEATURES.md 3a, UI-8), on a mocked WebView: the controls
+// The reader in the Kindle-style look (docs/ui_rules.md, UI-8), on a mocked WebView: the controls
 // are hidden until a tap in the middle, edge taps hide them again, a faint footer shows time left
 // and the place in the story, the page turns at the outer 30%, the chapter heading is said once,
 // Aa changes the page, the scrubber jumps between chapters; the classic reader is unchanged.
