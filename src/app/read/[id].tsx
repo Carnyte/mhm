@@ -88,10 +88,16 @@ async function loadText(key: StoryKey, chapter: number): Promise<Loaded> {
   }
 }
 
-/** Where to resume in a chapter (what the library has for it now: chapter renumbering moves it). */
-function resumeProgress(key: StoryKey | null, chapter: number): number {
+/**
+ * Where to resume in a chapter (what the library has for it now: chapter renumbering moves it).
+ * A chapter read to its end opens at its start again, except with `keepEnd`: page mode, on the
+ * chapter the reader was opened on, where the last page is a page like any other to come back to.
+ */
+function resumeProgress(key: StoryKey | null, chapter: number, keepEnd = false): number {
   const p = key ? libraryStore.get().stories[key]?.chapterProgress?.[chapter] : undefined;
-  return p != null && p < 0.995 ? p : 0;
+  if (p == null || !(p > 0)) return 0;
+  if (p < 0.995) return p;
+  return keepEnd ? 1 : 0;
 }
 
 export default function ReaderScreen() {
@@ -106,6 +112,9 @@ export default function ReaderScreen() {
   const kindle = useLook() === 'kindle';
 
   const [chapter, setChapter] = useState(() => Number(params.ch) || lib?.lastChapter || 1);
+  // The chapter the reader opened on: in page mode it reopens on the page left, the last one too.
+  const [openedOn] = useState(chapter);
+  const keepEnd = settings.paged && chapter === openedOn;
   const [nonce, setNonce] = useState(0);
   const loadKey = `${key}:${chapter}:${nonce}`;
   const [res, setRes] = useState<{ key: string; data?: Loaded; error?: Error }>({ key: loadKey });
@@ -142,7 +151,7 @@ export default function ReaderScreen() {
   // Initial progress for this chapter (resume where you left off), read again once it has loaded:
   // loading it can renumber chapters (AO3), which moves the progress recorded for them.
   const startProgress = useMemo(
-    () => resumeProgress(key, chapter),
+    () => resumeProgress(key, chapter, keepEnd),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key, chapter, data],
   );
@@ -195,7 +204,7 @@ export default function ReaderScreen() {
           return;
         }
         setRes({ key: loadKey, data: d });
-        const p = resumeProgress(key, chapter);
+        const p = resumeProgress(key, chapter, keepEnd);
         progressRef.current = p;
         recordReading(d.story, chapter, p);
         // Prefetch the next chapter so it opens instantly (and is available offline).

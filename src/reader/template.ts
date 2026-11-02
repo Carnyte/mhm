@@ -203,33 +203,99 @@ const READER_JS = String.raw`
 (function(){
   var post=function(o){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(o));};
   var wrap=document.getElementById('wrap'),cols=document.getElementById('cols');
-  var paged=false, tapToTurn=true, edge=0.25, hasNext=false, hasPrev=false, raf=0, speed=0, lastSent=-1, restoring=true;
+  var paged=false, tapToTurn=true, edge=0.25, hasNext=false, hasPrev=false, raf=0, speed=0, lastSent=-1, lastPage=-1, restoring=true;
   // Paged mode is a row of columns, one page wide each, moved with a transform: a page turn is one
   // short slide (or none), never the browser's own sideways scrolling with momentum.
   var page=0;
+  // Where the reader is in paged mode, as a place in the text (see anchor()): kept while the
+  // layout changes under it (fonts, the safe area, pictures, rotation, Aa), so the same words stay
+  // on screen whatever the page count becomes.
+  var held=0, laidOut=0, keep=false, touched=false;
   function scroller(){return document.scrollingElement||document.documentElement;}
   function pw(){return cols.clientWidth||window.innerWidth||1;}
   function pageCount(){return Math.max(1,Math.round(cols.scrollWidth/pw()));}
   function setX(px,anim){document.body.classList.toggle('turning',!!anim);cols.style.transform='translate3d('+px+'px,0,0)';}
-  function goPage(n,anim){page=Math.max(0,Math.min(pageCount()-1,n));setX(-page*pw(),anim);if(!restoring)report();}
+  function goPage(n,anim){page=Math.max(0,Math.min(pageCount()-1,n));setX(-page*pw(),anim);laidOut=pageCount();if(!restoring)report();}
+  /** The page a point (a rect's left edge) is on, measured from the columns themselves (so a page turn still sliding doesn't matter). */
+  function pageAt(left){return Math.max(0,Math.floor((left-cols.getBoundingClientRect().left+1)/pw()));}
   /** The page an element starts on. */
-  function pageOf(el){return Math.max(0,Math.floor((el.getBoundingClientRect().left+page*pw()+1)/pw()));}
+  function pageOf(el){return pageAt(el.getBoundingClientRect().left);}
+  // The chapter's text, as positions: every text node that shows something, with the number of
+  // characters before it. Hidden ones (folded authors' notes) count, so folding doesn't move places.
+  function texts(){
+    var out=[],w=document.createTreeWalker(cols,NodeFilter.SHOW_TEXT,null),n,at=0;
+    while((n=w.nextNode())){
+      var v=n.nodeValue||'';if(!/\S/.test(v))continue;
+      var el=n.parentNode,hid=!!(el&&el.closest&&el.closest('aside.fs-notes.closed')&&!el.closest('.fs-nt'));
+      out.push({n:n,at:at,len:v.length,hid:hid});at+=v.length;
+    }
+    out.total=at;return out;
+  }
+  var rng=document.createRange();
+  /** The page a character is on, or -1 when it isn't drawn (white space folded away). */
+  function charPage(n,i){
+    rng.setStart(n,i);rng.setEnd(n,Math.min(i+1,n.nodeValue.length));
+    var r=rng.getClientRects&&rng.getClientRects();var b=r&&r.length?r[0]:null;
+    return b?pageAt(b.left):-1;
+  }
+  /** How far into the text the current page's first character is (0..1). */
+  function anchor(){
+    var t=texts();if(!t.total)return 0;
+    var vis=t.filter(function(x){return !x.hid;}),lo=0,hi=vis.length-1,found=-1;
+    // The first text node that reaches this page (pages follow the text's order)...
+    while(lo<=hi){var mid=(lo+hi)>>1,v=vis[mid],last=v.n.nodeValue.search(/\S\s*$/);if(charPage(v.n,Math.max(0,last))>=page){found=mid;hi=mid-1;}else lo=mid+1;}
+    if(found<0)return 1;
+    // ...and its first character on it (a paragraph can start on the page before).
+    var f=vis[found],a=0,b=f.len-1;
+    while(a<b){var m=(a+b)>>1;if(charPage(f.n,m)>=page)b=m;else a=m+1;}
+    return (f.at+a)/t.total;
+  }
+  /** Opens the page with the character f of the way into the text (1: the last page). */
+  function goFraction(f){
+    var n=pageCount();
+    if(!(f>0)){goPage(0,false);return;}
+    if(f>=1){goPage(n-1,false);return;}
+    // A whole character: a place saved as a rounded fraction can fall a hair before the page's
+    // first character, which is the end of the paragraph on the page before.
+    var t=texts(),target=Math.round(f*t.total);
+    for(var i=0;i<t.length;i++){
+      var x=t[i];if(x.hid||x.at+x.len<=target)continue;
+      var off=Math.max(0,Math.min(x.len-1,target-x.at)),pg=charPage(x.n,off);
+      // A folded space: the next character that's drawn.
+      for(var k=off+1;pg<0&&k<x.len;k++)pg=charPage(x.n,k);
+      if(pg>=0){goPage(pg,false);return;}
+    }
+    goPage(n-1,false);
+  }
   function progress(){
-    if(paged){var n=pageCount();return n>1?page/(n-1):1;}
+    // Paged: the place in the text where this page starts, so it can be found again whatever the
+    // page count is next time; the last page is the end of the chapter (1).
+    if(paged){var n=pageCount();return page>=n-1?1:anchor();}
     var s=scroller(),max=s.scrollHeight-window.innerHeight;return max>0?Math.min(1,Math.max(0,s.scrollTop/max)):1;
   }
-  function report(){var p=Math.round(progress()*1000)/1000;if(Math.abs(p-lastSent)>=0.002||p===1){lastSent=p;post({type:'progress',p:p,page:pageInfo()});}}
+  function report(){
+    // After a jump or a layout change (keep), the place asked for is kept exactly: the page's
+    // first character would be a little earlier each time, and the place would creep back.
+    var p=paged&&keep?held:Math.round(progress()*1e6)/1e6;if(paged)held=p;
+    if(Math.abs(p-lastSent)>=0.002||p===1||(paged&&page!==lastPage)){lastSent=p;lastPage=paged?page:-1;post({type:'progress',p:p,page:pageInfo()});}
+  }
   function pageInfo(){if(!paged)return null;return {page:page+1,pages:pageCount()};}
+  /** Opens the page with place f and remembers exactly that place. */
+  function settleTo(f){held=f;keep=true;try{goFraction(f);}finally{keep=false;}}
+  /** The layout changed under the reader (not a page turn): back to the same words. */
+  function relayout(){if(!paged||drag||restoring)return;if(pageCount()!==laidOut){settleTo(held);}}
   var timer=0;
   function onScroll(){if(restoring||paged)return;clearTimeout(timer);timer=setTimeout(report,120);}
   window.addEventListener('scroll',onScroll,{passive:true});
-  window.addEventListener('resize',function(){if(paged)goPage(page,false);});
+  window.addEventListener('resize',function(){if(paged&&!restoring&&!drag)settleTo(held);});
   window.__scrollTo=function(p){
-    if(paged){goPage(Math.round(p*(pageCount()-1)),false);}
-    else{var s=scroller();s.scrollTop=p*(s.scrollHeight-window.innerHeight);}
+    if(!restoring)touched=true;
+    if(paged){settleTo(p);keep=true;try{report();}finally{keep=false;}return;}
+    var s=scroller();s.scrollTop=p*(s.scrollHeight-window.innerHeight);
     report();
   };
   window.__page=function(dir){
+    touched=true;
     if(paged){
       // Past the last page is the next chapter; before the first, the previous one (at its end).
       if(page+dir>pageCount()-1){if(hasNext)post({type:'next'});else goPage(page,true);return;}
@@ -239,10 +305,13 @@ const READER_JS = String.raw`
     else{window.scrollBy({top:dir*(window.innerHeight-110),behavior:'smooth'});}
   };
   window.__apply=function(vars,opts){
+    // Where the reader is, measured before the new size or font moves the text (paged: the place
+    // kept, which a page turn or a jump set).
+    var p=restoring?null:paged?held:progress();
     for(var k in vars)document.documentElement.style.setProperty(k,vars[k]);
-    var p=progress();
     if(opts){tapToTurn=opts.tapToTurn;if(opts.paged!==paged){paged=opts.paged;document.body.classList.toggle('paged',paged);if(!paged){page=0;cols.style.transform='';}}}
-    requestAnimationFrame(function(){window.__scrollTo(p);});
+    if(p==null)return;
+    requestAnimationFrame(function(){var t=touched;window.__scrollTo(p);touched=t;});
   };
   window.__autoScroll=function(pxPerSec){
     speed=pxPerSec;cancelAnimationFrame(raf);if(!speed||paged)return;
@@ -289,7 +358,7 @@ const READER_JS = String.raw`
     if(!marks.length){post({type:'find',count:0,index:0});return;}
     if(cur>=0)marks[cur].classList.remove('cur');
     cur=(cur+(dir||1)+marks.length)%marks.length;marks[cur].classList.add('cur');
-    if(paged)goPage(pageOf(marks[cur]),false);else marks[cur].scrollIntoView({block:'center',inline:'start'});
+    touched=true;if(paged)goPage(pageOf(marks[cur]),false);else marks[cur].scrollIntoView({block:'center',inline:'start'});
     post({type:'find',count:marks.length,index:cur+1});
   };
   // Taps: centre toggles controls, edges turn pages.
@@ -298,7 +367,7 @@ const READER_JS = String.raw`
   document.addEventListener('touchstart',function(e){var t=e.touches[0];drag=false;down={x:t.clientX,y:t.clientY,t:Date.now()};},{passive:true});
   document.addEventListener('touchmove',function(e){
     if(!paged||!down||e.touches.length>1)return;var t=e.touches[0],dx=t.clientX-down.x,dy=t.clientY-down.y;
-    if(!drag){if(Math.abs(dx)<8||Math.abs(dx)<Math.abs(dy))return;if(window.getSelection&&String(window.getSelection())){down=null;return;}drag=true;}
+    if(!drag){if(Math.abs(dx)<8||Math.abs(dx)<Math.abs(dy))return;if(window.getSelection&&String(window.getSelection())){down=null;return;}drag=true;touched=true;}
     var last=page>=pageCount()-1,off=dx;
     if((page===0&&dx>0&&!hasPrev)||(last&&dx<0&&!hasNext))off=dx/3;
     setX(-page*pw()+off,false);
@@ -342,12 +411,20 @@ const READER_JS = String.raw`
     // A link to a place on this page (footnotes and their way back) jumps there; others go to the app.
     var href=a.getAttribute('href')||'';
     if(href.charAt(0)==='#'){var id=href.slice(1);try{id=decodeURIComponent(id);}catch(_){}
-      var to=id&&(document.getElementById(id)||document.getElementsByName(id)[0]);if(to){if(paged)goPage(pageOf(to),false);else to.scrollIntoView({block:'start',inline:'start'});}return;}
+      var to=id&&(document.getElementById(id)||document.getElementsByName(id)[0]);if(to){touched=true;if(paged)goPage(pageOf(to),false);else to.scrollIntoView({block:'start',inline:'start'});}return;}
     post({type:'link',href:href});
   });
   window.__init=function(o){
     paged=!!o.paged;tapToTurn=o.tapToTurn!==false;if(o.edge)edge=o.edge;hasNext=!!o.hasNext;hasPrev=!!o.hasPrev;noteToggles(!!o.collapseNotes);
-    var go=function(){window.__scrollTo(o.progress||0);setTimeout(function(){restoring=false;report();post({type:'ready'});},60);};
+    var go=function(){
+      var f=o.progress||0;
+      if(paged)settleTo(f);else window.__scrollTo(f);
+      setTimeout(function(){restoring=false;relayout();keep=paged;try{report();}finally{keep=false;}post({type:'ready'});},60);
+      // The layout can still settle after the first restore (the safe area, pictures): the same
+      // words come back as long as the reader hasn't turned a page yet.
+      [300,1000,2500].forEach(function(ms){setTimeout(function(){if(!touched)relayout();},ms);});
+    };
+    var imgs=document.querySelectorAll('#text img');for(var i=0;i<imgs.length;i++)imgs[i].addEventListener('load',relayout);
     // After the fonts too: the embedded Literata changes where pages break.
     var whenFonts=function(){var f=document.fonts&&document.fonts.ready;if(f&&f.then)f.then(go,go);else go();};
     if(document.readyState==='complete')whenFonts();else window.addEventListener('load',whenFonts);

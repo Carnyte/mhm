@@ -145,6 +145,35 @@ describe('Kindle-style reader', () => {
     expect(libraryStore.get().stories[key]!.lastChapter).toBe(2);
   });
 
+  it('reopens on the last page in page mode when that is where the reader was left', async () => {
+    const key = await open('kindle', '2');
+    post({ type: 'progress', p: 1, page: { page: 6, pages: 6 } });
+    act(() => tree.unmount());
+    // Page mode: back on the last page of the chapter left.
+    updateSettings({ reader: { ...DEFAULT_READER, paged: true } });
+    mockWeb.props = null;
+    await act(async () => {
+      tree = create(<ReaderScreen />);
+    });
+    await settle();
+    expect(mockWeb.props!.source.html).toContain('"progress":1,"paged":true');
+    expect(libraryStore.get().stories[key]!.chapterProgress?.[2]).toBe(1);
+    // Another chapter read to its end (not where the reader was left) still opens at the top.
+    libraryStore.set((st) => ({ ...st, stories: { ...st.stories, [key]: { ...st.stories[key]!, chapterProgress: { ...st.stories[key]!.chapterProgress, 3: 1 } } } }));
+    post({ type: 'next' });
+    await settle();
+    expect(mockWeb.props!.source.html).toContain('<h1>What the Trees Remember</h1>');
+    expect(mockWeb.props!.source.html).toContain('"progress":0,"paged":true');
+    act(() => tree.unmount());
+    // Scroll mode keeps its rule: a chapter read to the bottom opens at the top.
+    updateSettings({ reader: { ...DEFAULT_READER, paged: false } });
+    await act(async () => {
+      tree = create(<ReaderScreen />);
+    });
+    await settle();
+    expect(mockWeb.props!.source.html).toContain('"progress":0,"paged":false');
+  });
+
   it('changes page colour, size, font and paging from Aa', async () => {
     await open('kindle');
     post({ type: 'tap', zone: 'center' });

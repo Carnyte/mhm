@@ -50,3 +50,30 @@ want this to be seamless and user friendly kind of like the books app on apple a
       (`FILE_NAME_TITLE`, `total > 1`; corpus group `ui/titles` A–D, written failing first).
 - [ ] EP-A On the phone: the user's EPUB in page mode (swipe, edge taps, chapter to chapter) and its
       chapter titles. Ask for a screenshot if a title still looks wrong.
+
+### follow-up: the page left in page mode (user, 2026-11-02)
+User: "When in page mode, the specific page i left on isnt what is saved … it has to do with
+something how position was originally saved in scroll mode".
+- [x] EP-4 (PAGE_COMMIT) Page mode saves a place in the text, not a page number: `progress` is how far
+      into the chapter's text the current page's first character is (`anchor()`: a binary search over
+      the text nodes by their characters' rects, measured against `#cols` so a sliding page turn
+      doesn't matter), and the last page is 1. Restoring finds the page that character is on now
+      (`goFraction`, rounded to a whole character first), so a different page count (phone size,
+      safe area, pictures, Aa, rotation) still opens on the same words. The place is kept exactly
+      through layout changes (`held`, `settleTo`): resize, picture loads and checks at 0.3 / 1 / 2.5 s
+      after opening (until the reader turns a page) go back to it; `__apply` measures before the new
+      size or font applies. The stored number keeps its shape (`chapterProgress`): no migration;
+      places saved by older builds read as text places, close to right once.
+- [x] EP-5 (PAGE_COMMIT) Page mode reopens the chapter it was opened on at its last page when that's
+      where the reader was left (`resumeProgress(…, keepEnd)`); other chapters read to the end, and
+      scroll mode, still open at the top.
+- Lessons: a page number as a fraction of the page count (`page/(pages-1)`) is a scroll-mode idea
+  and breaks whenever the count changes → save a text position. Measure the place **before**
+  changing the layout. A rounded fraction can land a hair before a page's first character →
+  round to a whole character before picking the text node (found in headless Chromium, pinned by
+  tests/reader-paging.test.ts with page breaks at paragraph starts).
+- Tests: tests/reader-paging.test.ts (fake text layout: characters flow over pages, --size changes
+  the page count) 5 new, 3 failing on the old template; tests/kindle-reader.test.tsx 1 new (fails
+  without the screen change). Headless Chromium run (scratch, not committed): page 10/85 left →
+  same page at the same size; saved words on screen at 390×700, 430×932 font 22, 375×667 font 16,
+  and after Aa 18 → 26; a place of 1 opens the last page.

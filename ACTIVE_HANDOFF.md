@@ -3,9 +3,9 @@
 > Current state and the very next task only. Rules and the Context Map: `AGENT_ROOT.md`.
 > Rewrite this file at every wrap-up (`AGENT_ROOT.md`, Session Wrap-Up Protocol).
 
-**Updated**: 2026-11-01 · **Branch**: `claude/ficshelf-fanfiction-app` (repo root = the app)
-**Last code commit**: `c40019d` P6 AO3 login ("Log in to AO3 on AO3's own page and open restricted works";
-ticked in `docs/ao3.md` §6, recorded in the commit after it).
+**Updated**: 2026-11-02 · **Branch**: `claude/ficshelf-fanfiction-app` (repo root = the app)
+**Last code commit**: page-mode places EP-4 / EP-5 ("Reopen page mode on the page you left";
+ticked in `docs/reader.md`). Before it: `c40019d` P6 AO3 login.
 
 ## State
 - Pushed, ready to install (T1, JavaScript only, **no prebuild**: no app.json / plugin / native
@@ -26,15 +26,22 @@ ticked in `docs/ao3.md` §6, recorded in the commit after it).
     every AO3 page `ao3Fetch` sees (`noteAo3Page`; `/users/login` or `/lost_cookie` redirects and
     visitor headers mean logged out). Restricted works: "Log in to AO3" button, retries by itself
     after login; works seen locked in listings are fetched once logged in.
+- **Page mode reopens on the page left** (user, 2026-11-02: "the specific page i left on isnt what
+  is saved"; `docs/reader.md` EP-4 / EP-5): the saved place is now a place in the chapter's text
+  (the current page's first character), found again whatever the page count; kept through Aa,
+  resize, pictures and the layout settling; the chapter left on its last page reopens there.
+  Tests + a headless Chromium run; **not yet on the phone**. Same stored number, no migration.
 - Still awaiting the user's phone reports on P-UI1 (Kindle look), EPUB reading EP-1..3,
   P-CLIP3 (BG-A1..A5) and P-CLIP2 (AC-A1..A6).
-- Checks at the P6 login commit: tsc clean · jest **75 suites, 1324 passed + 1 todo (1325)**
-  (the old handoff said 74 suites at 1304; it was 73) · import corpus 303 + 1 todo · lint clean
+- Checks at the page-mode commit: tsc clean · jest **75 suites, 1330 passed + 1 todo (1331)** · import corpus 303 + 1 todo · lint clean
   (`check-keys: ok`) · iOS export bundles (~5.3 MB hbc) · web screenshots of More and the AO3
   account screen (light / dark, logged in / out) looked right · expo-doctor 21/21 (last run
   2026-10-27) · clip-check 39/39 (last run at P-CLIP3, not affected).
 
 ## Next immediate task
+0. Ask the user to check page mode on the phone with the same install: leave a chapter mid-way
+   (and once on its last page), close the reader or the app, reopen → the same page. If it's still
+   off, ask which story / chapter and whether they changed Aa or rotated; `docs/reader.md` EP-4.
 1. Ask the user to install (T1) and try AO3 login: AO3L-A1 (log in → username shows in More),
    AO3L-A2 (a restricted work opens and downloads), AO3L-A5 (log out → More says Not signed in;
    then a restricted work asks to log in again). Risks to watch: the WebView's cookie reaching
