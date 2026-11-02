@@ -54,7 +54,7 @@ want this to be seamless and user friendly kind of like the books app on apple a
 ### follow-up: the page left in page mode (user, 2026-11-02)
 User: "When in page mode, the specific page i left on isnt what is saved … it has to do with
 something how position was originally saved in scroll mode".
-- [x] EP-4 (PAGE_COMMIT) Page mode saves a place in the text, not a page number: `progress` is how far
+- [x] EP-4 (b4f5ce8) Page mode saves a place in the text, not a page number: `progress` is how far
       into the chapter's text the current page's first character is (`anchor()`: a binary search over
       the text nodes by their characters' rects, measured against `#cols` so a sliding page turn
       doesn't matter), and the last page is 1. Restoring finds the page that character is on now
@@ -64,7 +64,7 @@ something how position was originally saved in scroll mode".
       after opening (until the reader turns a page) go back to it; `__apply` measures before the new
       size or font applies. The stored number keeps its shape (`chapterProgress`): no migration;
       places saved by older builds read as text places, close to right once.
-- [x] EP-5 (PAGE_COMMIT) Page mode reopens the chapter it was opened on at its last page when that's
+- [x] EP-5 (b4f5ce8) Page mode reopens the chapter it was opened on at its last page when that's
       where the reader was left (`resumeProgress(…, keepEnd)`); other chapters read to the end, and
       scroll mode, still open at the top.
 - Lessons: a page number as a fraction of the page count (`page/(pages-1)`) is a scroll-mode idea

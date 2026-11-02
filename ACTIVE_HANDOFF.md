@@ -4,7 +4,7 @@
 > Rewrite this file at every wrap-up (`AGENT_ROOT.md`, Session Wrap-Up Protocol).
 
 **Updated**: 2026-11-02 · **Branch**: `claude/ficshelf-fanfiction-app` (repo root = the app)
-**Last code commit**: page-mode places EP-4 / EP-5 ("Reopen page mode on the page you left";
+**Last code commit**: `b4f5ce8` page-mode places EP-4 / EP-5 ("Reopen page mode on the page you left";
 ticked in `docs/reader.md`). Before it: `c40019d` P6 AO3 login.
 
 ## State
