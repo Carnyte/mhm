@@ -82,7 +82,7 @@ something how position was originally saved in scroll mode".
 User: "when ios goes into landscape mode and back to portrait, occasionally the page (while in page
 mode) will show two pages at once … and if you swipe to turn the page, it bugs and brings you to
 what seems like the very beginning of the chapter."
-- [x] EP-6 (ROT_COMMIT) One column per screen: `column-count:1` (not `column-width:100vw`: while iOS
+- [x] EP-6 (89020c1) One column per screen: `column-count:1` (not `column-width:100vw`: while iOS
       rotates, `vw` and the page's width disagree for a moment and two columns fit); paged blocks'
       `max-width` from `100%`, not `100vw`. No zoom: viewport `minimum-scale=1, user-scalable=no`,
       and the reader WebView's `scrollEnabled` / `bounces` are off in page mode (the page turns

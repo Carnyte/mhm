@@ -4,7 +4,7 @@
 > Rewrite this file at every wrap-up (`AGENT_ROOT.md`, Session Wrap-Up Protocol).
 
 **Updated**: 2026-11-05 · **Branch**: `claude/ficshelf-fanfiction-app` (repo root = the app)
-**Last code commit**: EP-6 rotation in page mode ("Keep page mode to one page after rotating"; ticked in
+**Last code commit**: `89020c1` EP-6 rotation in page mode ("Keep page mode to one page after rotating"; ticked in
 `docs/reader.md`). Before it: `b4f5ce8` page-mode places, `c40019d` P6 AO3 login.
 
 ## State
