@@ -253,4 +253,45 @@ describe('reader page mode', () => {
     // The page that begins with paragraph 20, not the end of paragraph 19 on the page before.
     expect(x(pg)).toBe(-W * 2);
   });
+
+  it('shows one column per screen however wide the page is, and never zooms (no two pages side by side after rotating)', () => {
+    const html = buildReaderHtml(payload, { ...DEFAULT_READER, paged: true }, READER_THEMES[0]);
+    expect(html).toContain('column-count:1;column-width:auto');
+    expect(html).not.toContain('column-width:100vw');
+    expect(html).toMatch(/name="viewport" content="[^"]*minimum-scale=1[^"]*user-scalable=no/);
+  });
+
+  it('turns from the kept page after a rotation whose half-done layout claimed a single page', async () => {
+    const pg = await open();
+    await swipe(pg, 320, 240);
+    await swipe(pg, 320, 240);
+    const saved = pg.posted.filter((m) => m.type === 'progress').pop()!.p as number;
+    expect(-x(pg) / W).toBe(2);
+    // Mid-rotation: the page measures as one page for a moment (and the place mustn't follow it)...
+    pg.setPages(1);
+    pg.win.dispatchEvent(new pg.win.Event('resize'));
+    expect(pg.posted.filter((m) => m.type === 'progress').pop()!.p).toBe(saved);
+    // ...then the layout is whole again without another resize, and the reader swipes at once.
+    pg.setPages(PAGES);
+    await swipe(pg, 320, 240);
+    // The next page after the one left, not page 2 counted from the chapter's start.
+    expect(pageNo(pg)).toBe(4);
+    expect(pg.posted.filter((m) => m.type === 'progress').pop()!.p as number).toBeGreaterThan(saved);
+  });
+
+  it('comes back to the same page after landscape and back', async () => {
+    const pg = await open();
+    await swipe(pg, 320, 240);
+    await swipe(pg, 320, 240);
+    const saved = pg.posted.filter((m) => m.type === 'progress').pop()!.p as number;
+    pg.setPages(9);
+    pg.win.dispatchEvent(new pg.win.Event('resize'));
+    await new Promise((r) => setTimeout(r, 200));
+    pg.setPages(PAGES);
+    pg.win.dispatchEvent(new pg.win.Event('resize'));
+    await new Promise((r) => setTimeout(r, 800));
+    expect(-x(pg) / W).toBe(2);
+    expect(pg.posted.filter((m) => m.type === 'progress').pop()!.p).toBe(saved);
+  });
 });
+

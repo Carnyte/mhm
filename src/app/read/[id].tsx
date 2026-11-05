@@ -468,7 +468,10 @@ export default function ReaderScreen() {
           onMessage={onMessage}
           style={{ flex: 1, backgroundColor: theme.bg }}
           javaScriptEnabled
-          scrollEnabled
+          // Page mode turns pages in the page itself: the native scroll view stays still (rotating
+          // could otherwise leave it zoomed out or scrolled, showing two pages at once).
+          scrollEnabled={!settings.paged}
+          bounces={!settings.paged}
           showsVerticalScrollIndicator={false}
           decelerationRate="normal"
           allowsLinkPreview={false}

@@ -77,3 +77,23 @@ something how position was originally saved in scroll mode".
   without the screen change). Headless Chromium run (scratch, not committed): page 10/85 left →
   same page at the same size; saved words on screen at 390×700, 430×932 font 22, 375×667 font 16,
   and after Aa 18 → 26; a place of 1 opens the last page.
+
+### follow-up: two pages after rotating (user, 2026-11-05)
+User: "when ios goes into landscape mode and back to portrait, occasionally the page (while in page
+mode) will show two pages at once … and if you swipe to turn the page, it bugs and brings you to
+what seems like the very beginning of the chapter."
+- [x] EP-6 (ROT_COMMIT) One column per screen: `column-count:1` (not `column-width:100vw`: while iOS
+      rotates, `vw` and the page's width disagree for a moment and two columns fit); paged blocks'
+      `max-width` from `100%`, not `100vw`. No zoom: viewport `minimum-scale=1, user-scalable=no`,
+      and the reader WebView's `scrollEnabled` / `bounces` are off in page mode (the page turns
+      itself). Rotation settles before anything is measured: resize / `orientationchange` /
+      `visualViewport` resize show the kept place at once and again at 150 / 450 / 750 ms; for
+      700 ms the place isn't re-measured (a half-done layout can claim one page, i.e. the
+      chapter's start), and a turn in that window first goes back to the kept place.
+- Lesson: anything measured mid-rotation is suspect → keep the place, re-apply it once settled,
+  never take a new one from a layout that's still changing. Don't size paged columns with `vw`.
+- Tests: tests/reader-paging.test.ts +3 (2 fail on the old template), tests/kindle-reader.test.tsx
+  (scroll view still in page mode; fails before). Headless Chromium (scratch): 390×844 page 10/85
+  → 844×390 (same words, page 12/110) → 390×844 page 10/85 again, same first words; a quick rotate
+  and turn lands on the next page. WebKit itself isn't available here: phone check needed.
+

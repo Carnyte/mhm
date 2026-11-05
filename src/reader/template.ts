@@ -133,7 +133,7 @@ export function buildReaderHtml(p: ReaderPayload, s: ReaderSettings, t: ReaderTh
   const csp = nonce ? p.csp!.split('{nonce}').join(nonce) : p.csp;
   const script = nonce ? `<script nonce="${nonce}">` : '<script>';
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 ${csp ? `<meta http-equiv="Content-Security-Policy" content="${escAttr(csp)}">\n` : ''}<style>
 ${readerFontFaces(s.font)}:root{${vars}}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);-webkit-text-size-adjust:100%;}
@@ -163,15 +163,18 @@ a{color:var(--link);}
 .tts{background:var(--hl);border-radius:4px;transition:background .2s;-webkit-box-decoration-break:clone;box-decoration-break:clone;}
 mark.find{background:var(--hl);color:inherit;border-radius:2px;}
 mark.find.cur{outline:2px solid var(--link);}
+html:has(body.paged){overflow:hidden;}
 body.paged{position:fixed;top:0;left:0;right:0;bottom:0;height:100vh;overflow:hidden;}
-body.paged #wrap{height:100vh;max-width:none;padding:0;overflow:hidden;}
-body.paged #cols{box-sizing:border-box;height:100vh;padding:calc(env(safe-area-inset-top) + 56px) 0 calc(env(safe-area-inset-bottom) + 64px);
-  column-width:100vw;column-gap:0;column-fill:auto;will-change:transform;}
+body.paged #wrap{width:100%;height:100vh;max-width:none;padding:0;overflow:hidden;}
+/* Exactly one column per screen, the width of the page itself: "at least 100vw" let two columns
+   share the screen while iOS rotated (vw and the page's width disagree for a moment). */
+body.paged #cols{box-sizing:border-box;width:100%;height:100vh;padding:calc(env(safe-area-inset-top) + 56px) 0 calc(env(safe-area-inset-bottom) + 64px);
+  column-count:1;column-width:auto;column-gap:0;column-fill:auto;will-change:transform;}
 body.paged.turning #cols{transition:transform .2s cubic-bezier(.2,.7,.3,1);}
 @media (prefers-reduced-motion:reduce){body.paged.turning #cols{transition:none;}}
 body.paged #text img{max-height:calc(100vh - 160px);object-fit:contain;break-inside:avoid;}
 body.paged #text h1,body.paged #text h2,body.paged #text h3,body.paged .hd{break-after:avoid;}
-body.paged .hd,body.paged #text,body.paged .end{padding:0 var(--margin);max-width:calc(100vw - 2*var(--margin));}
+body.paged .hd,body.paged #text,body.paged .end{padding:0 var(--margin);max-width:calc(100% - 2*var(--margin));}
 ${p.kindle ? KINDLE_CSS : ''}</style></head>
 <body class="${[s.paged && 'paged', p.kindle && 'kindle'].filter(Boolean).join(' ')}"><div id="wrap"><div id="cols">
 ${p.kindle ? (p.ownHeading ? '' : `<div class="hd">${kindleHeading(p)}</div>`) : `<div class="hd"><div class="story">${esc(p.storyTitle)}</div>${p.ownHeading ? '' : `<h1>${esc(p.chapterTitle)}</h1>`}</div>`}
@@ -211,6 +214,10 @@ const READER_JS = String.raw`
   // layout changes under it (fonts, the safe area, pictures, rotation, Aa), so the same words stay
   // on screen whatever the page count becomes.
   var held=0, laidOut=0, keep=false, touched=false;
+  // A rotation or resize is still settling until this time: the place isn't measured from the
+  // half-done layout (which can claim a single page and so the chapter's start), only kept.
+  var unsettledUntil=0, settleTimers=[];
+  function unsettled(){return Date.now()<unsettledUntil;}
   function scroller(){return document.scrollingElement||document.documentElement;}
   function pw(){return cols.clientWidth||window.innerWidth||1;}
   function pageCount(){return Math.max(1,Math.round(cols.scrollWidth/pw()));}
@@ -276,7 +283,7 @@ const READER_JS = String.raw`
   function report(){
     // After a jump or a layout change (keep), the place asked for is kept exactly: the page's
     // first character would be a little earlier each time, and the place would creep back.
-    var p=paged&&keep?held:Math.round(progress()*1e6)/1e6;if(paged)held=p;
+    var p=paged&&(keep||unsettled())?held:Math.round(progress()*1e6)/1e6;if(paged)held=p;
     if(Math.abs(p-lastSent)>=0.002||p===1||(paged&&page!==lastPage)){lastSent=p;lastPage=paged?page:-1;post({type:'progress',p:p,page:pageInfo()});}
   }
   function pageInfo(){if(!paged)return null;return {page:page+1,pages:pageCount()};}
@@ -287,7 +294,20 @@ const READER_JS = String.raw`
   var timer=0;
   function onScroll(){if(restoring||paged)return;clearTimeout(timer);timer=setTimeout(report,120);}
   window.addEventListener('scroll',onScroll,{passive:true});
-  window.addEventListener('resize',function(){if(paged&&!restoring&&!drag)settleTo(held);});
+  // Rotation: iOS sends several resizes while the layout changes. The kept place is shown at
+  // once, and again once things have settled; nothing is measured from the layout until then.
+  function onResize(){
+    if(!paged||restoring)return;
+    unsettledUntil=Date.now()+700;
+    if(!drag)settleTo(held);
+    settleTimers.forEach(clearTimeout);
+    settleTimers=[150,450,750].map(function(ms){return setTimeout(function(){
+      if(!paged||drag)return;settleTo(held);keep=true;try{report();}finally{keep=false;}
+    },ms);});
+  }
+  window.addEventListener('resize',onResize);
+  window.addEventListener('orientationchange',onResize);
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',onResize);
   window.__scrollTo=function(p){
     if(!restoring)touched=true;
     if(paged){settleTo(p);keep=true;try{report();}finally{keep=false;}return;}
@@ -297,6 +317,8 @@ const READER_JS = String.raw`
   window.__page=function(dir){
     touched=true;
     if(paged){
+      // A turn right after a rotation turns from the kept place, not from the half-done layout.
+      if(unsettled()){settleTo(held);unsettledUntil=0;}
       // Past the last page is the next chapter; before the first, the previous one (at its end).
       if(page+dir>pageCount()-1){if(hasNext)post({type:'next'});else goPage(page,true);return;}
       if(page+dir<0){if(hasPrev)post({type:'prev'});else goPage(0,true);return;}

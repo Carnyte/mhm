@@ -157,6 +157,8 @@ describe('Kindle-style reader', () => {
     });
     await settle();
     expect(mockWeb.props!.source.html).toContain('"progress":1,"paged":true');
+    // Page mode turns pages in the page: the native scroll view stays still (no zoom or scroll after rotating).
+    expect(mockWeb.props).toMatchObject({ scrollEnabled: false, bounces: false });
     expect(libraryStore.get().stories[key]!.chapterProgress?.[2]).toBe(1);
     // Another chapter read to its end (not where the reader was left) still opens at the top.
     libraryStore.set((st) => ({ ...st, stories: { ...st.stories, [key]: { ...st.stories[key]!, chapterProgress: { ...st.stories[key]!.chapterProgress, 3: 1 } } } }));
@@ -172,6 +174,7 @@ describe('Kindle-style reader', () => {
     });
     await settle();
     expect(mockWeb.props!.source.html).toContain('"progress":0,"paged":false');
+    expect(mockWeb.props).toMatchObject({ scrollEnabled: true });
   });
 
   it('changes page colour, size, font and paging from Aa', async () => {
